@@ -23,9 +23,9 @@ import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 
 /** Utility class for catalog exceptions. */
-public class CatalogExceptionUtil {
+public class CatalogExceptionUtils {
 
-    private CatalogExceptionUtil() {}
+    private CatalogExceptionUtils() {}
 
     public static boolean isDatabaseNotExist(Throwable throwable) {
         return throwable instanceof DatabaseNotExistException;

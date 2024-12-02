@@ -23,7 +23,7 @@ import com.alibaba.fluss.memory.MemoryUtils;
  * additional information regarding copyright ownership. */
 
 /** Utility class for working with unsafe operations. */
-public class UnsafeUtil {
+public class UnsafeUtils {
 
     public static final long BYTE_ARRAY_BASE_OFFSET =
             MemoryUtils.UNSAFE.arrayBaseOffset(byte[].class);

@@ -24,7 +24,7 @@ import com.alibaba.fluss.record.LogRecordBatch;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.utils.json.JsonDeserializer;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.JsonSerializer;
 
 import org.slf4j.Logger;
@@ -612,11 +612,11 @@ public class WriterStateManager {
         }
 
         private static WriterSnapshotMap fromJsonBytes(byte[] json) {
-            return JsonSerdeUtil.readValue(json, WriterSnapshotMapJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, WriterSnapshotMapJsonSerde.INSTANCE);
         }
 
         private byte[] toJsonBytes() {
-            return JsonSerdeUtil.writeValueAsBytes(this, WriterSnapshotMapJsonSerde.INSTANCE);
+            return JsonSerdeUtils.writeValueAsBytes(this, WriterSnapshotMapJsonSerde.INSTANCE);
         }
 
         @Override

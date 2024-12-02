@@ -27,7 +27,7 @@ import com.alibaba.fluss.row.TimestampLtz;
 import com.alibaba.fluss.row.TimestampNtz;
 import com.alibaba.fluss.types.DataType;
 import com.alibaba.fluss.types.RowType;
-import com.alibaba.fluss.utils.UnsafeUtil;
+import com.alibaba.fluss.utils.UnsafeUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -77,46 +77,46 @@ public class IndexedRowWriter extends OutputStream implements MemorySegmentWrita
 
     /** Default not null. */
     public void setNullAt(int pos) {
-        UnsafeUtil.bitSet(buffer, 0, pos);
+        UnsafeUtils.bitSet(buffer, 0, pos);
     }
 
     public void writeBoolean(boolean value) {
         ensureCapacity(1);
-        UnsafeUtil.putBoolean(buffer, position++, value);
+        UnsafeUtils.putBoolean(buffer, position++, value);
     }
 
     public void writeByte(byte value) {
         ensureCapacity(1);
-        UnsafeUtil.putByte(buffer, position++, value);
+        UnsafeUtils.putByte(buffer, position++, value);
     }
 
     public void writeShort(short value) {
         ensureCapacity(2);
-        UnsafeUtil.putShort(buffer, position, value);
+        UnsafeUtils.putShort(buffer, position, value);
         position += 2;
     }
 
     public void writeInt(int value) {
         ensureCapacity(4);
-        UnsafeUtil.putInt(buffer, position, value);
+        UnsafeUtils.putInt(buffer, position, value);
         position += 4;
     }
 
     public void writeLong(long value) {
         ensureCapacity(8);
-        UnsafeUtil.putLong(buffer, position, value);
+        UnsafeUtils.putLong(buffer, position, value);
         position += 8;
     }
 
     public void writeFloat(float value) {
         ensureCapacity(4);
-        UnsafeUtil.putFloat(buffer, position, value);
+        UnsafeUtils.putFloat(buffer, position, value);
         position += 4;
     }
 
     public void writeDouble(double value) {
         ensureCapacity(8);
-        UnsafeUtil.putDouble(buffer, position, value);
+        UnsafeUtils.putDouble(buffer, position, value);
         position += 8;
     }
 
@@ -242,7 +242,7 @@ public class IndexedRowWriter extends OutputStream implements MemorySegmentWrita
         if (variableLengthPosition - nullBitsSizeInBytes + 4 > variableColumnLengthListInBytes) {
             throw new IllegalArgumentException();
         }
-        UnsafeUtil.putInt(buffer, variableLengthPosition, length);
+        UnsafeUtils.putInt(buffer, variableLengthPosition, length);
         variableLengthPosition += 4;
     }
 

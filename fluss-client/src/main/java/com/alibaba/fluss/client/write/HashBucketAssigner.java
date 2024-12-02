@@ -24,7 +24,7 @@ import com.alibaba.fluss.utils.Preconditions;
 
 import javax.annotation.Nullable;
 
-import static com.alibaba.fluss.utils.UnsafeUtil.BYTE_ARRAY_BASE_OFFSET;
+import static com.alibaba.fluss.utils.UnsafeUtils.BYTE_ARRAY_BASE_OFFSET;
 
 /** Hash bucket assigner. */
 @Internal

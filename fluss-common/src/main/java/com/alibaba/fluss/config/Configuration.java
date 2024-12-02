@@ -17,7 +17,7 @@
 package com.alibaba.fluss.config;
 
 import com.alibaba.fluss.annotation.PublicStable;
-import com.alibaba.fluss.utils.CollectionUtil;
+import com.alibaba.fluss.utils.CollectionUtils;
 import com.alibaba.fluss.utils.Preconditions;
 
 import org.slf4j.Logger;
@@ -573,7 +573,7 @@ public class Configuration implements Serializable, ReadableConfig {
     public Map<String, String> toMap() {
         synchronized (this.confData) {
             Map<String, String> ret =
-                    CollectionUtil.newHashMapWithExpectedSize(this.confData.size());
+                    CollectionUtils.newHashMapWithExpectedSize(this.confData.size());
             for (Map.Entry<String, Object> entry : confData.entrySet()) {
                 ret.put(entry.getKey(), ConfigurationUtils.convertToString(entry.getValue()));
             }

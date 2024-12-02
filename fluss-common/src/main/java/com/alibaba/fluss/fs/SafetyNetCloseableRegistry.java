@@ -22,7 +22,7 @@ import com.alibaba.fluss.utils.CloseableRegistry;
 import com.alibaba.fluss.utils.IOUtils;
 import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.WrappingProxy;
-import com.alibaba.fluss.utils.WrappingProxyUtil;
+import com.alibaba.fluss.utils.WrappingProxyUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,7 +106,7 @@ public class SafetyNetCloseableRegistry
 
         assert Thread.holdsLock(getSynchronizationLock());
 
-        Closeable innerCloseable = WrappingProxyUtil.stripProxy(wrappingProxyCloseable);
+        Closeable innerCloseable = WrappingProxyUtils.stripProxy(wrappingProxyCloseable);
 
         if (null == innerCloseable) {
             return;
@@ -126,7 +126,7 @@ public class SafetyNetCloseableRegistry
 
         assert Thread.holdsLock(getSynchronizationLock());
 
-        Closeable innerCloseable = WrappingProxyUtil.stripProxy(closeable);
+        Closeable innerCloseable = WrappingProxyUtils.stripProxy(closeable);
 
         return null != innerCloseable && closeableMap.remove(innerCloseable) != null;
     }
@@ -171,7 +171,7 @@ public class SafetyNetCloseableRegistry
 
             super(referent, q);
             this.innerCloseable =
-                    Preconditions.checkNotNull(WrappingProxyUtil.stripProxy(referent));
+                    Preconditions.checkNotNull(WrappingProxyUtils.stripProxy(referent));
             this.closeableRegistry = Preconditions.checkNotNull(closeableRegistry);
             this.debugString = referent.toString();
         }

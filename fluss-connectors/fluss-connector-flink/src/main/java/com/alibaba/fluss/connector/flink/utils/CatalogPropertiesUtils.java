@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.connector.flink.catalog;
+package com.alibaba.fluss.connector.flink.utils;
 
 import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.TableException;
@@ -44,7 +44,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *
  * <p>Copied from Flink.
  */
-public class CatalogPropertiesUtil {
+public class CatalogPropertiesUtils {
 
     // --------------------------------------------------------------------------------------------
     // Helper methods and constants
@@ -170,7 +170,7 @@ public class CatalogPropertiesUtil {
     private static String[] serializeColumnDataTypes(List<Column> columns) {
         return columns.stream()
                 .map(Column::getDataType)
-                .map(CatalogPropertiesUtil::serializeDataType)
+                .map(CatalogPropertiesUtils::serializeDataType)
                 .toArray(String[]::new);
     }
 
@@ -374,5 +374,5 @@ public class CatalogPropertiesUtil {
         }
     }
 
-    private CatalogPropertiesUtil() {}
+    private CatalogPropertiesUtils() {}
 }

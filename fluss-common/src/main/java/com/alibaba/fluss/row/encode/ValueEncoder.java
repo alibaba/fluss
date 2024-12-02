@@ -17,7 +17,7 @@
 package com.alibaba.fluss.row.encode;
 
 import com.alibaba.fluss.row.BinaryRow;
-import com.alibaba.fluss.utils.UnsafeUtil;
+import com.alibaba.fluss.utils.UnsafeUtils;
 
 /** An encoder to encode {@link BinaryRow} with a schema id as value to be stored in kv store. */
 public class ValueEncoder {
@@ -33,7 +33,7 @@ public class ValueEncoder {
      */
     public static byte[] encodeValue(short schemaId, BinaryRow row) {
         byte[] values = new byte[SCHEMA_ID_LENGTH + row.getSizeInBytes()];
-        UnsafeUtil.putShort(values, 0, schemaId);
+        UnsafeUtils.putShort(values, 0, schemaId);
         row.copyTo(values, SCHEMA_ID_LENGTH);
         return values;
     }

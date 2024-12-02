@@ -32,7 +32,7 @@ import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.SCAN_START
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.ScanStartupMode.TIMESTAMP;
 
 /** Utility class for {@link FlinkConnectorOptions}. */
-public class FlinkConnectorOptionsUtil {
+public class FlinkConnectorOptionsUtils {
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

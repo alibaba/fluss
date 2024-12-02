@@ -38,7 +38,7 @@ import java.util.HashMap;
 
 /** Utility class to create instances from class objects and checking failure reasons. */
 @Internal
-public class InstantiationUtil {
+public class InstantiationUtils {
 
     /** A custom ObjectInputStream that can load classes using a specific ClassLoader. */
     public static class ClassLoaderObjectInputStream extends ObjectInputStream {
@@ -112,7 +112,7 @@ public class InstantiationUtil {
         // ------------------------------------------------
 
         private static final HashMap<String, Class<?>> primitiveClasses =
-                CollectionUtil.newHashMapWithExpectedSize(9);
+                CollectionUtils.newHashMapWithExpectedSize(9);
 
         static {
             primitiveClasses.put("boolean", boolean.class);
@@ -157,7 +157,7 @@ public class InstantiationUtil {
         final ClassLoader old = Thread.currentThread().getContextClassLoader();
         // not using resource try to avoid AutoClosable's close() on the given stream
         try {
-            ObjectInputStream oois = new InstantiationUtil.ClassLoaderObjectInputStream(in, cl);
+            ObjectInputStream oois = new InstantiationUtils.ClassLoaderObjectInputStream(in, cl);
             Thread.currentThread().setContextClassLoader(cl);
             return (T) oois.readObject();
         } finally {
@@ -335,7 +335,7 @@ public class InstantiationUtil {
     // --------------------------------------------------------------------------------------------
 
     /** Private constructor to prevent instantiation. */
-    private InstantiationUtil() {
+    private InstantiationUtils() {
         throw new RuntimeException();
     }
 }

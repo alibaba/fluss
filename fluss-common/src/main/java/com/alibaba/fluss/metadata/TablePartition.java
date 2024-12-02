@@ -17,7 +17,7 @@
 package com.alibaba.fluss.metadata;
 
 import com.alibaba.fluss.annotation.PublicEvolving;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.TablePartitionJsonSerde;
 
 import java.util.Objects;
@@ -47,11 +47,11 @@ public class TablePartition {
     }
 
     public byte[] toJsonBytes() {
-        return JsonSerdeUtil.writeValueAsBytes(this, TablePartitionJsonSerde.INSTANCE);
+        return JsonSerdeUtils.writeValueAsBytes(this, TablePartitionJsonSerde.INSTANCE);
     }
 
     public static TablePartition fromJsonBytes(byte[] json) {
-        return JsonSerdeUtil.readValue(json, TablePartitionJsonSerde.INSTANCE);
+        return JsonSerdeUtils.readValue(json, TablePartitionJsonSerde.INSTANCE);
     }
 
     @Override

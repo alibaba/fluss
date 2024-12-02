@@ -21,7 +21,7 @@ import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 
 import javax.annotation.Nullable;
 
@@ -100,12 +100,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(TableRegistration tableRegistration) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     tableRegistration, TableRegistrationJsonSerde.INSTANCE);
         }
 
         public static TableRegistration decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, TableRegistrationJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, TableRegistrationJsonSerde.INSTANCE);
         }
     }
 
@@ -246,12 +246,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(CoordinatorAddress coordinatorAddress) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     coordinatorAddress, CoordinatorAddressJsonSerde.INSTANCE);
         }
 
         public static CoordinatorAddress decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, CoordinatorAddressJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, CoordinatorAddressJsonSerde.INSTANCE);
         }
     }
 
@@ -292,12 +292,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(TabletServerRegistration tsRegistration) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     tsRegistration, TabletServerRegistrationJsonSerde.INSTANCE);
         }
 
         public static TabletServerRegistration decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, TabletServerRegistrationJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, TabletServerRegistrationJsonSerde.INSTANCE);
         }
     }
 
@@ -336,12 +336,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(TableAssignment tableAssignment) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     tableAssignment, TableAssignmentJsonSerde.INSTANCE);
         }
 
         public static TableAssignment decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, TableAssignmentJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, TableAssignmentJsonSerde.INSTANCE);
         }
     }
 
@@ -358,12 +358,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(PartitionAssignment tableAssignment) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     tableAssignment, PartitionAssignmentJsonSerde.INSTANCE);
         }
 
         public static PartitionAssignment decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, PartitionAssignmentJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, PartitionAssignmentJsonSerde.INSTANCE);
         }
     }
 
@@ -413,11 +413,11 @@ public final class ZkData {
         }
 
         public static byte[] encode(LeaderAndIsr leaderAndIsr) {
-            return JsonSerdeUtil.writeValueAsBytes(leaderAndIsr, LeaderAndIsrJsonSerde.INSTANCE);
+            return JsonSerdeUtils.writeValueAsBytes(leaderAndIsr, LeaderAndIsrJsonSerde.INSTANCE);
         }
 
         public static LeaderAndIsr decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, LeaderAndIsrJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, LeaderAndIsrJsonSerde.INSTANCE);
         }
     }
 
@@ -473,12 +473,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(BucketSnapshot bucketSnapshot) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     bucketSnapshot, BucketSnapshotJsonSerde.INSTANCE);
         }
 
         public static BucketSnapshot decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, BucketSnapshotJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, BucketSnapshotJsonSerde.INSTANCE);
         }
     }
 
@@ -511,12 +511,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(RemoteLogManifestHandle remoteLogManifestHandle) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     remoteLogManifestHandle, RemoteLogManifestHandleJsonSerde.INSTANCE);
         }
 
         public static RemoteLogManifestHandle decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, RemoteLogManifestHandleJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, RemoteLogManifestHandleJsonSerde.INSTANCE);
         }
     }
 
@@ -531,12 +531,12 @@ public final class ZkData {
         }
 
         public static byte[] encode(LakeTableSnapshot lakeTableSnapshot) {
-            return JsonSerdeUtil.writeValueAsBytes(
+            return JsonSerdeUtils.writeValueAsBytes(
                     lakeTableSnapshot, LakeTableSnapshotJsonSerde.INSTANCE);
         }
 
         public static LakeTableSnapshot decode(byte[] json) {
-            return JsonSerdeUtil.readValue(json, LakeTableSnapshotJsonSerde.INSTANCE);
+            return JsonSerdeUtils.readValue(json, LakeTableSnapshotJsonSerde.INSTANCE);
         }
     }
 }

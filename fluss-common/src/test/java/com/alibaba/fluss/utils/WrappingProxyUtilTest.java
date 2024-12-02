@@ -21,14 +21,14 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Fail.fail;
 
-/** Tests for {@link com.alibaba.fluss.utils.WrappingProxyUtil}. */
+/** Tests for {@link WrappingProxyUtils}. */
 public class WrappingProxyUtilTest {
 
     @Test
     void testThrowsExceptionIfTooManyProxies() {
         try {
-            WrappingProxyUtil.stripProxy(
-                    new SelfWrappingProxy(WrappingProxyUtil.SAFETY_NET_MAX_ITERATIONS));
+            WrappingProxyUtils.stripProxy(
+                    new SelfWrappingProxy(WrappingProxyUtils.SAFETY_NET_MAX_ITERATIONS));
             fail("Expected exception not thrown");
         } catch (final IllegalArgumentException e) {
             assertThat(e.getMessage()).contains("Are there loops in the object graph?");
@@ -38,8 +38,8 @@ public class WrappingProxyUtilTest {
     @Test
     public void testStripsAllProxies() {
         final SelfWrappingProxy wrappingProxy =
-                new SelfWrappingProxy(WrappingProxyUtil.SAFETY_NET_MAX_ITERATIONS - 1);
-        assertThat(WrappingProxyUtil.stripProxy(wrappingProxy))
+                new SelfWrappingProxy(WrappingProxyUtils.SAFETY_NET_MAX_ITERATIONS - 1);
+        assertThat(WrappingProxyUtils.stripProxy(wrappingProxy))
                 .isNotInstanceOf(SelfWrappingProxy.class);
     }
 

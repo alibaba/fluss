@@ -19,7 +19,7 @@ package com.alibaba.fluss.utils;
 import java.util.HashMap;
 
 /** Simple utility to work with Java collections. */
-public class CollectionUtil {
+public class CollectionUtils {
     /** The default load factor for hash maps create with this util class. */
     static final float HASH_MAP_DEFAULT_LOAD_FACTOR = 0.75f;
 

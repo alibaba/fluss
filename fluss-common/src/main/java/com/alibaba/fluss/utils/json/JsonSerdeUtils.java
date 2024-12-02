@@ -28,7 +28,7 @@ import java.io.UncheckedIOException;
 
 /** A utility class that provide abilities for JSON serialization and deserialization. */
 @Internal
-public class JsonSerdeUtil {
+public class JsonSerdeUtils {
 
     /**
      * Object mapper shared instance to serialize and deserialize the plan. Note that creating and
@@ -72,5 +72,5 @@ public class JsonSerdeUtil {
         }
     }
 
-    private JsonSerdeUtil() {}
+    private JsonSerdeUtils() {}
 }

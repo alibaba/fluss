@@ -22,11 +22,11 @@ import org.junit.jupiter.api.Test;
 import java.time.ZoneId;
 
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.SCAN_STARTUP_TIMESTAMP;
-import static com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtil.parseTimestamp;
+import static com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtils.parseTimestamp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Test for {@link com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtil}. */
+/** Test for {@link FlinkConnectorOptionsUtils}. */
 class FlinkConnectorOptionsUtilTest {
     @Test
     void testParseTimestamp() {

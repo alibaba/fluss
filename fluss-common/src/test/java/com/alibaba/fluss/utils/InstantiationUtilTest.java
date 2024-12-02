@@ -24,17 +24,17 @@ import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Test for {@link com.alibaba.fluss.utils.InstantiationUtil}. */
+/** Test for {@link InstantiationUtils}. */
 public class InstantiationUtilTest {
 
     @Test
     void testSerDeserializeObject() throws Exception {
         TestClass testClass = new TestClass(1, "f2");
-        byte[] bytes = InstantiationUtil.serializeObject(testClass);
+        byte[] bytes = InstantiationUtils.serializeObject(testClass);
         // deserialize with classloader
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes)) {
             TestClass deserializedTestClass =
-                    InstantiationUtil.deserializeObject(
+                    InstantiationUtils.deserializeObject(
                             byteArrayInputStream, this.getClass().getClassLoader());
             assertThat(deserializedTestClass).isEqualTo(testClass);
         }
@@ -42,7 +42,7 @@ public class InstantiationUtilTest {
         // deserialize without classloader
         try (ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes)) {
             TestClass deserializedTestClass =
-                    InstantiationUtil.deserializeObject(byteArrayInputStream, null);
+                    InstantiationUtils.deserializeObject(byteArrayInputStream, null);
             assertThat(deserializedTestClass).isEqualTo(testClass);
         }
     }
@@ -50,17 +50,17 @@ public class InstantiationUtilTest {
     @Test
     void testClone() throws Exception {
         // test clone null
-        Object clonedObj = InstantiationUtil.clone(null);
+        Object clonedObj = InstantiationUtils.clone(null);
         assertThat(clonedObj).isNull();
         // test clone null with classloader
-        clonedObj = InstantiationUtil.clone(null, Thread.currentThread().getContextClassLoader());
+        clonedObj = InstantiationUtils.clone(null, Thread.currentThread().getContextClassLoader());
         assertThat(clonedObj).isNull();
         // test clone a string
         String testString = "testString";
-        assertThat(InstantiationUtil.clone(testString)).isEqualTo(testString);
+        assertThat(InstantiationUtils.clone(testString)).isEqualTo(testString);
         // test clone a string with classloader
         assertThat(
-                        InstantiationUtil.clone(
+                        InstantiationUtils.clone(
                                 testString, Thread.currentThread().getContextClassLoader()))
                 .isEqualTo(testString);
     }

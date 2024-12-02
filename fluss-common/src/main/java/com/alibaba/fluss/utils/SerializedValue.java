@@ -58,12 +58,12 @@ public class SerializedValue<T> implements java.io.Serializable {
      */
     public SerializedValue(T value) throws IOException {
         Preconditions.checkNotNull(value, "Value must not be null");
-        this.serializedData = InstantiationUtil.serializeObject(value);
+        this.serializedData = InstantiationUtils.serializeObject(value);
     }
 
     public T deserializeValue(ClassLoader loader) throws IOException, ClassNotFoundException {
         Preconditions.checkNotNull(loader, "No classloader has been passed");
-        return InstantiationUtil.deserializeObject(serializedData, loader);
+        return InstantiationUtils.deserializeObject(serializedData, loader);
     }
 
     /**

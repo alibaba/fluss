@@ -31,7 +31,7 @@ class SerializedValueTest {
         // get the bytes of serializedValue
         byte[] serializedValueBytes = serializedValue.getByteArray();
         // verify the serializedBytes
-        assertThat(serializedValueBytes).isEqualTo(InstantiationUtil.serializeObject(value));
+        assertThat(serializedValueBytes).isEqualTo(InstantiationUtils.serializeObject(value));
 
         String deserializeValue =
                 (String)

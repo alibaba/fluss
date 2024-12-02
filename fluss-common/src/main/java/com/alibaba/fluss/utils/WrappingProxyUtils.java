@@ -24,11 +24,11 @@ import static java.lang.String.format;
 
 /** Utilities for working with {@link WrappingProxy}. */
 @Internal
-public final class WrappingProxyUtil {
+public final class WrappingProxyUtils {
 
     static final int SAFETY_NET_MAX_ITERATIONS = 128;
 
-    private WrappingProxyUtil() {
+    private WrappingProxyUtils() {
         throw new AssertionError();
     }
 

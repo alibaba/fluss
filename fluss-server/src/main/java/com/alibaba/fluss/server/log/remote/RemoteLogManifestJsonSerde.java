@@ -22,7 +22,7 @@ import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.utils.json.JsonDeserializer;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.JsonSerializer;
 
 import java.io.IOException;
@@ -134,10 +134,10 @@ public class RemoteLogManifestJsonSerde
     }
 
     public static RemoteLogManifest fromJson(byte[] json) {
-        return JsonSerdeUtil.readValue(json, INSTANCE);
+        return JsonSerdeUtils.readValue(json, INSTANCE);
     }
 
     public static byte[] toJson(RemoteLogManifest t) {
-        return JsonSerdeUtil.writeValueAsBytes(t, INSTANCE);
+        return JsonSerdeUtils.writeValueAsBytes(t, INSTANCE);
     }
 }

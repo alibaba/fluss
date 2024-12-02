@@ -22,7 +22,7 @@ import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeCatalog;
-import com.alibaba.fluss.connector.flink.utils.CatalogExceptionUtil;
+import com.alibaba.fluss.connector.flink.utils.CatalogExceptionUtils;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -166,7 +166,7 @@ public class FlinkCatalog implements Catalog {
             admin.createDatabase(databaseName, ignoreIfExists).get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isDatabaseAlreadyExist(t)) {
+            if (CatalogExceptionUtils.isDatabaseAlreadyExist(t)) {
                 throw new DatabaseAlreadyExistException(getName(), databaseName);
             } else {
                 throw new CatalogException(
@@ -184,9 +184,9 @@ public class FlinkCatalog implements Catalog {
             admin.deleteDatabase(databaseName, ignoreIfNotExists, cascade).get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isDatabaseNotExist(t)) {
+            if (CatalogExceptionUtils.isDatabaseNotExist(t)) {
                 throw new DatabaseNotExistException(getName(), databaseName);
-            } else if (CatalogExceptionUtil.isDatabaseNotEmpty(t)) {
+            } else if (CatalogExceptionUtils.isDatabaseNotEmpty(t)) {
                 throw new DatabaseNotEmptyException(getName(), databaseName);
             } else {
                 throw new CatalogException(
@@ -209,7 +209,7 @@ public class FlinkCatalog implements Catalog {
             return admin.listTables(databaseName).get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isDatabaseNotExist(t)) {
+            if (CatalogExceptionUtils.isDatabaseNotExist(t)) {
                 throw new DatabaseNotExistException(getName(), databaseName);
             }
             throw new CatalogException(
@@ -263,7 +263,7 @@ public class FlinkCatalog implements Catalog {
             return catalogTable.copy(newOptions);
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isTableNotExist(t)) {
+            if (CatalogExceptionUtils.isTableNotExist(t)) {
                 throw new TableNotExistException(getName(), objectPath);
             } else {
                 throw new CatalogException(
@@ -307,7 +307,7 @@ public class FlinkCatalog implements Catalog {
             admin.deleteTable(tablePath, ignoreIfNotExists).get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isTableNotExist(t)) {
+            if (CatalogExceptionUtils.isTableNotExist(t)) {
                 throw new TableNotExistException(getName(), objectPath);
             } else {
                 throw new CatalogException(
@@ -339,9 +339,9 @@ public class FlinkCatalog implements Catalog {
             admin.createTable(tablePath, tableDescriptor, ignoreIfExist).get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
-            if (CatalogExceptionUtil.isDatabaseNotExist(t)) {
+            if (CatalogExceptionUtils.isDatabaseNotExist(t)) {
                 throw new DatabaseNotExistException(getName(), objectPath.getDatabaseName());
-            } else if (CatalogExceptionUtil.isTableAlreadyExist(t)) {
+            } else if (CatalogExceptionUtils.isTableAlreadyExist(t)) {
                 throw new TableAlreadyExistException(getName(), objectPath);
             } else {
                 throw new CatalogException(

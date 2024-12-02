@@ -20,7 +20,7 @@ import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.plugin.PluginManager;
 import com.alibaba.fluss.shaded.guava32.com.google.common.collect.Iterators;
-import com.alibaba.fluss.utils.CollectionUtil;
+import com.alibaba.fluss.utils.CollectionUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +61,7 @@ public class ReporterSetup {
     private static Map<String, MetricReporterPlugin> loadAvailableReporterPlugins(
             @Nullable PluginManager pluginManager) {
         final Map<String, MetricReporterPlugin> reporterPlugins =
-                CollectionUtil.newHashMapWithExpectedSize(2);
+                CollectionUtils.newHashMapWithExpectedSize(2);
         final Iterator<MetricReporterPlugin> pluginIterator = getAllReporterPlugins(pluginManager);
         // do not use streams or for-each loops here because they do not allow catching individual
         // ServiceConfigurationErrors

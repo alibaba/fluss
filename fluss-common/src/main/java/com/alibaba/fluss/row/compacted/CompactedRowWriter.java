@@ -26,7 +26,7 @@ import com.alibaba.fluss.row.Decimal;
 import com.alibaba.fluss.row.TimestampLtz;
 import com.alibaba.fluss.row.TimestampNtz;
 import com.alibaba.fluss.types.DataType;
-import com.alibaba.fluss.utils.UnsafeUtil;
+import com.alibaba.fluss.utils.UnsafeUtils;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -120,12 +120,12 @@ public class CompactedRowWriter {
     }
 
     public void setNullAt(int pos) {
-        UnsafeUtil.bitSet(buffer, 0, pos);
+        UnsafeUtils.bitSet(buffer, 0, pos);
     }
 
     public void writeByte(byte value) {
         ensureCapacity(1);
-        UnsafeUtil.putByte(buffer, position++, value);
+        UnsafeUtils.putByte(buffer, position++, value);
     }
 
     public void writeString(BinaryString value) {
@@ -172,7 +172,7 @@ public class CompactedRowWriter {
 
     private void writeBoolean(boolean value) {
         ensureCapacity(1);
-        UnsafeUtil.putBoolean(buffer, position++, value);
+        UnsafeUtils.putBoolean(buffer, position++, value);
     }
 
     public void writeBytes(byte[] value) {
@@ -190,7 +190,7 @@ public class CompactedRowWriter {
 
     public void writeShort(short value) {
         ensureCapacity(2);
-        UnsafeUtil.putShort(buffer, position, value);
+        UnsafeUtils.putShort(buffer, position, value);
         position += 2;
     }
 
@@ -198,40 +198,40 @@ public class CompactedRowWriter {
         ensureCapacity(MAX_INT_SIZE);
         // UNSAFE + Loop unrolling faster.
         if ((value & ~0x7F) == 0) {
-            UnsafeUtil.putByte(buffer, position++, (byte) value);
+            UnsafeUtils.putByte(buffer, position++, (byte) value);
             return;
         }
-        UnsafeUtil.putByte(buffer, position++, (byte) (value | 0x80));
+        UnsafeUtils.putByte(buffer, position++, (byte) (value | 0x80));
         value >>>= 7;
         if ((value & ~0x7F) == 0) {
-            UnsafeUtil.putByte(buffer, position++, (byte) value);
+            UnsafeUtils.putByte(buffer, position++, (byte) value);
             return;
         }
-        UnsafeUtil.putByte(buffer, position++, (byte) (value | 0x80));
+        UnsafeUtils.putByte(buffer, position++, (byte) (value | 0x80));
         value >>>= 7;
         if ((value & ~0x7F) == 0) {
-            UnsafeUtil.putByte(buffer, position++, (byte) value);
+            UnsafeUtils.putByte(buffer, position++, (byte) value);
             return;
         }
-        UnsafeUtil.putByte(buffer, position++, (byte) (value | 0x80));
+        UnsafeUtils.putByte(buffer, position++, (byte) (value | 0x80));
         value >>>= 7;
         if ((value & ~0x7F) == 0) {
-            UnsafeUtil.putByte(buffer, position++, (byte) value);
+            UnsafeUtils.putByte(buffer, position++, (byte) value);
             return;
         }
-        UnsafeUtil.putByte(buffer, position++, (byte) (value | 0x80));
+        UnsafeUtils.putByte(buffer, position++, (byte) (value | 0x80));
         value >>>= 7;
-        UnsafeUtil.putByte(buffer, position++, (byte) value);
+        UnsafeUtils.putByte(buffer, position++, (byte) value);
     }
 
     public void writeLong(long value) {
         ensureCapacity(MAX_LONG_SIZE);
         while (true) {
             if ((value & ~0x7FL) == 0) {
-                UnsafeUtil.putByte(buffer, position++, (byte) value);
+                UnsafeUtils.putByte(buffer, position++, (byte) value);
                 return;
             } else {
-                UnsafeUtil.putByte(buffer, position++, (byte) (((int) value & 0x7F) | 0x80));
+                UnsafeUtils.putByte(buffer, position++, (byte) (((int) value & 0x7F) | 0x80));
                 value >>>= 7;
             }
         }
@@ -239,13 +239,13 @@ public class CompactedRowWriter {
 
     private void writeFloat(float value) {
         ensureCapacity(4);
-        UnsafeUtil.putFloat(buffer, position, value);
+        UnsafeUtils.putFloat(buffer, position, value);
         position += 4;
     }
 
     private void writeDouble(double value) {
         ensureCapacity(8);
-        UnsafeUtil.putDouble(buffer, position, value);
+        UnsafeUtils.putDouble(buffer, position, value);
         position += 8;
     }
 

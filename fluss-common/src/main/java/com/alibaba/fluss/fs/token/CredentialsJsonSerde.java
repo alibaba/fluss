@@ -19,7 +19,7 @@ package com.alibaba.fluss.fs.token;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.utils.json.JsonDeserializer;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.JsonSerializer;
 
 import java.io.IOException;
@@ -65,11 +65,11 @@ public class CredentialsJsonSerde
 
     /** Serialize the {@link Credentials} to json bytes. */
     public static byte[] toJson(Credentials credentials) {
-        return JsonSerdeUtil.writeValueAsBytes(credentials, INSTANCE);
+        return JsonSerdeUtils.writeValueAsBytes(credentials, INSTANCE);
     }
 
     /** Deserialize the json bytes to {@link Credentials}. */
     public static Credentials fromJson(byte[] json) {
-        return JsonSerdeUtil.readValue(json, INSTANCE);
+        return JsonSerdeUtils.readValue(json, INSTANCE);
     }
 }

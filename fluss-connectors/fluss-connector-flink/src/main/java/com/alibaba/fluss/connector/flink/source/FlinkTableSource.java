@@ -22,7 +22,7 @@ import com.alibaba.fluss.connector.flink.source.enumerator.initializer.OffsetsIn
 import com.alibaba.fluss.connector.flink.source.lookup.FlinkAsyncLookupFunction;
 import com.alibaba.fluss.connector.flink.source.lookup.FlinkLookupFunction;
 import com.alibaba.fluss.connector.flink.source.lookup.LookupNormalizer;
-import com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtil;
+import com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtils;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils.ValueConversion;
@@ -92,7 +92,7 @@ public class FlinkTableSource
     private final int[] primaryKeyIndexes;
     private final List<String> partitionKeys;
     private final boolean streaming;
-    private final FlinkConnectorOptionsUtil.StartupOptions startupOptions;
+    private final FlinkConnectorOptionsUtils.StartupOptions startupOptions;
 
     // options for lookup source
     private final int lookupMaxRetryTimes;
@@ -125,7 +125,7 @@ public class FlinkTableSource
             int[] primaryKeyIndexes,
             List<String> partitionKeys,
             boolean streaming,
-            FlinkConnectorOptionsUtil.StartupOptions startupOptions,
+            FlinkConnectorOptionsUtils.StartupOptions startupOptions,
             int lookupMaxRetryTimes,
             boolean lookupAsync,
             @Nullable LookupCache cache,

@@ -36,7 +36,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Objects;
 
-import static com.alibaba.fluss.utils.UnsafeUtil.BYTE_ARRAY_BASE_OFFSET;
+import static com.alibaba.fluss.utils.UnsafeUtils.BYTE_ARRAY_BASE_OFFSET;
 
 /**
  * An in-memory pre-write buffer for putting kv records. The kv records will first be put into the

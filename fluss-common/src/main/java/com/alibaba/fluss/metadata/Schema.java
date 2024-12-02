@@ -24,7 +24,7 @@ import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.EncodingUtils;
 import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.StringUtils;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.SchemaJsonSerde;
 
 import javax.annotation.Nullable;
@@ -99,7 +99,7 @@ public final class Schema implements Serializable {
      * @see SchemaJsonSerde
      */
     public byte[] toJsonBytes() {
-        return JsonSerdeUtil.writeValueAsBytes(this, SchemaJsonSerde.INSTANCE);
+        return JsonSerdeUtils.writeValueAsBytes(this, SchemaJsonSerde.INSTANCE);
     }
 
     /**
@@ -108,7 +108,7 @@ public final class Schema implements Serializable {
      * @see SchemaJsonSerde
      */
     public static Schema fromJsonBytes(byte[] json) {
-        return JsonSerdeUtil.readValue(json, SchemaJsonSerde.INSTANCE);
+        return JsonSerdeUtils.readValue(json, SchemaJsonSerde.INSTANCE);
     }
 
     /** Returns all column names. It does not distinguish between different kinds of columns. */

@@ -24,7 +24,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.ConfigurationUtils;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 import com.alibaba.fluss.utils.Preconditions;
-import com.alibaba.fluss.utils.json.JsonSerdeUtil;
+import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.TableDescriptorJsonSerde;
 
 import javax.annotation.Nullable;
@@ -273,7 +273,7 @@ public final class TableDescriptor implements Serializable {
      * @see TableDescriptorJsonSerde
      */
     public byte[] toJsonBytes() {
-        return JsonSerdeUtil.writeValueAsBytes(this, TableDescriptorJsonSerde.INSTANCE);
+        return JsonSerdeUtils.writeValueAsBytes(this, TableDescriptorJsonSerde.INSTANCE);
     }
 
     /**
@@ -282,7 +282,7 @@ public final class TableDescriptor implements Serializable {
      * @see TableDescriptorJsonSerde
      */
     public static TableDescriptor fromJsonBytes(byte[] json) {
-        return JsonSerdeUtil.readValue(json, TableDescriptorJsonSerde.INSTANCE);
+        return JsonSerdeUtils.readValue(json, TableDescriptorJsonSerde.INSTANCE);
     }
 
     @Override

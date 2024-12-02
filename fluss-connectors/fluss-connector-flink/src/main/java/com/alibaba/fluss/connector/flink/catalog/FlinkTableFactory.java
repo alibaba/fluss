@@ -22,7 +22,7 @@ import com.alibaba.fluss.connector.flink.FlinkConnectorOptions;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeTableFactory;
 import com.alibaba.fluss.connector.flink.sink.FlinkTableSink;
 import com.alibaba.fluss.connector.flink.source.FlinkTableSource;
-import com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtil;
+import com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtils;
 import com.alibaba.fluss.metadata.TablePath;
 
 import org.apache.flink.api.common.RuntimeExecutionMode;
@@ -78,13 +78,13 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                         == RuntimeExecutionMode.STREAMING;
 
         final ReadableConfig tableOptions = helper.getOptions();
-        FlinkConnectorOptionsUtil.validateTableSourceOptions(tableOptions);
+        FlinkConnectorOptionsUtils.validateTableSourceOptions(tableOptions);
 
         ZoneId timeZone =
-                FlinkConnectorOptionsUtil.getLocalTimeZone(
+                FlinkConnectorOptionsUtils.getLocalTimeZone(
                         context.getConfiguration().get(TableConfigOptions.LOCAL_TIME_ZONE));
-        final FlinkConnectorOptionsUtil.StartupOptions startupOptions =
-                FlinkConnectorOptionsUtil.getStartupOptions(tableOptions, timeZone);
+        final FlinkConnectorOptionsUtils.StartupOptions startupOptions =
+                FlinkConnectorOptionsUtils.getStartupOptions(tableOptions, timeZone);
 
         ResolvedSchema resolvedSchema = context.getCatalogTable().getResolvedSchema();
         ResolvedCatalogTable resolvedCatalogTable = context.getCatalogTable();

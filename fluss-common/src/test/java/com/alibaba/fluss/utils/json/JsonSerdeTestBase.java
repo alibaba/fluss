@@ -57,14 +57,14 @@ public abstract class JsonSerdeTestBase<T> {
                 expectedJsons.length);
         for (int i = 0; i < testObjects.length; i++) {
             T value = testObjects[i];
-            final byte[] json = JsonSerdeUtil.writeValueAsBytes(value, serializer);
-            JsonNode jsonNode = JsonSerdeUtil.OBJECT_MAPPER_INSTANCE.readTree(json);
+            final byte[] json = JsonSerdeUtils.writeValueAsBytes(value, serializer);
+            JsonNode jsonNode = JsonSerdeUtils.OBJECT_MAPPER_INSTANCE.readTree(json);
             checkFieldNameLowerCase(jsonNode);
 
             // assert the compatibility of json string while the json serde evolving
             assertThat(new String(json, StandardCharsets.UTF_8)).isEqualTo(expectedJsons[i]);
 
-            final T actual = JsonSerdeUtil.readValue(json, deserializer);
+            final T actual = JsonSerdeUtils.readValue(json, deserializer);
             assertEquals(actual, value);
         }
     }

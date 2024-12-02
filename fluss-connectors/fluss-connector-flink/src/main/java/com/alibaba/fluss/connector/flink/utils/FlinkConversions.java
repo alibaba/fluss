@@ -22,7 +22,6 @@ import com.alibaba.fluss.config.FlussConfigUtils;
 import com.alibaba.fluss.config.MemorySize;
 import com.alibaba.fluss.config.Password;
 import com.alibaba.fluss.connector.flink.FlinkConnectorOptions;
-import com.alibaba.fluss.connector.flink.catalog.CatalogPropertiesUtil;
 import com.alibaba.fluss.connector.flink.catalog.FlinkCatalogFactory;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -109,12 +108,12 @@ public class FlinkConversions {
                         .collect(Collectors.toList());
         int columnCount =
                 physicalColumns.size()
-                        + CatalogPropertiesUtil.nonPhysicalColumnsCount(
+                        + CatalogPropertiesUtils.nonPhysicalColumnsCount(
                                 newOptions, physicalColumns);
 
         int physicalColumnIndex = 0;
         for (int i = 0; i < columnCount; i++) {
-            String optionalName = newOptions.get(CatalogPropertiesUtil.columnKey(i));
+            String optionalName = newOptions.get(CatalogPropertiesUtils.columnKey(i));
             if (optionalName == null) {
                 // build physical column from table row field
                 Schema.Column column = schema.getColumns().get(physicalColumnIndex++);
@@ -125,7 +124,7 @@ public class FlinkConversions {
                 }
             } else {
                 // build non-physical column from options
-                CatalogPropertiesUtil.deserializeComputedColumn(newOptions, i, schemaBuilder);
+                CatalogPropertiesUtils.deserializeComputedColumn(newOptions, i, schemaBuilder);
             }
         }
 
@@ -145,13 +144,13 @@ public class FlinkConversions {
         }
 
         // deserialize watermark
-        CatalogPropertiesUtil.deserializeWatermark(newOptions, schemaBuilder);
+        CatalogPropertiesUtils.deserializeWatermark(newOptions, schemaBuilder);
 
         return CatalogTable.of(
                 schemaBuilder.build(),
                 tableDescriptor.getComment().orElse(null),
                 tableDescriptor.getPartitionKeys(),
-                CatalogPropertiesUtil.deserializeOptions(newOptions));
+                CatalogPropertiesUtils.deserializeOptions(newOptions));
     }
 
     /** Convert Flink's table to Fluss's table. */
@@ -201,9 +200,9 @@ public class FlinkConversions {
                         });
 
         Map<String, String> customProperties = flinkTableConf.toMap();
-        CatalogPropertiesUtil.serializeComputedColumns(
+        CatalogPropertiesUtils.serializeComputedColumns(
                 customProperties, resolvedSchema.getColumns());
-        CatalogPropertiesUtil.serializeWatermarkSpecs(
+        CatalogPropertiesUtils.serializeWatermarkSpecs(
                 customProperties, catalogTable.getResolvedSchema().getWatermarkSpecs());
 
         String comment = catalogTable.getComment();

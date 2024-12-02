@@ -20,7 +20,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.fs.local.LocalFileSystem;
 import com.alibaba.fluss.plugin.PluginManager;
 import com.alibaba.fluss.utils.WrappingProxy;
-import com.alibaba.fluss.utils.WrappingProxyUtil;
+import com.alibaba.fluss.utils.WrappingProxyUtils;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -162,7 +162,7 @@ class FileSystemTest {
 
         if (fileSystem instanceof WrappingProxy) {
             //noinspection unchecked
-            return WrappingProxyUtil.stripProxy((WrappingProxy<FileSystem>) fileSystem);
+            return WrappingProxyUtils.stripProxy((WrappingProxy<FileSystem>) fileSystem);
         }
 
         return fileSystem;

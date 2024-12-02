@@ -19,7 +19,7 @@ package com.alibaba.fluss.rpc.protocol;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.shaded.guava32.com.google.common.collect.ImmutableList;
-import com.alibaba.fluss.utils.InstantiationUtil;
+import com.alibaba.fluss.utils.InstantiationUtils;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -115,7 +115,7 @@ public class ApiMethod {
 
         @Override
         public ApiMessage get() {
-            return (ApiMessage) InstantiationUtil.instantiate(messageClass);
+            return (ApiMessage) InstantiationUtils.instantiate(messageClass);
         }
     }
 }
