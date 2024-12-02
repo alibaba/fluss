@@ -46,4 +46,16 @@ public class DeleteReplicaResultForBucket extends ResultForBucket {
     public TableBucketReplica getTableBucketReplica() {
         return new TableBucketReplica(tableBucket, replica);
     }
+
+    @Override
+    public String toString() {
+        return "DeleteReplicaResultForBucket{"
+                + "tableBucket="
+                + tableBucket
+                + ", replica="
+                + replica
+                + ", error="
+                + getError()
+                + '}';
+    }
 }

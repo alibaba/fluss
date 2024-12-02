@@ -219,6 +219,7 @@ public class TableManager {
     private void resumePartitionDeletions() {
         Set<TablePartition> partitionsToDelete =
                 new HashSet<>(coordinatorContext.getPartitionsToBeDeleted());
+        LOG.info("Partitions to be deleted: {}.", partitionsToDelete);
         Set<TablePartition> eligiblePartitionDeletion = new HashSet<>();
 
         for (TablePartition partition : partitionsToDelete) {

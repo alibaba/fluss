@@ -575,7 +575,7 @@ public final class FlussClusterExtension
         public Builder() {
             // reduce testing resources
             clusterConf.set(ConfigOptions.NETTY_SERVER_NUM_NETWORK_THREADS, 1);
-            clusterConf.set(ConfigOptions.NETTY_SERVER_NUM_WORKER_THREADS, 3);
+            clusterConf.set(ConfigOptions.NETTY_SERVER_NUM_WORKER_THREADS, 1);
         }
 
         /** Sets the number of tablet servers. */

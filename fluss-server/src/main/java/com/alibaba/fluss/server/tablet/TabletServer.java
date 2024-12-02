@@ -149,7 +149,7 @@ public class TabletServer extends ServerBase {
 
             this.zkClient = ZooKeeperUtils.startZookeeperClient(conf, this);
 
-            this.metadataCache = new ServerMetadataCacheImpl();
+            this.metadataCache = new ServerMetadataCacheImpl(serverId);
 
             // TODO set scheduler thread number.
             this.scheduler = new FlussScheduler(10);

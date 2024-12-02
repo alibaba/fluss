@@ -139,7 +139,7 @@ public class CoordinatorServer extends ServerBase {
 
             this.zkClient = ZooKeeperUtils.startZookeeperClient(conf, this);
 
-            this.metadataCache = new ServerMetadataCacheImpl();
+            this.metadataCache = new ServerMetadataCacheImpl(-1);
 
             this.coordinatorService =
                     new CoordinatorService(

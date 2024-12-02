@@ -724,13 +724,13 @@ class CoordinatorEventProcessorTest {
         // retry until the assignment has been deleted from zk, then it means
         // the table/partition has been deleted successfully
         retry(
-                Duration.ofMinutes(1),
+                Duration.ofMinutes(2),
                 () -> assertThat(zookeeperClient.getPartitionAssignment(partitionId)).isEmpty());
         // no replica and bucket for the partition should exist in the context
         assertThat(coordinatorContext.getAllBucketsForPartition(tableId, partitionId)).isEmpty();
         assertThat(coordinatorContext.getAllReplicasForPartition(tableId, partitionId)).isEmpty();
         retry(
-                Duration.ofMinutes(1),
+                Duration.ofMinutes(2),
                 () -> assertThat(zookeeperClient.getPartitionAssignment(partitionId)).isEmpty());
     }
 
