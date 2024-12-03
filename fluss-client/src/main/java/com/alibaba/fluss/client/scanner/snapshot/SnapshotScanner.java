@@ -71,10 +71,10 @@ public class SnapshotScanner implements AutoCloseable {
     public static final CloseableIterator<ScanRecord> NO_DATA_AVAILABLE =
             CloseableIterator.emptyIterator();
 
-    private final Path snapshotLocalDirectory;
-    private final RemoteFileDownloader remoteFileDownloader;
-    private final KvFormat kvFormat;
-    private final SnapshotScan snapshotScan;
+    protected final Path snapshotLocalDirectory;
+    protected final RemoteFileDownloader remoteFileDownloader;
+    protected final KvFormat kvFormat;
+    protected final SnapshotScan snapshotScan;
 
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -83,9 +83,12 @@ public class SnapshotScanner implements AutoCloseable {
 
     private final AtomicBoolean closed;
 
+    // When a new reader is created, it's a pendingReader, and will become useful
+    // snapshotFilesReader after init.
+    private volatile SnapshotFilesReader pendingReader;
     private volatile SnapshotFilesReader snapshotFilesReader;
 
-    @Nullable private volatile Throwable initSnapshotFilesReaderException = null;
+    @Nullable protected volatile Throwable initSnapshotFilesReaderException = null;
 
     public SnapshotScanner(
             Configuration conf,
@@ -164,6 +167,9 @@ public class SnapshotScanner implements AutoCloseable {
      *     initialization
      */
     private void ensureNoException() {
+        if (closed.get()) {
+            throw new IllegalStateException("This scanner has already been closed.");
+        }
         if (initSnapshotFilesReaderException != null) {
             throw new FlussRuntimeException(
                     "Failed to initialize snapshot files reader.",
@@ -181,45 +187,54 @@ public class SnapshotScanner implements AutoCloseable {
 
     private void initReaderAsynchronously() {
         CompletableFuture.runAsync(
-                () ->
+                () -> {
+                    CloseableRegistry closeableRegistry = new CloseableRegistry();
+                    try {
+                        if (!snapshotLocalDirectory.toFile().mkdirs()) {
+                            throw new IOException(
+                                    String.format(
+                                            "Failed to create directory %s for storing kv snapshot files.",
+                                            snapshotLocalDirectory));
+                        }
+
+                        // todo: refactor transferAllToDirectory method to
+                        // return a future so that we won't need to runAsync using
+                        // the default thread pool
+                        LOG.info(
+                                "Start to download kv snapshot files to local directory for bucket {}.",
+                                snapshotScan.getTableBucket());
+                        remoteFileDownloader.transferAllToDirectory(
+                                snapshotScan.getFsPathAndFileNames(),
+                                snapshotLocalDirectory,
+                                closeableRegistry);
                         inLock(
                                 lock,
                                 () -> {
-                                    CloseableRegistry closeableRegistry = new CloseableRegistry();
-                                    try {
-                                        if (!snapshotLocalDirectory.toFile().mkdirs()) {
-                                            throw new IOException(
-                                                    String.format(
-                                                            "Failed to create directory %s for storing kv snapshot files.",
-                                                            snapshotLocalDirectory));
-                                        }
-                                        closeableRegistry.registerCloseable(
-                                                () ->
-                                                        FileUtils.deleteDirectoryQuietly(
-                                                                snapshotLocalDirectory.toFile()));
-                                        // todo: refactor transferAllToDirectory method to
-                                        // return a future so that we won't need to runAsync using
-                                        // the default thread pool
-                                        LOG.info(
-                                                "Start to download kv snapshot files to local directory for bucket {}.",
-                                                snapshotScan.getTableBucket());
-                                        remoteFileDownloader.transferAllToDirectory(
-                                                snapshotScan.getFsPathAndFileNames(),
-                                                snapshotLocalDirectory,
-                                                closeableRegistry);
-                                        snapshotFilesReader =
-                                                new SnapshotFilesReader(
-                                                        kvFormat,
-                                                        snapshotLocalDirectory,
-                                                        snapshotScan.getTableSchema(),
-                                                        snapshotScan.getProjectedFields());
-                                        readerIsReady.signalAll();
-                                    } catch (Throwable e) {
-                                        IOUtils.closeQuietly(closeableRegistry);
-                                        initSnapshotFilesReaderException = e;
-                                    } finally {
-                                        IOUtils.closeQuietly(closeableRegistry);
-                                    }
-                                }));
+                                    pendingReader = createSnapshotReader();
+                                });
+                        pendingReader.init();
+                        inLock(
+                                lock,
+                                () -> {
+                                    snapshotFilesReader = pendingReader;
+                                    pendingReader = null;
+                                    readerIsReady.signalAll();
+                                });
+
+                    } catch (Throwable e) {
+                        IOUtils.closeQuietly(closeableRegistry);
+                        initSnapshotFilesReaderException = e;
+                    } finally {
+                        IOUtils.closeQuietly(closeableRegistry);
+                    }
+                });
+    }
+
+    protected SnapshotFilesReader createSnapshotReader() {
+        return new SnapshotFilesReader(
+                kvFormat,
+                snapshotLocalDirectory,
+                snapshotScan.getTableSchema(),
+                snapshotScan.getProjectedFields());
     }
 }

@@ -23,6 +23,9 @@ import javax.annotation.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+
+import static com.alibaba.fluss.connector.flink.source.split.LogSplit.NO_STOPPING_OFFSET;
 
 /**
  * The hybrid split for first reading the snapshot files and then switch to read the cdc log from a
@@ -36,13 +39,14 @@ public class HybridSnapshotLogSplit extends SnapshotSplit {
     private static final String HYBRID_SPLIT_PREFIX = "hybrid-snapshot-log-";
     private final boolean isSnapshotFinished;
     private final long logStartingOffset;
+    private final long logStoppingOffset;
 
     public HybridSnapshotLogSplit(
             TableBucket tableBucket,
             @Nullable String partitionName,
             List<FsPathAndFileName> snapshotFiles,
             long logStartingOffset) {
-        this(tableBucket, partitionName, snapshotFiles, 0, false, logStartingOffset);
+        this(tableBucket, partitionName, snapshotFiles, logStartingOffset, NO_STOPPING_OFFSET);
     }
 
     public HybridSnapshotLogSplit(
@@ -52,13 +56,52 @@ public class HybridSnapshotLogSplit extends SnapshotSplit {
             long recordsToSkip,
             boolean isSnapshotFinished,
             long logStartingOffset) {
+        this(
+                tableBucket,
+                partitionName,
+                snapshotFiles,
+                recordsToSkip,
+                isSnapshotFinished,
+                logStartingOffset,
+                NO_STOPPING_OFFSET);
+    }
+
+    public HybridSnapshotLogSplit(
+            TableBucket tableBucket,
+            @Nullable String partitionName,
+            List<FsPathAndFileName> snapshotFiles,
+            long logStartingOffset,
+            long logStoppingOffset) {
+        this(
+                tableBucket,
+                partitionName,
+                snapshotFiles,
+                0,
+                false,
+                logStartingOffset,
+                logStoppingOffset);
+    }
+
+    public HybridSnapshotLogSplit(
+            TableBucket tableBucket,
+            @Nullable String partitionName,
+            List<FsPathAndFileName> snapshotFiles,
+            long recordsToSkip,
+            boolean isSnapshotFinished,
+            long logStartingOffset,
+            long logStoppingOffset) {
         super(tableBucket, partitionName, snapshotFiles, recordsToSkip);
         this.isSnapshotFinished = isSnapshotFinished;
         this.logStartingOffset = logStartingOffset;
+        this.logStoppingOffset = logStoppingOffset;
     }
 
     public long getLogStartingOffset() {
         return logStartingOffset;
+    }
+
+    public Optional<Long> getLogStoppingOffset() {
+        return logStoppingOffset >= 0 ? Optional.of(logStoppingOffset) : Optional.empty();
     }
 
     public boolean isSnapshotFinished() {
@@ -83,21 +126,13 @@ public class HybridSnapshotLogSplit extends SnapshotSplit {
         }
         HybridSnapshotLogSplit that = (HybridSnapshotLogSplit) o;
         return isSnapshotFinished == that.isSnapshotFinished
-                && logStartingOffset == that.logStartingOffset;
+                && logStartingOffset == that.logStartingOffset
+                && logStoppingOffset == that.logStoppingOffset;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), isSnapshotFinished, logStartingOffset);
-    }
-
-    @Override
-    public String toString() {
-        return "HybridSnapshotLogSplit{"
-                + "recordsToSkip="
-                + recordsToSkip
-                + ", tableBucket="
-                + tableBucket
-                + '}';
+        return Objects.hash(
+                super.hashCode(), isSnapshotFinished, logStartingOffset, logStoppingOffset);
     }
 }
