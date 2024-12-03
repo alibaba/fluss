@@ -18,6 +18,7 @@ package com.alibaba.fluss.client.table;
 
 import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.client.Connection;
+import com.alibaba.fluss.client.lookup.LookupResult;
 import com.alibaba.fluss.client.scanner.ScanRecord;
 import com.alibaba.fluss.client.scanner.log.LogScan;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
@@ -62,6 +63,21 @@ public interface Table extends AutoCloseable {
      * @return the result of get.
      */
     CompletableFuture<LookupResult> lookup(InternalRow key);
+
+    /**
+     * Lookup certain rows from the given table by index key.
+     *
+     * <p>Only available for Primary Key Table. Will throw exception when the table isn't a Primary
+     * Key Table.
+     *
+     * <p>The index need to be created while creating the table. If this table doesn't have an index
+     * belong to the given index key, the exception will throw.
+     *
+     * @param indexName the given table index name.
+     * @param indexKey the given table index key.
+     * @return the result of index lookup.
+     */
+    CompletableFuture<LookupResult> indexLookup(String indexName, InternalRow indexKey);
 
     /**
      * Extracts limit number of rows from the given table bucket.

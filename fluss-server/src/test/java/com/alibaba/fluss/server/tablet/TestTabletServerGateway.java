@@ -41,6 +41,8 @@ import com.alibaba.fluss.rpc.messages.GetTableRequest;
 import com.alibaba.fluss.rpc.messages.GetTableResponse;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaRequest;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaResponse;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.InitWriterRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
@@ -181,6 +183,11 @@ public class TestTabletServerGateway implements TabletServerGateway {
     @Override
     public CompletableFuture<LookupResponse> lookup(LookupRequest request) {
         return null;
+    }
+
+    @Override
+    public CompletableFuture<IndexLookupResponse> indexLookup(IndexLookupRequest request) {
+        throw new UnsupportedOperationException();
     }
 
     @Override

@@ -19,6 +19,7 @@ package com.alibaba.fluss.client.table;
 import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.client.lakehouse.LakeTableBucketAssigner;
 import com.alibaba.fluss.client.lookup.LookupClient;
+import com.alibaba.fluss.client.lookup.LookupResult;
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.scanner.RemoteFileDownloader;
 import com.alibaba.fluss.client.scanner.ScanRecord;
@@ -80,6 +81,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
@@ -101,7 +103,9 @@ public class FlussTable implements Table {
     private final MetadataUpdater metadataUpdater;
     private final TableInfo tableInfo;
     private final boolean hasPrimaryKey;
+    private final KeyEncoder indexKeyEncoder;
     private final int numBuckets;
+    private final @Nullable int[] indexKeyIndices;
     private final RowType keyRowType;
     // encode the key bytes for kv lookups
     private final KeyEncoder keyEncoder;
@@ -147,9 +151,9 @@ public class FlussTable implements Table {
         this.hasPrimaryKey = tableDescriptor.hasPrimaryKey();
         this.numBuckets = metadataUpdater.getBucketCount(tablePath);
         this.keyRowType = getKeyRowType(schema);
-        this.keyEncoder =
-                KeyEncoder.createKeyEncoder(
-                        keyRowType, keyRowType.getFieldNames(), tableDescriptor.getPartitionKeys());
+        // TODO keyEncoder and indexKeyEncoder currently only support CompactedRow, even if KvFormat
+        // is IndexedRow.
+        this.keyEncoder = new KeyEncoder(keyRowType);
         this.keyRowPartitionGetter =
                 tableDescriptor.isPartitioned() && tableDescriptor.hasPrimaryKey()
                         ? new PartitionGetter(keyRowType, tableDescriptor.getPartitionKeys())
@@ -160,6 +164,19 @@ public class FlussTable implements Table {
                         RowDecoder.create(
                                 tableDescriptor.getKvFormat(),
                                 schema.toRowType().getChildren().toArray(new DataType[0])));
+
+        Map<String, int[]> indexKeyIndexes = tableDescriptor.getIndexKeyIndexes();
+        if (indexKeyIndexes.size() > 1) {
+            throw new FlussRuntimeException(
+                    String.format("table %s only support one index key", tablePath));
+        } else if (indexKeyIndexes.size() == 1) {
+            this.indexKeyIndices = new ArrayList<>(indexKeyIndexes.values()).get(0);
+            RowType indexRowType = getIndexRowType(schema, indexKeyIndices);
+            this.indexKeyEncoder = new KeyEncoder(indexRowType);
+        } else {
+            this.indexKeyIndices = null;
+            this.indexKeyEncoder = null;
+        }
     }
 
     @Override
@@ -184,11 +201,38 @@ public class FlussTable implements Table {
                 .lookup(tableBucket, keyBytes)
                 .thenApply(
                         valueBytes -> {
-                            InternalRow row =
+                            List<InternalRow> rowList =
                                     valueBytes == null
-                                            ? null
-                                            : kvValueDecoder.decodeValue(valueBytes).row;
-                            return new LookupResult(row);
+                                            ? Collections.emptyList()
+                                            : Collections.singletonList(
+                                                    kvValueDecoder.decodeValue(valueBytes.get(0))
+                                                            .row);
+                            return new LookupResult(rowList);
+                        });
+    }
+
+    @Override
+    public CompletableFuture<LookupResult> indexLookup(String indexName, InternalRow indexKey) {
+        if (!hasPrimaryKey) {
+            throw new FlussRuntimeException(
+                    String.format("none-pk table %s not support lookup", tablePath));
+        }
+
+        byte[] indexKeyBytes = indexKeyEncoder.encode(indexKey);
+        int bucketId = HashBucketAssigner.bucketForRowKey(indexKeyBytes, numBuckets);
+        return lookupClientSupplier
+                .get()
+                .indexLookup(tableId, bucketId, indexName, indexKeyBytes)
+                .thenApply(
+                        result -> {
+                            List<InternalRow> rowList = new ArrayList<>();
+                            for (byte[] valueBytes : result) {
+                                rowList.add(
+                                        valueBytes == null
+                                                ? null
+                                                : kvValueDecoder.decodeValue(valueBytes).row);
+                            }
+                            return new LookupResult(rowList);
                         });
     }
 
@@ -319,6 +363,15 @@ public class FlussTable implements Table {
         List<DataField> keyRowFields = new ArrayList<>(pkIndex.length);
         List<DataField> rowFields = schema.toRowType().getFields();
         for (int index : pkIndex) {
+            keyRowFields.add(rowFields.get(index));
+        }
+        return new RowType(keyRowFields);
+    }
+
+    private RowType getIndexRowType(Schema schema, int[] indexIndexes) {
+        List<DataField> keyRowFields = new ArrayList<>(indexIndexes.length);
+        List<DataField> rowFields = schema.toRowType().getFields();
+        for (int index : indexIndexes) {
             keyRowFields.add(rowFields.get(index));
         }
         return new RowType(keyRowFields);

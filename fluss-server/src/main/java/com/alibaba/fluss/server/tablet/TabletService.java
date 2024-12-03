@@ -25,6 +25,8 @@ import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.InitWriterRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
@@ -62,6 +64,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeLookupResponse;
+import static com.alibaba.fluss.server.utils.RpcMessageUtils.toIndexLookupData;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.toLookupData;
 
 /** An RPC Gateway service for tablet server. */
@@ -139,6 +142,13 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
         Map<TableBucket, List<byte[]>> lookupData = toLookupData(request);
         replicaManager.multiLookupValues(
                 lookupData, value -> response.complete(makeLookupResponse(value)));
+        return response;
+    }
+
+    @Override
+    public CompletableFuture<IndexLookupResponse> indexLookup(IndexLookupRequest request) {
+        CompletableFuture<IndexLookupResponse> response = new CompletableFuture<>();
+        replicaManager.indexLookup(toIndexLookupData(request), response::complete);
         return response;
     }
 

@@ -69,6 +69,18 @@ public class FlinkConnectorOptions {
                     .defaultValue(true)
                     .withDescription("Whether to set async lookup. Default is true.");
 
+    public static final ConfigOption<String> INDEX_LOOKUP_KEY =
+            ConfigOptions.key("index.key")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "The index key is used to build non-key secondary indexes on a pk table, "
+                                    + "enabling fast data queries. You can define multiple index keys, separated by ';'."
+                                    + " Each index key can specify a index name, like indexName=indexKeyFields. "
+                                    + " indexKeyFields support multiple fields, which can be nullable filed,"
+                                    + " and fields within a key are separated by ','."
+                                    + " For example: 'index1=num_orders;index2=num_orders,total_amount'");
+
     // --------------------------------------------------------------------------------------------
     // Scan specific options
     // --------------------------------------------------------------------------------------------

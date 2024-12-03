@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,9 +58,11 @@ public class LookupClient {
 
     private final ExecutorService lookupSenderTheadPool;
     private final LookupSender lookupSender;
+    private final MetadataUpdater metadataUpdater;
 
     public LookupClient(Configuration conf, MetadataUpdater metadataUpdater) {
         this.lookupQueue = new LookupQueue(conf);
+        this.metadataUpdater = metadataUpdater;
         this.lookupSenderTheadPool = createThreadPool();
         this.lookupSender =
                 new LookupSender(
@@ -75,10 +78,21 @@ public class LookupClient {
         return Executors.newFixedThreadPool(1, new ExecutorThreadFactory(LOOKUP_THREAD_PREFIX));
     }
 
-    public CompletableFuture<byte[]> lookup(TableBucket tableBucket, byte[] keyBytes) {
+    public CompletableFuture<List<byte[]>> lookup(TableBucket tableBucket, byte[] keyBytes) {
         Lookup lookup = new Lookup(tableBucket, keyBytes);
         lookupQueue.appendLookup(lookup);
         return lookup.future();
+    }
+
+    public CompletableFuture<List<byte[]>> indexLookup(
+            long tableId, int bucketId, String indexName, byte[] keyBytes) {
+        // TODO index lookup support partition table.
+
+        // TODO leader and buckets may change during the index lookup. need do retry send.
+        int leader = metadataUpdater.leaderFor(new TableBucket(tableId, bucketId));
+        IndexLookup indexLookup = new IndexLookup(leader, tableId, bucketId, indexName, keyBytes);
+        lookupQueue.appendLookup(indexLookup);
+        return indexLookup.future();
     }
 
     public void close(Duration timeout) {

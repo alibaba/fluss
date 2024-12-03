@@ -21,21 +21,27 @@ import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.LookupRequest;
 import com.alibaba.fluss.rpc.messages.LookupResponse;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForKey;
 import com.alibaba.fluss.rpc.messages.PbLookupRespForBucket;
-import com.alibaba.fluss.rpc.messages.PbValue;
 import com.alibaba.fluss.rpc.protocol.ApiError;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
+import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeIndexLookupRequest;
 import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeLookupRequest;
 
 /**
@@ -96,53 +102,105 @@ class LookupSender implements Runnable {
 
     /** Run a single iteration of sending. */
     private void runOnce(boolean drainAll) throws Exception {
-        List<Lookup> lookups = drainAll ? lookupQueue.drainAll() : lookupQueue.drain();
-        sendLookups(lookups);
+        if (drainAll) {
+            sendLookups(LookupType.LOOKUP, lookupQueue.drainAll(LookupType.LOOKUP));
+            sendLookups(LookupType.INDEX_LOOKUP, lookupQueue.drainAll(LookupType.INDEX_LOOKUP));
+        } else {
+            LookupType lookupType = lookupQueue.nexDrainLookupType();
+            sendLookups(lookupType, lookupQueue.drain(lookupType));
+        }
     }
 
-    private void sendLookups(List<Lookup> lookups) {
+    private void sendLookups(LookupType lookupType, List<AbstractLookup> lookups) {
         if (lookups.isEmpty()) {
             return;
         }
         // group by <leader, lookup batches> to lookup batches
-        Map<Integer, List<Lookup>> lookupBatches = groupByLeader(lookups);
+        Map<Integer, List<AbstractLookup>> lookupBatches = groupByLeader(lookups);
         // now, send the batches
-        lookupBatches.forEach(this::sendLookups);
+        lookupBatches.forEach((destination, batch) -> sendLookups(destination, lookupType, batch));
     }
 
-    private Map<Integer, List<Lookup>> groupByLeader(List<Lookup> lookups) {
+    private Map<Integer, List<AbstractLookup>> groupByLeader(List<AbstractLookup> lookups) {
         // leader -> lookup batches
-        Map<Integer, List<Lookup>> lookupBatchesByLeader = new HashMap<>();
-        for (Lookup lookup : lookups) {
-            // get the leader node
-            TableBucket tb = lookup.tableBucket();
-            int leader = metadataUpdater.leaderFor(tb);
-            lookupBatchesByLeader.computeIfAbsent(leader, k -> new ArrayList<>()).add(lookup);
+        Map<Integer, List<AbstractLookup>> lookupBatchesByLeader = new HashMap<>();
+        for (AbstractLookup abstractLookup : lookups) {
+            int leader;
+            if (abstractLookup instanceof Lookup) {
+                Lookup lookup = (Lookup) abstractLookup;
+                // lookup the leader node
+                TableBucket tb = lookup.tableBucket();
+                leader = metadataUpdater.leaderFor(tb);
+            } else if (abstractLookup instanceof IndexLookup) {
+                IndexLookup indexLookup = (IndexLookup) abstractLookup;
+                leader = indexLookup.destination();
+            } else {
+                throw new IllegalArgumentException("Unsupported lookup type: " + abstractLookup);
+            }
+            lookupBatchesByLeader
+                    .computeIfAbsent(leader, k -> new ArrayList<>())
+                    .add(abstractLookup);
         }
         return lookupBatchesByLeader;
     }
 
-    private void sendLookups(int destination, List<Lookup> lookupBatches) {
+    private void sendLookups(
+            int destination, LookupType lookupType, List<AbstractLookup> lookupBatches) {
         TabletServerGateway gateway = metadataUpdater.newTabletServerClientForNode(destination);
 
+        if (lookupType == LookupType.LOOKUP) {
+            sendLookupRequest(gateway, lookupBatches);
+        } else if (lookupType == LookupType.INDEX_LOOKUP) {
+            sendIndexLookupRequest(gateway, lookupBatches);
+        } else {
+            throw new IllegalArgumentException("Unsupported lookup type: " + lookupType);
+        }
+    }
+
+    private void sendLookupRequest(
+            TabletServerGateway gateway, List<AbstractLookup> lookupBatches) {
         // table id -> (bucket -> lookups)
-        Map<Long, Map<TableBucket, LookupBatch>> lookupsByTableId = new HashMap<>();
-        for (Lookup lookup : lookupBatches) {
+        Map<Long, Map<TableBucket, LookupBatch>> lookupByTableId = new HashMap<>();
+        for (AbstractLookup abstractLookup : lookupBatches) {
+            Lookup lookup = (Lookup) abstractLookup;
             TableBucket tb = lookup.tableBucket();
             long tableId = tb.getTableId();
-            lookupsByTableId
+            lookupByTableId
                     .computeIfAbsent(tableId, k -> new HashMap<>())
                     .computeIfAbsent(tb, k -> new LookupBatch(tb))
                     .addLookup(lookup);
         }
 
-        lookupsByTableId.forEach(
+        lookupByTableId.forEach(
                 (tableId, lookupsByBucket) ->
                         sendLookupRequestAndHandleResponse(
                                 gateway,
                                 makeLookupRequest(tableId, lookupsByBucket.values()),
                                 tableId,
                                 lookupsByBucket));
+    }
+
+    private void sendIndexLookupRequest(
+            TabletServerGateway gateway, List<AbstractLookup> indexLookupBatches) {
+        // table id -> (bucket -> lookups)
+        Map<Long, Map<TableBucket, IndexLookupBatch>> lookupByTableId = new HashMap<>();
+        for (AbstractLookup abstractLookup : indexLookupBatches) {
+            IndexLookup indexLookup = (IndexLookup) abstractLookup;
+            TableBucket tb = new TableBucket(indexLookup.tableId(), indexLookup.bucketId());
+            long tableId = tb.getTableId();
+            lookupByTableId
+                    .computeIfAbsent(tableId, k -> new HashMap<>())
+                    .computeIfAbsent(tb, k -> new IndexLookupBatch(tb))
+                    .addLookup(indexLookup);
+        }
+
+        lookupByTableId.forEach(
+                (tableId, indexLookupBatch) ->
+                        sendIndexLookupRequestAndHandleResponse(
+                                gateway,
+                                makeIndexLookupRequest(tableId, indexLookupBatch.values()),
+                                tableId,
+                                indexLookupBatch));
     }
 
     private void sendLookupRequestAndHandleResponse(
@@ -176,6 +234,38 @@ class LookupSender implements Runnable {
                         });
     }
 
+    private void sendIndexLookupRequestAndHandleResponse(
+            TabletServerGateway gateway,
+            IndexLookupRequest indexLookupRequest,
+            long tableId,
+            Map<TableBucket, IndexLookupBatch> lookupsByBucket) {
+        try {
+            maxInFlightReuqestsSemaphore.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new FlussRuntimeException("interrupted:", e);
+        }
+        gateway.indexLookup(indexLookupRequest)
+                .thenAccept(
+                        indexLookupResponse -> {
+                            try {
+                                handleIndexLookupResponse(
+                                        tableId, indexLookupResponse, lookupsByBucket);
+                            } finally {
+                                maxInFlightReuqestsSemaphore.release();
+                            }
+                        })
+                .exceptionally(
+                        e -> {
+                            try {
+                                handleIndexLookupException(e, lookupsByBucket);
+                                return null;
+                            } finally {
+                                maxInFlightReuqestsSemaphore.release();
+                            }
+                        });
+    }
+
     private void handleLookupResponse(
             long tableId,
             LookupResponse lookupResponse,
@@ -188,9 +278,57 @@ class LookupSender implements Runnable {
                                     ? pbLookupRespForBucket.getPartitionId()
                                     : null,
                             pbLookupRespForBucket.getBucketId());
-            List<PbValue> pbValues = pbLookupRespForBucket.getValuesList();
+
+            // TODO If error, we need to retry send the request instead of throw exception.
             LookupBatch lookupBatch = lookupsByBucket.get(tableBucket);
-            lookupBatch.complete(pbValues);
+            if (pbLookupRespForBucket.hasErrorCode()) {
+                LOG.warn(
+                        "Get error lookup response on table bucket {}, fail. Error: {}",
+                        tableBucket,
+                        pbLookupRespForBucket.getErrorMessage());
+                lookupBatch.completeExceptionally(
+                        ApiError.fromErrorMessage(pbLookupRespForBucket).exception());
+            } else {
+                List<List<byte[]>> byteValues =
+                        pbLookupRespForBucket.getValuesList().stream()
+                                .map(
+                                        pbValue -> {
+                                            if (pbValue.hasValues()) {
+                                                return Collections.singletonList(
+                                                        pbValue.getValues());
+                                            } else {
+                                                return null;
+                                            }
+                                        })
+                                .collect(Collectors.toList());
+                lookupBatch.complete(byteValues);
+            }
+        }
+    }
+
+    private void handleIndexLookupResponse(
+            long tableId,
+            IndexLookupResponse indexLookupResponse,
+            Map<TableBucket, IndexLookupBatch> indexLookupsByBucket) {
+        for (PbIndexLookupRespForBucket respForBucket : indexLookupResponse.getBucketsRespsList()) {
+            TableBucket tableBucket =
+                    new TableBucket(
+                            tableId,
+                            respForBucket.hasPartitionId() ? respForBucket.getPartitionId() : null,
+                            respForBucket.getBucketId());
+
+            // TODO If error, we need to retry send the request instead of throw exception.
+            IndexLookupBatch indexLookupBatch = indexLookupsByBucket.get(tableBucket);
+            List<List<byte[]>> result = new ArrayList<>();
+            for (int i = 0; i < respForBucket.getKeysRespsCount(); i++) {
+                PbIndexLookupRespForKey respForKey = respForBucket.getKeysRespAt(i);
+                List<byte[]> keyResult = new ArrayList<>();
+                for (int j = 0; j < respForKey.getValuesCount(); j++) {
+                    keyResult.add(respForKey.getValueAt(j));
+                }
+                result.add(keyResult);
+            }
+            indexLookupBatch.complete(result);
         }
     }
 
@@ -200,6 +338,19 @@ class LookupSender implements Runnable {
         for (LookupBatch lookupBatch : lookupsByBucket.values()) {
             LOG.warn(
                     "Get error lookup response on table bucket {}, fail. Error: {}",
+                    lookupBatch.tableBucket(),
+                    error.formatErrMsg());
+            lookupBatch.completeExceptionally(error.exception());
+        }
+    }
+
+    private void handleIndexLookupException(
+            Throwable t, Map<TableBucket, IndexLookupBatch> lookupsByBucket) {
+        ApiError error = ApiError.fromThrowable(t);
+        for (IndexLookupBatch lookupBatch : lookupsByBucket.values()) {
+            // TODO If error, we need to retry send the request instead of throw exception.
+            LOG.warn(
+                    "Get error index lookup response on table bucket {}, fail. Error: {}",
                     lookupBatch.tableBucket(),
                     error.formatErrMsg());
             lookupBatch.completeExceptionally(error.exception());

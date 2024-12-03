@@ -1028,6 +1028,38 @@ public final class Replica {
                 });
     }
 
+    public List<byte[]> indexLookup(byte[] indexKey) {
+        if (!isKvTable()) {
+            throw new NonPrimaryKeyTableException(
+                    "Try to do index lookup on a non primary key table: " + getTablePath());
+        }
+
+        return inReadLock(
+                leaderIsrUpdateLock,
+                () -> {
+                    try {
+                        if (!isLeader()) {
+                            throw new NotLeaderOrFollowerException(
+                                    String.format(
+                                            "Leader not local for bucket %s on tabletServer %d",
+                                            tableBucket, localTabletServerId));
+                        }
+                        checkNotNull(
+                                kvTablet, "KvTablet for the replica to get key shouldn't be null.");
+                        // the index key is serialized by index name + index key fields, see
+                        // IndexKeyEncoder.
+                        return kvTablet.indexLookup(indexKey);
+                    } catch (IOException e) {
+                        String errorMsg =
+                                String.format(
+                                        "Failed to do index lookup from local kv for table bucket %s, the cause is: %s",
+                                        tableBucket, e.getMessage());
+                        LOG.error(errorMsg, e);
+                        throw new KvStorageException(errorMsg, e);
+                    }
+                });
+    }
+
     public DefaultValueRecordBatch limitKvScan(int limit) {
         if (!isKvTable()) {
             throw new NonPrimaryKeyTableException(

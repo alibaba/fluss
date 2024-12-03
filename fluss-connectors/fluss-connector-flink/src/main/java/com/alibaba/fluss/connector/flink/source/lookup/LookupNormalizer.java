@@ -30,6 +30,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -50,7 +51,11 @@ public class LookupNormalizer implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    public static final LookupNormalizer NOOP_NORMALIZER = new LookupNormalizer(null, null, null);
+    public static final LookupNormalizer NOOP_NORMALIZER =
+            new LookupNormalizer(null, null, null, null);
+
+    /** The index name. */
+    @Nullable private final String indexName;
 
     /** Mapping from normalized key index to the lookup key index (in the lookup row). */
     @Nullable private final FieldGetter[] normalizedKeyGetters;
@@ -62,9 +67,11 @@ public class LookupNormalizer implements Serializable {
     @Nullable private final FieldGetter[] resultFieldGetters;
 
     private LookupNormalizer(
+            @Nullable String indexName,
             @Nullable FieldGetter[] normalizedKeyGetters,
             @Nullable FieldGetter[] conditionFieldGetters,
             @Nullable FieldGetter[] resultFieldGetters) {
+        this.indexName = indexName;
         this.normalizedKeyGetters = normalizedKeyGetters;
         this.conditionFieldGetters = conditionFieldGetters;
         this.resultFieldGetters = resultFieldGetters;
@@ -74,6 +81,10 @@ public class LookupNormalizer implements Serializable {
                     conditionFieldGetters.length == resultFieldGetters.length,
                     "The length of conditionFieldGetters and resultFieldGetters should be equal.");
         }
+    }
+
+    public @Nullable String getIndexName() {
+        return indexName;
     }
 
     public RowData normalizeLookupKey(RowData lookupKey) {
@@ -143,22 +154,16 @@ public class LookupNormalizer implements Serializable {
     public static LookupNormalizer validateAndCreateLookupNormalizer(
             int[][] lookupKeyIndexes,
             int[] primaryKeys,
+            Map<String, int[]> indexKeys,
             RowType schema,
             @Nullable int[] projectedFields) {
-        if (primaryKeys.length == 0) {
+        if (primaryKeys.length == 0 && indexKeys == null) {
             throw new UnsupportedOperationException(
-                    "Fluss lookup function only support lookup table with primary key.");
+                    "Fluss lookup function only support lookup table with primary key or index key.");
         }
-        // we compare string names rather than int index for better error message and readability,
-        // the length of lookup key and primary key shouldn't be large, so the overhead is low.
-        String[] columnNames = schema.getFieldNames().toArray(new String[0]);
-        String[] primaryKeyNames =
-                Arrays.stream(primaryKeys).mapToObj(i -> columnNames[i]).toArray(String[]::new);
 
-        // get the lookup keys
         int[] lookupKeys = new int[lookupKeyIndexes.length];
-        String[] lookupKeyNames = new String[lookupKeyIndexes.length];
-        for (int i = 0; i < lookupKeyNames.length; i++) {
+        for (int i = 0; i < lookupKeys.length; i++) {
             int[] innerKeyArr = lookupKeyIndexes[i];
             Preconditions.checkArgument(
                     innerKeyArr.length == 1, "Do not support nested lookup keys");
@@ -169,25 +174,48 @@ public class LookupNormalizer implements Serializable {
             } else {
                 lookupKeys[i] = innerKeyArr[0];
             }
-            lookupKeyNames[i] = columnNames[innerKeyArr[0]];
         }
 
-        if (Arrays.equals(lookupKeys, primaryKeys)) {
-            return NOOP_NORMALIZER;
+        String indexName = getIndexName(lookupKeys, primaryKeys, indexKeys);
+        if (indexName == null) {
+            return createLookupNormalizer(lookupKeys, null, primaryKeys, schema);
+        } else {
+            return createLookupNormalizer(lookupKeys, indexName, indexKeys.get(indexName), schema);
+        }
+    }
+
+    /** create a {@link LookupNormalizer}. */
+    private static LookupNormalizer createLookupNormalizer(
+            int[] lookupKeys, @Nullable String indexName, int[] keys, RowType schema) {
+        // we compare string names rather than int index for better error message and readability,
+        // the length of lookup key and keys (primary key or index key) shouldn't be large, so the
+        // overhead is low.
+        String[] columnNames = schema.getFieldNames().toArray(new String[0]);
+        String[] keyNames =
+                Arrays.stream(keys).mapToObj(i -> columnNames[i]).toArray(String[]::new);
+
+        // get the lookup keys
+        String[] lookupKeyNames = new String[lookupKeys.length];
+        for (int i = 0; i < lookupKeyNames.length; i++) {
+            lookupKeyNames[i] = columnNames[lookupKeys[i]];
         }
 
-        FieldGetter[] normalizedKeyGetters = new FieldGetter[primaryKeys.length];
-        for (int i = 0; i < primaryKeyNames.length; i++) {
-            LogicalType fieldType = schema.getTypeAt(primaryKeys[i]);
-            int lookupKeyIndex = findIndex(lookupKeyNames, primaryKeyNames[i]);
+        if (Arrays.equals(lookupKeys, keys)) {
+            return new LookupNormalizer(indexName, null, null, null);
+        }
+
+        FieldGetter[] normalizedKeyGetters = new FieldGetter[keys.length];
+        for (int i = 0; i < keyNames.length; i++) {
+            LogicalType fieldType = schema.getTypeAt(keys[i]);
+            int lookupKeyIndex = findIndex(lookupKeyNames, keyNames[i]);
             normalizedKeyGetters[i] = RowData.createFieldGetter(fieldType, lookupKeyIndex);
         }
 
-        Set<Integer> primaryKeySet = Arrays.stream(primaryKeys).boxed().collect(Collectors.toSet());
+        Set<Integer> keySet = Arrays.stream(keys).boxed().collect(Collectors.toSet());
         List<FieldGetter> conditionFieldGetters = new ArrayList<>();
         List<FieldGetter> resultFieldGetters = new ArrayList<>();
         for (int i = 0; i < lookupKeys.length; i++) {
-            if (!primaryKeySet.contains(i)) {
+            if (!keySet.contains(i)) {
                 LogicalType fieldType = schema.getTypeAt(lookupKeys[i]);
                 conditionFieldGetters.add(RowData.createFieldGetter(fieldType, i));
                 resultFieldGetters.add(RowData.createFieldGetter(fieldType, lookupKeys[i]));
@@ -195,6 +223,7 @@ public class LookupNormalizer implements Serializable {
         }
 
         return new LookupNormalizer(
+                indexName,
                 normalizedKeyGetters,
                 conditionFieldGetters.toArray(new FieldGetter[0]),
                 resultFieldGetters.toArray(new FieldGetter[0]));
@@ -212,5 +241,52 @@ public class LookupNormalizer implements Serializable {
                         + key
                         + "' in lookup keys "
                         + Arrays.toString(columnNames));
+    }
+
+    private static @Nullable String getIndexName(
+            int[] lookupKeys, int[] primaryKeys, Map<String, int[]> indexKeys) {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("lookupKeys: " + Arrays.toString(lookupKeys) + "\n");
+        stringBuilder.append("primaryKeys: " + Arrays.toString(primaryKeys) + "\n");
+        for (Map.Entry<String, int[]> entry : indexKeys.entrySet()) {
+            int[] copyIndexKey = entry.getValue();
+            stringBuilder.append(
+                    "indexKey and value: "
+                            + entry.getKey()
+                            + ":"
+                            + Arrays.toString(copyIndexKey)
+                            + "\n");
+        }
+
+        List<Integer> lookupKeyList =
+                Arrays.stream(lookupKeys).boxed().collect(Collectors.toList());
+        List<Integer> primaryKeyList =
+                Arrays.stream(primaryKeys).boxed().collect(Collectors.toList());
+        if (lookupKeyList.size() >= primaryKeyList.size()) {
+            boolean isSubset = true;
+            for (Integer primaryKey : primaryKeyList) {
+                if (!lookupKeyList.contains(primaryKey)) {
+                    isSubset = false;
+                    break;
+                }
+            }
+            if (isSubset) {
+                return null;
+            }
+        }
+
+        for (Map.Entry<String, int[]> entry : indexKeys.entrySet()) {
+            int[] indexKey = entry.getValue();
+            int[] copyIndexKey = indexKey.clone();
+            Arrays.sort(copyIndexKey);
+            Arrays.sort(lookupKeys);
+            if (Arrays.equals(lookupKeys, copyIndexKey)) {
+                return entry.getKey();
+            }
+        }
+
+        throw new UnsupportedOperationException(
+                "There is no index key or primary key that matches the lookup keys. info: "
+                        + stringBuilder.toString());
     }
 }

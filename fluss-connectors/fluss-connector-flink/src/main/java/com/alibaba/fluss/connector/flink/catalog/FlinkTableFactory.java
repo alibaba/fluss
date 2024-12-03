@@ -48,10 +48,13 @@ import java.io.File;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static com.alibaba.fluss.connector.flink.catalog.FlinkCatalog.LAKE_TABLE_SPLITTER;
+import static com.alibaba.fluss.connector.flink.utils.FlinkConnectorOptionsUtil.getIndexKeys;
 import static org.apache.flink.configuration.ConfigOptions.key;
 
 /** Factory to create table source and table sink for Fluss. */
@@ -78,7 +81,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                         == RuntimeExecutionMode.STREAMING;
 
         final ReadableConfig tableOptions = helper.getOptions();
-        FlinkConnectorOptionsUtil.validateTableSourceOptions(tableOptions);
+        RowType tableOutputType = (RowType) context.getPhysicalRowDataType().getLogicalType();
+        FlinkConnectorOptionsUtil.validateTableSourceOptions(tableOptions, tableOutputType);
 
         ZoneId timeZone =
                 FlinkConnectorOptionsUtil.getLocalTimeZone(
@@ -89,8 +93,6 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
         ResolvedSchema resolvedSchema = context.getCatalogTable().getResolvedSchema();
         ResolvedCatalogTable resolvedCatalogTable = context.getCatalogTable();
         int[] primaryKeyIndexes = resolvedSchema.getPrimaryKeyIndexes();
-
-        RowType tableOutputType = (RowType) context.getPhysicalRowDataType().getLogicalType();
 
         // options for lookup
         LookupCache cache = null;
@@ -104,6 +106,15 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
             // as ScanRuntimeProviders for Full caching lookup join, so in here, we just throw
             // unsupported exception
             throw new UnsupportedOperationException("Full lookup caching is not supported yet.");
+        }
+
+        // get and validate index lookup key.
+        Map<String, int[]> indexKeys = new HashMap<>();
+        if (tableOptions.getOptional(FlinkConnectorOptions.INDEX_LOOKUP_KEY).isPresent()) {
+            indexKeys =
+                    getIndexKeys(
+                            tableOptions.get(FlinkConnectorOptions.INDEX_LOOKUP_KEY),
+                            tableOutputType);
         }
 
         return new FlinkTableSource(
@@ -123,7 +134,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 tableOptions.get(
                         key(ConfigOptions.TABLE_DATALAKE_ENABLED.key())
                                 .booleanType()
-                                .defaultValue(false)));
+                                .defaultValue(false)),
+                indexKeys);
     }
 
     @Override
@@ -166,6 +178,7 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                                 FlinkConnectorOptions.SCAN_STARTUP_TIMESTAMP,
                                 FlinkConnectorOptions.SCAN_PARTITION_DISCOVERY_INTERVAL,
                                 FlinkConnectorOptions.LOOKUP_ASYNC,
+                                FlinkConnectorOptions.INDEX_LOOKUP_KEY,
                                 LookupOptions.MAX_RETRIES,
                                 LookupOptions.CACHE_TYPE,
                                 LookupOptions.PARTIAL_CACHE_EXPIRE_AFTER_ACCESS,

@@ -329,7 +329,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
     private InternalRow lookupRow(TablePath tablePath, IndexedRow keyRow) throws Exception {
         try (Table table = conn.getTable(tablePath)) {
             // lookup this key.
-            return table.lookup(keyRow).get().getRow();
+            return table.lookup(keyRow).get().getRowList().get(0);
         }
     }
 
