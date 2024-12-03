@@ -16,6 +16,8 @@
 
 package com.alibaba.fluss.connector.flink.source.split;
 
+import static com.alibaba.fluss.connector.flink.source.split.LogSplit.NO_STOPPING_OFFSET;
+
 /** The state of {@link HybridSnapshotLogSplit}. */
 public class HybridSnapshotLogSplitState extends SourceSplitState {
 
@@ -40,7 +42,8 @@ public class HybridSnapshotLogSplitState extends SourceSplitState {
                 hybridSnapshotLogSplit.getSnapshotFiles(),
                 recordsToSkip,
                 snapshotFinished,
-                offset);
+                offset,
+                hybridSnapshotLogSplit.getLogStoppingOffset().orElse(NO_STOPPING_OFFSET));
     }
 
     public void setRecordsToSkip(long recordsToSkip) {
