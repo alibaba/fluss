@@ -61,7 +61,7 @@ class SourceSplitSerializerTest {
 
         split =
                 new HybridSnapshotLogSplit(
-                        bucket, partitionName, snapshotFiles, recordsToSkip, true, 5);
+                        bucket, partitionName, snapshotFiles, recordsToSkip, true, 5, 2);
         serialized = serializer.serialize(split);
         deserializedSplit = serializer.deserialize(serializer.getVersion(), serialized);
         assertThat(deserializedSplit).isEqualTo(split);
