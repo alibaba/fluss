@@ -40,6 +40,7 @@ import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.expressions.utils.ResolvedExpressionMock;
 import org.apache.flink.table.factories.FactoryUtil;
+import org.apache.zookeeper.KeeperException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -121,7 +122,15 @@ class FlinkCatalogTest {
     @BeforeEach
     void beforeEach() throws Exception {
         if (catalog != null) {
-            catalog.createDatabase(DEFAULT_DB, null, true);
+            try {
+                catalog.createDatabase(DEFAULT_DB, null, true);
+            } catch (CatalogException e) {
+                if (e.getCause() instanceof KeeperException.NodeExistsException) {
+                    // ignore
+                } else {
+                    throw e;
+                }
+            }
         }
     }
 

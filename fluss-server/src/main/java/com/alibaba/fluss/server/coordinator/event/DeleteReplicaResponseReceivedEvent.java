@@ -33,4 +33,12 @@ public class DeleteReplicaResponseReceivedEvent implements CoordinatorEvent {
     public List<DeleteReplicaResultForBucket> getDeleteReplicaResults() {
         return deleteReplicaResultForBuckets;
     }
+
+    @Override
+    public String toString() {
+        return "DeleteReplicaResponseReceivedEvent{"
+                + "deleteReplicaResultForBuckets="
+                + deleteReplicaResultForBuckets
+                + '}';
+    }
 }

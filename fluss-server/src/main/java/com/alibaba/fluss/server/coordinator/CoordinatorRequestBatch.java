@@ -363,6 +363,8 @@ public class CoordinatorRequestBatch {
                             .map(t -> RpcMessageUtils.toTableBucket(t.getTableBucket()))
                             .collect(Collectors.toSet());
 
+            LOG.info("deletedReplicaBuckets: {} for server id {}", deletedReplicaBuckets, serverId);
+
             coordinatorChannelManager.sendStopBucketReplicaRequest(
                     serverId,
                     stopReplicaRequest,
