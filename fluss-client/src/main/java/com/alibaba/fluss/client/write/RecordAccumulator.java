@@ -35,6 +35,7 @@ import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metrics.MetricNames;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
 import com.alibaba.fluss.record.LogRecordBatch;
+import com.alibaba.fluss.record.MemoryLogRecordsCompactedBuilder;
 import com.alibaba.fluss.record.MemoryLogRecordsIndexedBuilder;
 import com.alibaba.fluss.row.arrow.ArrowWriter;
 import com.alibaba.fluss.row.arrow.ArrowWriterPool;
@@ -394,6 +395,8 @@ public final class RecordAccumulator {
                 return WriteBatch.WriteBatchType.ARROW_LOG;
             } else if (logFormat == LogFormat.INDEXED) {
                 return WriteBatch.WriteBatchType.INDEXED_LOG;
+            } else if (logFormat == LogFormat.COMPACTED) {
+                return WriteBatch.WriteBatchType.COMPACTED_LOG;
             } else {
                 throw new IllegalArgumentException("Unsupported log format: " + logFormat);
             }
@@ -546,12 +549,19 @@ public final class RecordAccumulator {
                             arrowWriter,
                             segment,
                             memorySegmentPool);
-        } else {
+        } else if (writeBatchType == WriteBatch.WriteBatchType.INDEXED_LOG) {
             batch =
                     new IndexedLogWriteBatch(
                             tb,
                             physicalTablePath,
                             MemoryLogRecordsIndexedBuilder.builder(
+                                    tableInfo.getSchemaId(), segment.size(), segment));
+        } else {
+            batch =
+                    new CompactedLogWriteBatch(
+                            tb,
+                            physicalTablePath,
+                            MemoryLogRecordsCompactedBuilder.builder(
                                     tableInfo.getSchemaId(), segment.size(), segment));
         }
 

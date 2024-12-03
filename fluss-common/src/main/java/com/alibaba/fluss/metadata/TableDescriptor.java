@@ -129,9 +129,9 @@ public final class TableDescriptor implements Serializable {
 
         if (hasPrimaryKey()
                 && getKvFormat() == KvFormat.COMPACTED
-                && getLogFormat() != LogFormat.ARROW) {
+                && !(getLogFormat() == LogFormat.ARROW || getLogFormat() == LogFormat.COMPACTED)) {
             throw new IllegalArgumentException(
-                    "For Primary Key Table, if kv format is compacted, log format must be arrow.");
+                    "For Primary Key Table, if kv format is compacted, log format must be arrow or compacted.");
         }
     }
 
