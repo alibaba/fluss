@@ -35,6 +35,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collections;
 
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
@@ -126,19 +127,18 @@ public class LocalFileSystem extends FileSystem {
 
     @Override
     public boolean delete(final FsPath f, final boolean recursive) throws IOException {
-
         final File file = pathToFile(f);
-        if (file.isFile()) {
+        BasicFileAttributes basicFileAttributes =
+                Files.readAttributes(file.toPath(), BasicFileAttributes.class);
+        if (basicFileAttributes.isRegularFile()) {
             return file.delete();
-        } else if ((!recursive) && file.isDirectory()) {
+        } else if ((!recursive) && basicFileAttributes.isDirectory()) {
             File[] containedFiles = file.listFiles();
             if (containedFiles == null) {
                 throw new IOException(
-                        "Directory "
-                                + file.toString()
-                                + " does not exist or an I/O error occurred");
+                        "Directory " + file + " does not exist or an I/O error occurred");
             } else if (containedFiles.length != 0) {
-                throw new IOException("Directory " + file.toString() + " is not empty");
+                throw new IOException("Directory " + file + " is not empty");
             }
         }
 

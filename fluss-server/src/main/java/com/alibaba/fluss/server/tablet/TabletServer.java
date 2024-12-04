@@ -112,7 +112,7 @@ public class TabletServer extends ServerBase {
     private ReplicaManager replicaManager;
 
     @GuardedBy("lock")
-    private @Nullable RemoteLogManager remoteLogManager = null;
+    private final @Nullable RemoteLogManager remoteLogManager = null;
 
     @GuardedBy("lock")
     private Scheduler scheduler;

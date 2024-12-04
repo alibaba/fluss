@@ -173,12 +173,9 @@ public class CompletedSnapshotStore {
 
     private static boolean canSubsume(CompletedSnapshot next, CompletedSnapshot latest) {
         // if the snapshot is not equal to the latest snapshot, it means it can't be subsumed
-        if (next == latest) {
-            return false;
-        }
+        return next != latest;
         // else, we always subsume it as we will only keep single one snapshot currently
         // todo: consider some client are pining this snapshot in FLUSS-54730210
-        return true;
     }
 
     /**
