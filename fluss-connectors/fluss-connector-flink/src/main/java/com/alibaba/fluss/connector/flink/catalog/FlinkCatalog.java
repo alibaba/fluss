@@ -22,9 +22,9 @@ import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeCatalog;
+import com.alibaba.fluss.connector.flink.lakehouse.LakeCatalogFactory;
 import com.alibaba.fluss.connector.flink.utils.CatalogExceptionUtil;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
-import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
@@ -83,8 +83,6 @@ public class FlinkCatalog implements Catalog {
     private final String bootstrapServers;
     private Connection connection;
     private Admin admin;
-
-    private volatile @Nullable LakeCatalog lakeCatalog;
 
     public FlinkCatalog(
             String name,
@@ -274,7 +272,7 @@ public class FlinkCatalog implements Catalog {
 
     private CatalogBaseTable getLakeTable(String databaseName, String tableName)
             throws TableNotExistException, CatalogException {
-        mayInitLakeCatalogCatalog();
+        LakeCatalog lakeCatalog = LakeCatalogFactory.getOrCreate(admin, catalogName, classLoader);
         String[] tableComponents = tableName.split("\\" + LAKE_TABLE_SPLITTER);
         if (tableComponents.length == 1) {
             // should be pattern like table_name$lake
@@ -516,21 +514,5 @@ public class FlinkCatalog implements Catalog {
 
     private TablePath toTablePath(ObjectPath objectPath) {
         return TablePath.of(objectPath.getDatabaseName(), objectPath.getObjectName());
-    }
-
-    private void mayInitLakeCatalogCatalog() {
-        if (lakeCatalog == null) {
-            synchronized (this) {
-                if (lakeCatalog == null) {
-                    try {
-                        Map<String, String> catalogProperties =
-                                admin.describeLakeStorage().get().getCatalogProperties();
-                        lakeCatalog = new LakeCatalog(catalogName, catalogProperties, classLoader);
-                    } catch (Exception e) {
-                        throw new FlussRuntimeException("Failed to init paimon catalog.", e);
-                    }
-                }
-            }
-        }
     }
 }

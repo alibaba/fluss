@@ -20,32 +20,10 @@ import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
-import org.apache.paimon.catalog.CatalogContext;
-import org.apache.paimon.flink.FlinkCatalog;
-import org.apache.paimon.flink.FlinkCatalogFactory;
-import org.apache.paimon.flink.FlinkFileIOLoader;
-import org.apache.paimon.options.Options;
-
-import java.util.Map;
 
 /** A lake catalog to delegate the operations on lake table. */
-public class LakeCatalog {
+public interface LakeCatalog {
 
-    // currently, only support paimon
-    // todo make it pluggable
-    private final FlinkCatalog paimonFlinkCatalog;
-
-    public LakeCatalog(
-            String catalogName, Map<String, String> catalogProperties, ClassLoader classLoader) {
-        CatalogContext catalogContext =
-                CatalogContext.create(
-                        Options.fromMap(catalogProperties), null, new FlinkFileIOLoader());
-        paimonFlinkCatalog =
-                FlinkCatalogFactory.createCatalog(catalogName, catalogContext, classLoader);
-    }
-
-    public CatalogBaseTable getTable(ObjectPath objectPath)
-            throws TableNotExistException, CatalogException {
-        return paimonFlinkCatalog.getTable(objectPath);
-    }
+    CatalogBaseTable getTable(ObjectPath objectPath)
+            throws TableNotExistException, CatalogException;
 }
