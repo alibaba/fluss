@@ -430,6 +430,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 processNotifyLeaderAndIsrResponseReceivedEvent(
                         (NotifyLeaderAndIsrResponseReceivedEvent) event);
             } else if (event instanceof DeleteReplicaResponseReceivedEvent) {
+                LOG.info("Delete replica response received event: {}", event);
                 processDeleteReplicaResponseReceived((DeleteReplicaResponseReceivedEvent) event);
             } else if (event instanceof NewTabletServerEvent) {
                 processNewTabletServer((NewTabletServerEvent) event);
@@ -506,6 +507,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
     }
 
     private void processDropPartition(DropPartitionEvent dropPartitionEvent) {
+        LOG.info("Drop partition {}.", dropPartitionEvent);
         TablePartition tablePartition =
                 new TablePartition(
                         dropPartitionEvent.getTableId(), dropPartitionEvent.getPartitionId());
@@ -547,6 +549,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
         successDeletedReplicas.addAll(retryDeleteAndSuccessDeleteReplicas.f1);
         // transmit to deletion successful for success deleted replicas
         replicaStateMachine.handleStateChanges(successDeletedReplicas, ReplicaDeletionSuccessful);
+        LOG.info("Success deleted replicas: {}", successDeletedReplicas);
         // if any success deletion, we can resume
         if (!successDeletedReplicas.isEmpty()) {
             tableManager.resumeDeletions();
@@ -642,6 +645,10 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
         coordinatorContext.removeOfflineBucketInServer(tabletServerId);
         coordinatorContext.addLiveTabletServer(serverNode);
+        LOG.info(
+                "New tablet server {} is added, current servers are {}.",
+                tabletServerId,
+                coordinatorContext.getLiveTabletServers());
         coordinatorChannelManager.addTabletServer(serverNode);
 
         // update server metadata cache.
@@ -972,6 +979,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
     private void updateServerMetadataCache(
             Optional<ServerNode> coordinatorServer, Set<ServerNode> aliveTabletServers) {
         // 1. update local metadata cache.
+        LOG.info("Update updateServerMetadataCache {}", aliveTabletServers);
         serverMetadataCache.updateMetadata(
                 new ClusterMetadataInfo(coordinatorServer, aliveTabletServers));
 
