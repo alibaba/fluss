@@ -353,12 +353,10 @@ public abstract class AbstractMetricGroup implements MetricGroup {
     }
 
     protected GenericMetricGroup createChildGroup(String name, ChildType childType) {
-        switch (childType) {
-            case KEY:
-                return new GenericKeyMetricGroup(registry, this, name);
-            default:
-                return new GenericMetricGroup(registry, this, name);
+        if (childType == ChildType.KEY) {
+            return new GenericKeyMetricGroup(registry, this, name);
         }
+        return new GenericMetricGroup(registry, this, name);
     }
 
     /**

@@ -108,14 +108,12 @@ public class SplitSkipReader implements AutoCloseable {
             }
         }
         // if any batch remains while skipping, return the batch
-        if (nextBatch != null && nextBatch.hasNext()) {
-            return nextBatch;
-        } else {
+        if (nextBatch == null || !nextBatch.hasNext()) {
             // otherwise pool next batch
             nextBatch = pollBatch();
             // return null if the new batch has no more records
-            return nextBatch;
         }
+        return nextBatch;
     }
 
     private CloseableIterator<ScanRecord> pollBatch() throws IOException {

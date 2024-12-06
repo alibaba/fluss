@@ -39,11 +39,9 @@ public class GenericKeyMetricGroup extends GenericMetricGroup {
 
     @Override
     protected GenericMetricGroup createChildGroup(String name, ChildType childType) {
-        switch (childType) {
-            case VALUE:
-                return new GenericValueMetricGroup(registry, this, name);
-            default:
-                return new GenericMetricGroup(registry, this, name);
+        if (childType == ChildType.VALUE) {
+            return new GenericValueMetricGroup(registry, this, name);
         }
+        return new GenericMetricGroup(registry, this, name);
     }
 }

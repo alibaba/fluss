@@ -203,7 +203,7 @@ public class NetUtils {
                                     + start
                                     + ".");
                 }
-                final int end = Integer.valueOf(range.substring(dashIdx + 1, range.length()));
+                final int end = Integer.parseInt(range.substring(dashIdx + 1));
                 if (!isValidHostPort(end)) {
                     throw new IllegalConfigurationException(
                             "Invalid port configuration. Port must be between 0"
