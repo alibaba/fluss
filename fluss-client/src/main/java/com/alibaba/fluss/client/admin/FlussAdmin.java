@@ -53,6 +53,8 @@ import com.alibaba.fluss.rpc.messages.ListPartitionInfosRequest;
 import com.alibaba.fluss.rpc.messages.ListTablesRequest;
 import com.alibaba.fluss.rpc.messages.ListTablesResponse;
 import com.alibaba.fluss.rpc.messages.PbListOffsetsRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbTablePath;
+import com.alibaba.fluss.rpc.messages.RenameTableRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
 import com.alibaba.fluss.rpc.protocol.ApiError;
@@ -187,6 +189,21 @@ public class FlussAdmin implements Admin {
                 .setDatabaseName(tablePath.getDatabaseName())
                 .setTableName(tablePath.getTableName());
         return gateway.dropTable(request).thenApply(r -> null);
+    }
+
+    @Override
+    public CompletableFuture<Void> renameTable(
+            TablePath fromTablePath, TablePath toTablePath, boolean ignoreIfNotExists) {
+        RenameTableRequest request = new RenameTableRequest();
+        request.setIgnoreIfNotExists(ignoreIfNotExists)
+                .setFromTablePath(
+                        new PbTablePath()
+                                .setDatabaseName(fromTablePath.getDatabaseName())
+                                .setTableName(fromTablePath.getTableName()))
+                .setToTablePath()
+                .setDatabaseName(toTablePath.getDatabaseName())
+                .setTableName(toTablePath.getTableName());
+        return gateway.renameTable(request).thenApply(r -> null);
     }
 
     @Override
