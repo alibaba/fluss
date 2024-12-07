@@ -17,9 +17,11 @@
 package com.alibaba.fluss.connector.flink.source.reader;
 
 import com.alibaba.fluss.client.scanner.ScanRecord;
+import com.alibaba.fluss.client.scanner.snapshot.HybridScan;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScan;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScanner;
 import com.alibaba.fluss.client.table.Table;
+import com.alibaba.fluss.connector.flink.source.split.HybridSnapshotLogSplit;
 import com.alibaba.fluss.connector.flink.source.split.SnapshotSplit;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.utils.CloseableIterator;
@@ -34,7 +36,11 @@ public class SnapshotSplitScanner implements SplitScanner {
 
     private final SnapshotScanner snapshotScanner;
 
-    public SnapshotSplitScanner(
+    private SnapshotSplitScanner(SnapshotScanner scanner) {
+        this.snapshotScanner = scanner;
+    }
+
+    public static SnapshotSplitScanner ofSnapshotScanner(
             Table table, @Nullable int[] projectedFields, SnapshotSplit snapshotSplit) {
         Schema tableSchema = table.getDescriptor().getSchema();
         SnapshotScan snapshotScan =
@@ -43,7 +49,27 @@ public class SnapshotSplitScanner implements SplitScanner {
                         snapshotSplit.getSnapshotFiles(),
                         tableSchema,
                         projectedFields);
-        this.snapshotScanner = table.getSnapshotScanner(snapshotScan);
+        return new SnapshotSplitScanner(table.getSnapshotScanner(snapshotScan));
+    }
+
+    public static SnapshotSplitScanner ofHybridScanner(
+            Table table,
+            @Nullable int[] projectedFields,
+            HybridSnapshotLogSplit hybridSnapshotLogSplit) {
+        if (!hybridSnapshotLogSplit.getLogStoppingOffset().isPresent()) {
+            throw new IllegalArgumentException(
+                    "Stopping offset must greater than 0 for batch read.");
+        }
+        Schema tableSchema = table.getDescriptor().getSchema();
+        HybridScan hybridScan =
+                new HybridScan(
+                        hybridSnapshotLogSplit.getTableBucket(),
+                        hybridSnapshotLogSplit.getSnapshotFiles(),
+                        tableSchema,
+                        projectedFields,
+                        hybridSnapshotLogSplit.getLogStartingOffset(),
+                        hybridSnapshotLogSplit.getLogStoppingOffset().get());
+        return new SnapshotSplitScanner(table.getHybridScanner(hybridScan));
     }
 
     @Nullable

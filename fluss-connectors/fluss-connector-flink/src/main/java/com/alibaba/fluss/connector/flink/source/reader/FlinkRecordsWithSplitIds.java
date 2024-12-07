@@ -103,7 +103,7 @@ public class FlinkRecordsWithSplitIds implements RecordsWithSplitIds<RecordAndPo
         this.splitRecords = splitRecords;
         this.splitIterator = splitIterator;
         this.tableBucketIterator = tableBucketIterator;
-        this.finishedSplits = finishedSplits;
+        this.finishedSplits = new HashSet<>(finishedSplits);
         this.flinkSourceReaderMetrics = flinkSourceReaderMetrics;
     }
 

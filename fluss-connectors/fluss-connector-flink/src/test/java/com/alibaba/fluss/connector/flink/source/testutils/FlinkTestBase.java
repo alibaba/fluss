@@ -19,6 +19,7 @@ package com.alibaba.fluss.connector.flink.source.testutils;
 import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.admin.Admin;
+import com.alibaba.fluss.client.admin.OffsetSpec;
 import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.TableWriter;
@@ -26,6 +27,7 @@ import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.AutoPartitionTimeUnit;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -46,6 +48,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
+
+import javax.annotation.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -172,7 +176,7 @@ public class FlinkTestBase {
             throws Exception {
         int expectRecords = expected.size();
         List<String> actual = new ArrayList<>(expectRecords);
-        for (int i = 0; i < expectRecords; i++) {
+        for (int i = 0; i < expectRecords && iterator.hasNext(); i++) {
             actual.add(iterator.next().toString());
         }
         assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
@@ -303,5 +307,16 @@ public class FlinkTestBase {
             }
             tableWriter.flush();
         }
+    }
+
+    protected Map<Integer, Long> getLatestOffsets(
+            TablePath tablePath, @Nullable String partitionName, Collection<Integer> buckets)
+            throws Exception {
+        return admin.listOffsets(
+                        PhysicalTablePath.of(tablePath, partitionName),
+                        buckets,
+                        new OffsetSpec.LatestSpec())
+                .all()
+                .get();
     }
 }
