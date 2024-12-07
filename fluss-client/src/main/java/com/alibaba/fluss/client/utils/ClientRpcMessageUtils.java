@@ -33,11 +33,13 @@ import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
+import com.alibaba.fluss.rpc.messages.AlterTableRequest;
 import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotResponse;
@@ -60,6 +62,7 @@ import com.alibaba.fluss.rpc.messages.PbRemoteLogFetchInfo;
 import com.alibaba.fluss.rpc.messages.PbRemoteLogSegment;
 import com.alibaba.fluss.rpc.messages.PbRemotePathAndLocalFile;
 import com.alibaba.fluss.rpc.messages.PbSnapshotForBucket;
+import com.alibaba.fluss.rpc.messages.PbUpdateProperties;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
 import com.alibaba.fluss.rpc.messages.PutKvRequest;
 import com.alibaba.fluss.rpc.protocol.ApiError;
@@ -371,6 +374,35 @@ public class ClientRpcMessageUtils {
             throw new IllegalArgumentException("Unsupported offset spec: " + offsetSpec);
         }
         return listOffsetsRequest;
+    }
+
+    public static AlterTableRequest makeAlterTableRequest(
+            TablePath tablePath, UpdateProperties updateProperties) {
+        AlterTableRequest request = new AlterTableRequest();
+        request.setTablePath()
+                .setDatabaseName(tablePath.getDatabaseName())
+                .setTableName(tablePath.getTableName());
+        PbUpdateProperties pbUpdateProperties = new PbUpdateProperties();
+        pbUpdateProperties.addAllSetProperties(
+                updateProperties.getSetProperties().entrySet().stream()
+                        .map(
+                                entry ->
+                                        new PbKeyValue()
+                                                .setKey(entry.getKey())
+                                                .setValue(entry.getValue()))
+                        .collect(Collectors.toList()));
+        pbUpdateProperties.addAllResetProperties(updateProperties.getResetProperties());
+        pbUpdateProperties.addAllSetCustomProperties(
+                updateProperties.getSetCustomProperties().entrySet().stream()
+                        .map(
+                                entry ->
+                                        new PbKeyValue()
+                                                .setKey(entry.getKey())
+                                                .setValue(entry.getValue()))
+                        .collect(Collectors.toList()));
+        pbUpdateProperties.addAllResetCustomProperties(updateProperties.getResetCustomProperties());
+        request.setUpdateProperties(pbUpdateProperties);
+        return request;
     }
 
     public static List<PartitionInfo> toPartitionInfos(ListPartitionInfosResponse response) {

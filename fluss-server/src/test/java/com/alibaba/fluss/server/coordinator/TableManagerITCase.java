@@ -24,6 +24,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
+import com.alibaba.fluss.exception.InvalidAlterTableException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
@@ -34,6 +35,7 @@ import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.rpc.gateway.AdminGateway;
 import com.alibaba.fluss.rpc.gateway.AdminReadOnlyGateway;
 import com.alibaba.fluss.rpc.messages.GetTableResponse;
@@ -75,6 +77,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.config.ConfigOptions.TABLE_DATALAKE_ENABLED;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newAlterTableRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newCreateDatabaseRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newCreateTableRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDatabaseExistsRequest;
@@ -565,6 +569,132 @@ class TableManagerITCase {
                 .isInstanceOf(PartitionNotExistException.class)
                 .hasMessage(
                         "Table partition 'db1.partitioned_tb(p=not_exist_partition)' does not exist.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testAlterTable(boolean isCoordinatorServer) throws Exception {
+        AdminReadOnlyGateway gateway = getAdminOnlyGateway(isCoordinatorServer);
+        AdminGateway adminGateway = getAdminGateway();
+
+        String db1 = "db1";
+        String tb1 = "tb1";
+        TablePath tablePath = TablePath.of(db1, tb1);
+        TableDescriptor tableDescriptor = newTable();
+        // first create a database
+        adminGateway.createDatabase(newCreateDatabaseRequest(db1, false)).get();
+        adminGateway.createTable(newCreateTableRequest(tablePath, tableDescriptor, false)).get();
+
+        // test alter table for not exist table.
+        assertThatThrownBy(
+                        () ->
+                                adminGateway
+                                        .alterTable(
+                                                newAlterTableRequest(
+                                                        TablePath.of("db1", "not_exist_tb"),
+                                                        UpdateProperties.builder().build()))
+                                        .get())
+                .cause()
+                .isInstanceOf(TableNotExistException.class)
+                .hasMessageContaining("Table db1.not_exist_tb does not exist.");
+
+        // get the table and check it
+        GetTableResponse response = gateway.getTable(newGetTableRequest(tablePath)).get();
+        TableDescriptor gottenTable = TableDescriptor.fromJsonBytes(response.getTableJson());
+        assertThat(gottenTable).isEqualTo(tableDescriptor);
+
+        // 1. update table properties.
+        // 1.1 set support alter table property.
+        assertThat(gottenTable.getProperties().containsKey(TABLE_DATALAKE_ENABLED.key())).isFalse();
+        adminGateway
+                .alterTable(
+                        newAlterTableRequest(
+                                tablePath,
+                                UpdateProperties.builder()
+                                        .setProperty(TABLE_DATALAKE_ENABLED.key(), "true")
+                                        .build()))
+                .get();
+        response = gateway.getTable(newGetTableRequest(tablePath)).get();
+        gottenTable = TableDescriptor.fromJsonBytes(response.getTableJson());
+        assertThat(gottenTable.getProperties().get(TABLE_DATALAKE_ENABLED.key())).isEqualTo("true");
+
+        // 1.2 set unsupported alter table property.
+        assertThatThrownBy(
+                        () ->
+                                adminGateway
+                                        .alterTable(
+                                                newAlterTableRequest(
+                                                        tablePath,
+                                                        UpdateProperties.builder()
+                                                                .setProperty(
+                                                                        ConfigOptions.TABLE_LOG_TTL
+                                                                                .key(),
+                                                                        "true")
+                                                                .build()))
+                                        .get())
+                .cause()
+                .isInstanceOf(InvalidAlterTableException.class)
+                .hasMessageContaining(
+                        "Update table property: 'table.log.ttl' is not supported yet.");
+
+        // 1.3 reset exist support alter table property.
+        adminGateway
+                .alterTable(
+                        newAlterTableRequest(
+                                tablePath,
+                                UpdateProperties.builder()
+                                        .resetProperty(TABLE_DATALAKE_ENABLED.key())
+                                        .build()))
+                .get();
+        response = gateway.getTable(newGetTableRequest(tablePath)).get();
+        gottenTable = TableDescriptor.fromJsonBytes(response.getTableJson());
+        assertThat(gottenTable.getProperties().containsKey(TABLE_DATALAKE_ENABLED.key())).isFalse();
+
+        // 1.4 reset not exist support alter table property.
+        assertThatThrownBy(
+                        () ->
+                                adminGateway
+                                        .alterTable(
+                                                newAlterTableRequest(
+                                                        tablePath,
+                                                        UpdateProperties.builder()
+                                                                .resetProperty(
+                                                                        TABLE_DATALAKE_ENABLED
+                                                                                .key())
+                                                                .build()))
+                                        .get())
+                .cause()
+                .isInstanceOf(InvalidAlterTableException.class)
+                .hasMessageContaining(
+                        "Reset table property: 'table.datalake.enabled' is not an exist table property in current table.");
+
+        // 2. update custom properties.
+        // 2.1 set support custom property.
+        assertThat(gottenTable.getCustomProperties().containsKey("my.option")).isFalse();
+        adminGateway
+                .alterTable(
+                        newAlterTableRequest(
+                                tablePath,
+                                UpdateProperties.builder()
+                                        .setCustomProperty("my.option", "hello")
+                                        .build()))
+                .get();
+        response = gateway.getTable(newGetTableRequest(tablePath)).get();
+        gottenTable = TableDescriptor.fromJsonBytes(response.getTableJson());
+        assertThat(gottenTable.getCustomProperties().get("my.option")).isEqualTo("hello");
+
+        // 2.2 reset support custom property.
+        adminGateway
+                .alterTable(
+                        newAlterTableRequest(
+                                tablePath,
+                                UpdateProperties.builder()
+                                        .resetCustomProperty("my.option")
+                                        .build()))
+                .get();
+        response = gateway.getTable(newGetTableRequest(tablePath)).get();
+        gottenTable = TableDescriptor.fromJsonBytes(response.getTableJson());
+        assertThat(gottenTable.getCustomProperties().containsKey("my.option")).isFalse();
     }
 
     private void checkBucketMetadata(int expectBucketCount, List<PbBucketMetadata> bucketMetadata) {

@@ -21,6 +21,7 @@ import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.FlussRuntimeException;
+import com.alibaba.fluss.exception.InvalidAlterTableException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
@@ -29,6 +30,8 @@ import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
+import com.alibaba.fluss.server.entity.AlterTableData;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.server.zk.data.TableRegistration;
@@ -36,21 +39,18 @@ import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
 import com.alibaba.fluss.utils.function.RunnableWithException;
 import com.alibaba.fluss.utils.function.ThrowingRunnable;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import javax.annotation.Nullable;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
+import static com.alibaba.fluss.config.FlussConfigUtils.TABLE_OPTIONS_SUPPORT_ALTER;
+
 /** A manager for metadata. */
 public class MetaDataManager {
-
-    private static final Logger LOG = LoggerFactory.getLogger(MetaDataManager.class);
-
     private final ZooKeeperClient zookeeperClient;
 
     public MetaDataManager(ZooKeeperClient zookeeperClient) {
@@ -137,6 +137,22 @@ public class MetaDataManager {
         uncheck(() -> zookeeperClient.deleteTable(tablePath), "Fail to drop table: " + tablePath);
     }
 
+    public void alterTable(AlterTableData alterTableData) {
+        TablePath tablePath = alterTableData.getTablePath();
+        if (!tableExists(tablePath)) {
+            throw new TableNotExistException("Table " + tablePath + " does not exist.");
+        }
+
+        // validate and apply update properties.
+        TableRegistration newTableReg =
+                validateAndApplyUpdateProperties(
+                        tablePath, alterTableData.getUpdatePropertiesData());
+
+        uncheck(
+                () -> zookeeperClient.updateTable(tablePath, newTableReg),
+                "Fail to alter table: " + tablePath);
+    }
+
     public void completeDeleteTable(long tableId) {
         // final step for delete a table.
         // delete bucket assignments node, which will also delete the bucket state node,
@@ -215,6 +231,17 @@ public class MetaDataManager {
     }
 
     public TableInfo getTable(TablePath tablePath) throws TableNotExistException {
+        TableRegistration tableReg = getTableRegistration(tablePath);
+        SchemaInfo schemaInfo = getLatestSchema(tablePath);
+        return new TableInfo(
+                tablePath,
+                tableReg.tableId,
+                tableReg.toTableDescriptor(schemaInfo.getSchema()),
+                schemaInfo.getSchemaId());
+    }
+
+    private TableRegistration getTableRegistration(TablePath tablePath)
+            throws TableNotExistException {
         Optional<TableRegistration> optionalTable;
         try {
             optionalTable = zookeeperClient.getTable(tablePath);
@@ -224,13 +251,7 @@ public class MetaDataManager {
         if (!optionalTable.isPresent()) {
             throw new TableNotExistException("Table '" + tablePath + "' does not exist.");
         }
-        SchemaInfo schemaInfo = getLatestSchema(tablePath);
-        TableRegistration tableReg = optionalTable.get();
-        return new TableInfo(
-                tablePath,
-                tableReg.tableId,
-                tableReg.toTableDescriptor(schemaInfo.getSchema()),
-                schemaInfo.getSchemaId());
+        return optionalTable.get();
     }
 
     public SchemaInfo getLatestSchema(TablePath tablePath) throws SchemaNotExistException {
@@ -301,6 +322,64 @@ public class MetaDataManager {
             runnable.run();
         } catch (Exception e) {
             throw new FlussRuntimeException(errorMsg, e);
+        }
+    }
+
+    private TableRegistration validateAndApplyUpdateProperties(
+            TablePath tablePath, UpdateProperties updatePropertiesData) {
+        TableRegistration tableReg = getTableRegistration(tablePath);
+        Map<String, String> properties = new HashMap<>(tableReg.properties);
+        Map<String, String> customProperties = new HashMap<>(tableReg.customProperties);
+        // 1. set table properties.
+        for (Map.Entry<String, String> setProperty :
+                updatePropertiesData.getSetProperties().entrySet()) {
+            validateSetTableProperty(setProperty.getKey());
+            properties.put(setProperty.getKey(), setProperty.getValue());
+        }
+        // 2. reset table properties.
+        for (String resetProperty : updatePropertiesData.getResetProperties()) {
+            validateResetTableProperty(resetProperty, properties);
+            properties.remove(resetProperty);
+        }
+        // 3. set custom properties.
+        customProperties.putAll(updatePropertiesData.getSetCustomProperties());
+        // 4. reset custom properties.
+        for (String resetCustomProperty : updatePropertiesData.getResetCustomProperties()) {
+            validateResetCustomProperty(resetCustomProperty, customProperties);
+            customProperties.remove(resetCustomProperty);
+        }
+
+        return tableReg.copy(properties, customProperties);
+    }
+
+    private void validateSetTableProperty(String setKey) {
+        if (!TABLE_OPTIONS_SUPPORT_ALTER.contains(setKey)) {
+            throw new InvalidAlterTableException(
+                    "Update table property: '" + setKey + "' is not supported yet.");
+        }
+    }
+
+    private void validateResetTableProperty(String resetKey, Map<String, String> oldProperties) {
+        if (!TABLE_OPTIONS_SUPPORT_ALTER.contains(resetKey)) {
+            throw new UnsupportedOperationException(
+                    "Reset table property: '" + resetKey + "' is not supported yet.");
+        }
+
+        if (!oldProperties.containsKey(resetKey)) {
+            throw new InvalidAlterTableException(
+                    "Reset table property: '"
+                            + resetKey
+                            + "' is not an exist table property in current table.");
+        }
+    }
+
+    private void validateResetCustomProperty(
+            String resetKey, Map<String, String> oldCustomProperties) {
+        if (!oldCustomProperties.containsKey(resetKey)) {
+            throw new InvalidAlterTableException(
+                    "The custom property: '"
+                            + resetKey
+                            + "' to reset is not an exist custom property in current table.");
         }
     }
 }
