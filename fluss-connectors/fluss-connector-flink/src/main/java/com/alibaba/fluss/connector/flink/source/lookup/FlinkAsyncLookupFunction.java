@@ -28,6 +28,7 @@ import com.alibaba.fluss.connector.flink.utils.FlussRowToFlinkRowConverter;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
+import com.alibaba.fluss.row.ProjectedRow;
 
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.utils.ProjectedRowData;
@@ -171,9 +172,9 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
                         if (row == null) {
                             resultFuture.complete(Collections.emptyList());
                         } else {
-                            // TODO: we can project fluss row first,
-                            //  to avoid deserialize unnecessary fields
-                            RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
+                            RowData flinkRow =
+                                    flussRowToFlinkRowConverter.toFlinkRowData(
+                                            ProjectedRow.from(projection).replaceRow(row));
                             if (remainingFilter != null && !remainingFilter.isMatch(flinkRow)) {
                                 resultFuture.complete(Collections.emptyList());
                             } else {
