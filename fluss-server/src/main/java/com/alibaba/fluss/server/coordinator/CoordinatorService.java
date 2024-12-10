@@ -28,6 +28,8 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.messages.AdjustIsrRequest;
 import com.alibaba.fluss.rpc.messages.AdjustIsrResponse;
+import com.alibaba.fluss.rpc.messages.AlterTableRequest;
+import com.alibaba.fluss.rpc.messages.AlterTableResponse;
 import com.alibaba.fluss.rpc.messages.CommitKvSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.CommitKvSnapshotResponse;
 import com.alibaba.fluss.rpc.messages.CommitLakeTableSnapshotRequest;
@@ -68,6 +70,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
+import static com.alibaba.fluss.server.utils.RpcMessageUtils.getAlterTableData;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.getCommitLakeTableSnapshotData;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.toTablePath;
 
@@ -205,6 +208,13 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         DropTableResponse response = new DropTableResponse();
         metadataManager.dropTable(
                 toTablePath(request.getTablePath()), request.isIgnoreIfNotExists());
+        return CompletableFuture.completedFuture(response);
+    }
+
+    @Override
+    public CompletableFuture<AlterTableResponse> alterTable(AlterTableRequest request) {
+        AlterTableResponse response = new AlterTableResponse();
+        metadataManager.alterTable(getAlterTableData(request));
         return CompletableFuture.completedFuture(response);
     }
 
