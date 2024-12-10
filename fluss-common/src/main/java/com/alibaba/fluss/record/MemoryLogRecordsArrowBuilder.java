@@ -236,7 +236,12 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
         }
 
         // update sizeInBytes and recordCount if needed
-        getSizeInBytes();
+        if (recordCount != arrowWriter.getRecordsCount()) {
+            // make size in bytes up-to-date
+            sizeInBytes =
+                    ARROW_ROWKIND_OFFSET + rowKindWriter.sizeInBytes() + arrowWriter.sizeInBytes();
+            recordCount = arrowWriter.getRecordsCount();
+        }
         isClosed = true;
     }
 
@@ -246,12 +251,6 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
     }
 
     public int getSizeInBytes() {
-        if (recordCount != arrowWriter.getRecordsCount()) {
-            // make size in bytes up-to-date
-            sizeInBytes =
-                    ARROW_ROWKIND_OFFSET + rowKindWriter.sizeInBytes() + arrowWriter.sizeInBytes();
-            recordCount = arrowWriter.getRecordsCount();
-        }
         return sizeInBytes;
     }
 
