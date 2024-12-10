@@ -27,6 +27,7 @@ import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidMetadataException;
 import com.alibaba.fluss.fs.FsPath;
+import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -87,7 +88,6 @@ public class LogFetcher implements Closeable {
     private final LogRecordReadContext remoteReadContext;
     @Nullable private final Projection projection;
     private final RpcClient rpcClient;
-    private final Configuration conf;
     private final int maxFetchBytes;
     private final int maxBucketFetchBytes;
     private final boolean isCheckCrcs;
@@ -95,6 +95,7 @@ public class LogFetcher implements Closeable {
     private final LogFetchBuffer logFetchBuffer;
     private final LogFetchCollector logFetchCollector;
     private final RemoteLogDownloader remoteLogDownloader;
+    private final LogFormat logFormat;
 
     @GuardedBy("this")
     private final Set<Integer> nodesWithPendingFetchRequests;
@@ -116,12 +117,12 @@ public class LogFetcher implements Closeable {
             RemoteFileDownloader remoteFileDownloader) {
         this.tablePath = tableInfo.getTablePath();
         this.isPartitioned = tableInfo.getTableDescriptor().isPartitioned();
+        this.logFormat = tableInfo.getTableDescriptor().getLogFormat();
         this.readContext = LogRecordReadContext.createReadContext(tableInfo, projection);
         this.remoteReadContext = LogRecordReadContext.createReadContext(tableInfo, null);
         this.projection = projection;
         this.rpcClient = rpcClient;
         this.logScannerStatus = logScannerStatus;
-        this.conf = conf;
         this.maxFetchBytes = (int) conf.get(ConfigOptions.LOG_FETCH_MAX_BYTES).getBytes();
         this.maxBucketFetchBytes =
                 (int) conf.get(ConfigOptions.LOG_FETCH_MAX_BYTES_FOR_BUCKET).getBytes();
@@ -416,7 +417,7 @@ public class LogFetcher implements Closeable {
                                         .setMaxBytes(maxFetchBytes);
                         PbFetchLogReqForTable reqForTable =
                                 new PbFetchLogReqForTable().setTableId(finalTableId);
-                        if (projection != null) {
+                        if (projectPushDownEnable()) {
                             reqForTable
                                     .setProjectionPushdownEnabled(true)
                                     .setProjectedFields(projection.getProjectionInOrder());
@@ -440,6 +441,13 @@ public class LogFetcher implements Closeable {
         }
 
         return logScannerStatus.fetchableBuckets(tableBucket -> !exclude.contains(tableBucket));
+    }
+
+    private boolean projectPushDownEnable() {
+        // Currently, only ARROW log format supports projection push down to server. Other log
+        // formats will do project in client, see DefaultCompletedFetch#toScanRecord() for more
+        // details.
+        return projection != null && logFormat == LogFormat.ARROW;
     }
 
     private Integer getTableBucketLeader(TableBucket tableBucket) {
