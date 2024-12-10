@@ -22,6 +22,7 @@ import com.alibaba.fluss.client.scanner.log.LogScanner;
 import com.alibaba.fluss.client.scanner.log.ScanRecords;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
+import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.indexed.IndexedRow;
 
@@ -35,8 +36,6 @@ import java.util.List;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_INFO;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_INFO_PK;
-import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
-import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
 import static com.alibaba.fluss.testutils.InternalRowListAssert.assertThatRows;
@@ -56,8 +55,9 @@ class FlussFailServerTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testAppend() throws Exception {
-        createTable(DATA1_TABLE_PATH, DATA1_TABLE_INFO.getTableDescriptor(), false);
-        try (Table table = conn.getTable(DATA1_TABLE_PATH)) {
+        TablePath tablePath = TablePath.of("test_db_1", "test_fail_append_table_1");
+        createTable(tablePath, DATA1_TABLE_INFO.getTableDescriptor(), false);
+        try (Table table = conn.getTable(tablePath)) {
             AppendWriter appendWriter = table.getAppendWriter();
             IndexedRow row = row(DATA1_ROW_TYPE, new Object[] {1, "a"});
 
@@ -80,9 +80,10 @@ class FlussFailServerTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPut() throws Exception {
-        createTable(DATA1_TABLE_PATH_PK, DATA1_TABLE_INFO_PK.getTableDescriptor(), false);
+        TablePath tablePath = TablePath.of("test_db_1", "test_fail_kv_table_1");
+        createTable(tablePath, DATA1_TABLE_INFO_PK.getTableDescriptor(), false);
         // put one row
-        try (Table table = conn.getTable(DATA1_TABLE_PATH_PK)) {
+        try (Table table = conn.getTable(tablePath)) {
             UpsertWriter upsertWriter = table.getUpsertWriter();
             InternalRow row = compactedRow(DATA1_ROW_TYPE, new Object[] {1, "a"});
             upsertWriter.upsert(row).get();
@@ -106,10 +107,11 @@ class FlussFailServerTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testLogScan() throws Exception {
-        createTable(DATA1_TABLE_PATH, DATA1_TABLE_INFO.getTableDescriptor(), false);
+        TablePath tablePath = TablePath.of("test_db_1", "test_fail_log_scan_table_1");
+        createTable(tablePath, DATA1_TABLE_INFO.getTableDescriptor(), false);
         // append one row.
         IndexedRow row = row(DATA1_ROW_TYPE, new Object[] {1, "a"});
-        try (Table table = conn.getTable(DATA1_TABLE_PATH);
+        try (Table table = conn.getTable(tablePath);
                 LogScanner logScanner = createLogScanner(table)) {
             subscribeFromBeginning(logScanner, table);
             AppendWriter appendWriter = table.getAppendWriter();

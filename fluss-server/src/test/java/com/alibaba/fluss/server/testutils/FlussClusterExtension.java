@@ -57,6 +57,8 @@ import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.Extension;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -70,6 +72,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.toServerNode;
@@ -86,6 +89,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public final class FlussClusterExtension
         implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
+
+    private static final Logger LOG = LoggerFactory.getLogger(FlussClusterExtension.class);
 
     public static final String BUILTIN_DATABASE = "fluss";
 
@@ -195,6 +200,7 @@ public final class FlussClusterExtension
             coordinatorServer.close();
             coordinatorServer = null;
         }
+
         if (zooKeeperClient != null) {
             zooKeeperClient.close();
             zooKeeperClient = null;
@@ -359,9 +365,10 @@ public final class FlussClusterExtension
     public void waitUtilAllGatewayHasSameMetadata() {
         for (AdminReadOnlyGateway gateway : collectAllRpcGateways()) {
             retry(
-                    Duration.ofMinutes(1),
+                    Duration.ofMinutes(2),
                     () -> {
-                        MetadataResponse response = gateway.metadata(new MetadataRequest()).get();
+                        MetadataResponse response =
+                                gateway.metadata(new MetadataRequest()).get(2L, TimeUnit.MINUTES);
                         assertThat(response.hasCoordinatorServer()).isTrue();
                         // check coordinator server node
                         ServerNode coordinatorNode =

@@ -17,6 +17,8 @@
 package com.alibaba.fluss.server.zk;
 
 import com.alibaba.fluss.annotation.Internal;
+import com.alibaba.fluss.annotation.VisibleForTesting;
+import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -57,6 +59,7 @@ import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.CuratorFra
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.CreateMode;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.data.Stat;
+import com.alibaba.fluss.utils.function.RunnableWithException;
 import com.alibaba.fluss.utils.types.Tuple2;
 
 import org.slf4j.Logger;
@@ -648,6 +651,18 @@ public class ZooKeeperClient implements AutoCloseable {
     // Utils
     // --------------------------------------------------------------------------------------------
 
+    /** Deletes a zk path. */
+    @VisibleForTesting
+    public void deletePath(String path) {
+        uncheck(
+                () -> {
+                    if (zkClient.checkExists().forPath(path) != null) {
+                        zkClient.delete().guaranteed().forPath(path);
+                    }
+                },
+                "Fail to delete path: " + path);
+    }
+
     /**
      * Gets all the child nodes at a given zk node path.
      *
@@ -672,6 +687,14 @@ public class ZooKeeperClient implements AutoCloseable {
         LOG.info("Closing...");
         if (curatorFrameworkWrapper != null) {
             curatorFrameworkWrapper.close();
+        }
+    }
+
+    private static void uncheck(RunnableWithException runnable, String errorMsg) {
+        try {
+            runnable.run();
+        } catch (Exception e) {
+            throw new FlussRuntimeException(errorMsg, e);
         }
     }
 }

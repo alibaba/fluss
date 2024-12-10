@@ -55,10 +55,11 @@ class FlussPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPartitionedPrimaryKeyTable() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        TablePath tablePath = TablePath.of("test_db_1", "partitioned_primary_key_table_1");
+        Schema schema = createPartitionedTable(tablePath, true);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(DATA1_TABLE_PATH_PK);
-        Table table = conn.getTable(DATA1_TABLE_PATH_PK);
+                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+        Table table = conn.getTable(tablePath);
         UpsertWriter upsertWriter = table.getUpsertWriter();
         int recordsPerPartition = 5;
         // now, put some data to the partitions
@@ -94,9 +95,10 @@ class FlussPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPartitionedLogTable() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH, false);
+        TablePath tablePath = TablePath.of("test_db_1", "partitioned_log_table_1");
+        Schema schema = createPartitionedTable(tablePath, false);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(DATA1_TABLE_PATH);
+                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
         Table table = conn.getTable(DATA1_TABLE_PATH);
         AppendWriter appendWriter = table.getAppendWriter();
         int recordsPerPartition = 5;
