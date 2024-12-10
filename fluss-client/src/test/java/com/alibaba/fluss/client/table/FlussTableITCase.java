@@ -248,7 +248,9 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 expectedRows.set(i, new Object[] {expectedRows.get(i)[1]});
             }
             actualRows =
-                    table.limitScan(new TableBucket(tableId, 0), limitSize, projectedFields).get()
+                    table
+                            .limitScan(new TableBucket(tableId, 0), limitSize, projectedFields)
+                            .get()
                             .stream()
                             .map(ScanRecord::getRow)
                             .collect(Collectors.toList());
@@ -301,7 +303,9 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 expectedRows.set(i, new Object[] {expectedRows.get(i)[1]});
             }
             actualRows =
-                    table.limitScan(new TableBucket(tableId, 0), limitSize, projectedFields).get()
+                    table
+                            .limitScan(new TableBucket(tableId, 0), limitSize, projectedFields)
+                            .get()
                             .stream()
                             .map(ScanRecord::getRow)
                             .collect(Collectors.toList());
