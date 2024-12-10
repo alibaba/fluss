@@ -59,7 +59,11 @@ import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.record.TestData.DATA_1_WITH_KEY_AND_VALUE;
 import static com.alibaba.fluss.record.TestData.EXPECTED_LOG_RESULTS_FOR_DATA_1_WITH_PK;
 import static com.alibaba.fluss.server.testutils.KvTestUtils.assertLookupResponse;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.assertFetchLogResponseWithRowKind;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createTable;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newFetchLogRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newLookupRequest;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newPutKvRequest;
 import static com.alibaba.fluss.testutils.DataTestUtils.assertLogRecordsEquals;
 import static com.alibaba.fluss.testutils.DataTestUtils.assertLogRecordsEqualsWithRowKind;
 import static com.alibaba.fluss.testutils.DataTestUtils.genKvRecordBatch;
@@ -103,7 +107,7 @@ public class ReplicaFetcherITCase {
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
 
         long tableId =
-                RpcMessageTestUtils.createTable(
+                createTable(
                         FLUSS_CLUSTER_EXTENSION,
                         DATA1_TABLE_PATH,
                         data1NonPkTableInfo.getTableDescriptor());
@@ -131,9 +135,7 @@ public class ReplicaFetcherITCase {
 
         // check leader log data.
         RpcMessageTestUtils.assertFetchLogResponse(
-                leaderGateWay
-                        .fetchLog(RpcMessageTestUtils.newFetchLogRequest(-1, tableId, bucketId, 0L))
-                        .get(),
+                leaderGateWay.fetchLog(newFetchLogRequest(-1, tableId, bucketId, 0L)).get(),
                 tableId,
                 bucketId,
                 10L,
@@ -185,7 +187,7 @@ public class ReplicaFetcherITCase {
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
 
         long tableId =
-                RpcMessageTestUtils.createTable(
+                createTable(
                         FLUSS_CLUSTER_EXTENSION,
                         DATA1_TABLE_PATH_PK,
                         data1PkTableInfo.getTableDescriptor());
@@ -202,7 +204,7 @@ public class ReplicaFetcherITCase {
         assertPutKvResponse(
                 leaderGateWay
                         .putKv(
-                                RpcMessageTestUtils.newPutKvRequest(
+                                newPutKvRequest(
                                         tableId,
                                         bucketId,
                                         -1,
@@ -211,10 +213,8 @@ public class ReplicaFetcherITCase {
                 bucketId);
 
         // check leader log data.
-        RpcMessageTestUtils.assertFetchLogResponseWithRowKind(
-                leaderGateWay
-                        .fetchLog(RpcMessageTestUtils.newFetchLogRequest(-1, tableId, bucketId, 0L))
-                        .get(),
+        assertFetchLogResponseWithRowKind(
+                leaderGateWay.fetchLog(newFetchLogRequest(-1, tableId, bucketId, 0L)).get(),
                 tableId,
                 bucketId,
                 8L,
@@ -228,6 +228,19 @@ public class ReplicaFetcherITCase {
                         .collect(Collectors.toList())) {
             ReplicaManager replicaManager =
                     FLUSS_CLUSTER_EXTENSION.getTabletServerById(followId).getReplicaManager();
+
+            // wait util follower highWaterMark equals leader. So we can fetch log from follower
+            // before highWaterMark.
+            retry(
+                    Duration.ofMinutes(1),
+                    () ->
+                            assertThat(
+                                            replicaManager
+                                                    .getReplicaOrException(tb)
+                                                    .getLogTablet()
+                                                    .getHighWatermark())
+                                    .isEqualTo(8L));
+
             CompletableFuture<Map<TableBucket, FetchLogResultForBucket>> future =
                     new CompletableFuture<>();
             // mock client fetch from follower.
@@ -243,17 +256,6 @@ public class ReplicaFetcherITCase {
             assertThat(records).isNotNull();
             assertLogRecordsEqualsWithRowKind(
                     DATA1_ROW_TYPE, records, EXPECTED_LOG_RESULTS_FOR_DATA_1_WITH_PK);
-
-            // wait util follower highWaterMark equals leader.
-            retry(
-                    Duration.ofMinutes(1),
-                    () ->
-                            assertThat(
-                                            replicaManager
-                                                    .getReplicaOrException(tb)
-                                                    .getLogTablet()
-                                                    .getHighWatermark())
-                                    .isEqualTo(8L));
         }
     }
 
@@ -263,7 +265,7 @@ public class ReplicaFetcherITCase {
 
         // create a table and wait all replica ready
         long tableId =
-                RpcMessageTestUtils.createTable(
+                createTable(
                         FLUSS_CLUSTER_EXTENSION,
                         DATA1_TABLE_PATH_PK,
                         data1PkTableInfo.getTableDescriptor());
@@ -298,8 +300,7 @@ public class ReplicaFetcherITCase {
                         Tuple2.of("k2", new Object[] {3, "b1"}));
 
         CompletableFuture<PutKvResponse> putResponse =
-                leaderGateWay.putKv(
-                        RpcMessageTestUtils.newPutKvRequest(tableId, bucketId, -1, kvRecords));
+                leaderGateWay.putKv(newPutKvRequest(tableId, bucketId, -1, kvRecords));
 
         // wait util the log has been written
         Replica replica = FLUSS_CLUSTER_EXTENSION.waitAndGetLeaderReplica(tb);
