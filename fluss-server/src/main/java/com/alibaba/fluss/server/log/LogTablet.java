@@ -103,6 +103,9 @@ public final class LogTablet {
     private final boolean isChangeLog;
 
     @GuardedBy("lock")
+    private volatile LogOffsetMetadata ackedLogEndOffsetMetadata;
+
+    @GuardedBy("lock")
     private volatile LogOffsetMetadata highWatermarkMetadata;
 
     // The minimum offset that should be retained in the local log. This is used to ensure that,
@@ -136,6 +139,7 @@ public final class LogTablet {
         int writerExpirationCheckIntervalMs =
                 (int) conf.get(ConfigOptions.WRITER_ID_EXPIRATION_CHECK_INTERVAL).toMillis();
         this.writerStateManager = writerStateManager;
+        this.ackedLogEndOffsetMetadata = new LogOffsetMetadata(0L);
         this.highWatermarkMetadata = new LogOffsetMetadata(0L);
 
         this.scheduler = scheduler;
@@ -402,31 +406,46 @@ public final class LogTablet {
         LOG.trace("Setting high watermark {}", newHighWatermark);
     }
 
-    /**
-     * Update the highWatermark to a new value if and only if it is larger than the old value. It is
-     * an error to update to a value which is larger than the log end offset.
-     *
-     * <p>This method is intended to be used by the leader to update the highWatermark after
-     * follower fetch offsets have been updated.
-     */
-    public Optional<LogOffsetMetadata> maybeIncrementHighWatermark(
-            LogOffsetMetadata newHighWatermark) throws IOException {
-        if (newHighWatermark.getMessageOffset() > localLogEndOffset()) {
-            throw new IllegalArgumentException(
-                    String.format(
-                            "HighWatermark %s update exceeds current log end offset %s",
-                            newHighWatermark, localLog.getLocalLogEndOffsetMetadata()));
+    private void updateAckedLogEndOffsetMetadata(LogOffsetMetadata newAckedLogEndOffset) {
+        if (newAckedLogEndOffset.getMessageOffset() < 0) {
+            throw new IllegalArgumentException("Acked log end offset should be non-negative");
         }
         synchronized (lock) {
-            LogOffsetMetadata oldHighWatermark = fetchHighWatermarkMetadata();
-            // Ensure that the highWatermark increases monotonically. We also update the
-            // highWatermark when the new offset metadata is on a newer segment, which occurs
-            // whenever the log is rolled to a new segment.
-            if (oldHighWatermark.getMessageOffset() < newHighWatermark.getMessageOffset()
-                    || (oldHighWatermark.getMessageOffset() == newHighWatermark.getMessageOffset()
-                            && oldHighWatermark.onOlderSegment(newHighWatermark))) {
-                updateHighWatermarkMetadata(newHighWatermark);
-                return Optional.of(oldHighWatermark);
+            if (newAckedLogEndOffset.getMessageOffset()
+                    < ackedLogEndOffsetMetadata.getMessageOffset()) {
+                LOG.warn(
+                        "Non-monotonic update of Acked log end offset from {} to {}",
+                        ackedLogEndOffsetMetadata,
+                        newAckedLogEndOffset);
+            }
+            ackedLogEndOffsetMetadata = newAckedLogEndOffset;
+        }
+        LOG.trace("Setting acked log end offset to {}", newAckedLogEndOffset);
+    }
+
+    /**
+     * Update the ackedLogEndOffset to a new value if and only if it is larger than the old value.
+     * It is an error to update to a value which is larger than the log end offset.
+     *
+     * <p>This method is intended to be used by the leader to update the ackedLogEndOffset after
+     * follower fetch offsets have been updated.
+     */
+    public Optional<LogOffsetMetadata> maybeIncrementAckedLogEndOffset(
+            LogOffsetMetadata newAckedLogEndOffset) throws IOException {
+        if (newAckedLogEndOffset.getMessageOffset() > localLogEndOffset()) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "AckedLogEndOffset %s update exceeds current log end offset %s",
+                            newAckedLogEndOffset, localLog.getLocalLogEndOffsetMetadata()));
+        }
+        synchronized (lock) {
+            LogOffsetMetadata oldAckedLogEndOffset = fetchAckedLogEndOffsetMetadata();
+            if (oldAckedLogEndOffset.getMessageOffset() < newAckedLogEndOffset.getMessageOffset()
+                    || (oldAckedLogEndOffset.getMessageOffset()
+                                    == newAckedLogEndOffset.getMessageOffset()
+                            && oldAckedLogEndOffset.onOlderSegment(newAckedLogEndOffset))) {
+                updateAckedLogEndOffsetMetadata(newAckedLogEndOffset);
+                return Optional.of(oldAckedLogEndOffset);
             } else {
                 return Optional.empty();
             }
@@ -546,6 +565,26 @@ public final class LogTablet {
             synchronized (lock) {
                 LogOffsetMetadata fullOffset = convertToOffsetMetadataOrThrow(getHighWatermark());
                 updateHighWatermarkMetadata(fullOffset);
+                return fullOffset;
+            }
+        } else {
+            return offsetMetadata;
+        }
+    }
+
+    /**
+     * Get the offset and metadata for the current acked log end offset. If offset metadata is not
+     * known, this will do a lookup in the index and cache the result.
+     */
+    LogOffsetMetadata fetchAckedLogEndOffsetMetadata() throws IOException {
+        localLog.checkIfMemoryMappedBufferClosed();
+        LogOffsetMetadata offsetMetadata = ackedLogEndOffsetMetadata;
+        if (offsetMetadata.messageOffsetOnly()) {
+            synchronized (lock) {
+                LogOffsetMetadata fullOffset =
+                        convertToOffsetMetadataOrThrow(
+                                ackedLogEndOffsetMetadata.getMessageOffset());
+                updateAckedLogEndOffsetMetadata(fullOffset);
                 return fullOffset;
             }
         } else {
