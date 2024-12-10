@@ -25,6 +25,7 @@ import com.alibaba.fluss.connector.flink.utils.FlinkRowToFlussRowConverter;
 import com.alibaba.fluss.connector.flink.utils.FlussRowToFlinkRowConverter;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
+import com.alibaba.fluss.row.ProjectedRow;
 
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.utils.ProjectedRowData;
@@ -124,8 +125,9 @@ public class FlinkLookupFunction extends LookupFunction {
             try {
                 InternalRow row = table.lookup(flussKeyRow).get().getRow();
                 if (row != null) {
-                    // TODO: we can project fluss row first, to avoid deserialize unnecessary fields
-                    RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
+                    RowData flinkRow =
+                            flussRowToFlinkRowConverter.toFlinkRowData(
+                                    ProjectedRow.from(projection).replaceRow(row));
                     if (remainingFilter == null || remainingFilter.isMatch(flinkRow)) {
                         return Collections.singletonList(maybeProject(flinkRow));
                     } else {
