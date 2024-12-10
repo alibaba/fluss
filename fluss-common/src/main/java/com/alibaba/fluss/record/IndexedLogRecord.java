@@ -19,7 +19,6 @@ package com.alibaba.fluss.record;
 import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.memory.MemorySegment;
 import com.alibaba.fluss.memory.MemorySegmentOutputView;
-import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.MemoryAwareGetters;
 import com.alibaba.fluss.row.indexed.IndexedRow;
@@ -36,12 +35,13 @@ import static com.alibaba.fluss.record.DefaultLogRecordBatch.LENGTH_LENGTH;
  * additional information regarding copyright ownership. */
 
 /**
- * This class is an immutable log record and can be directly persisted. The schema is as follows:
+ * This class is an immutable log record and can be directly persisted for indexed row format. The
+ * schema is as follows:
  *
  * <ul>
  *   <li>Length => int32
  *   <li>Attributes => Int8
- *   <li>Value => {@link InternalRow}
+ *   <li>Value => {@link IndexedRow}
  * </ul>
  *
  * <p>The current record attributes are depicted below:
@@ -54,8 +54,7 @@ import static com.alibaba.fluss.record.DefaultLogRecordBatch.LENGTH_LENGTH;
  * @since 0.1
  */
 @PublicEvolving
-// TODO: should rename to IndexedLogRecord as it only indexed row?
-public class DefaultLogRecord implements LogRecord {
+public class IndexedLogRecord implements LogRecord {
 
     private static final int ATTRIBUTES_LENGTH = 1;
 
@@ -67,7 +66,7 @@ public class DefaultLogRecord implements LogRecord {
     private int offset;
     private int sizeInBytes;
 
-    DefaultLogRecord(long logOffset, long timestamp, DataType[] fieldTypes) {
+    IndexedLogRecord(long logOffset, long timestamp, DataType[] fieldTypes) {
         this.logOffset = logOffset;
         this.fieldTypes = fieldTypes;
         this.timestamp = timestamp;
@@ -93,7 +92,7 @@ public class DefaultLogRecord implements LogRecord {
             return false;
         }
 
-        DefaultLogRecord that = (DefaultLogRecord) o;
+        IndexedLogRecord that = (IndexedLogRecord) o;
         return sizeInBytes == that.sizeInBytes
                 && segment.equalTo(that.segment, offset, that.offset, sizeInBytes);
     }
@@ -122,17 +121,12 @@ public class DefaultLogRecord implements LogRecord {
     @Override
     public InternalRow getRow() {
         int rowOffset = LENGTH_LENGTH + ATTRIBUTES_LENGTH;
-        // TODO currently, we only support indexed row.
-        return deserializeInternalRow(
-                sizeInBytes - rowOffset,
-                segment,
-                offset + rowOffset,
-                fieldTypes,
-                LogFormat.INDEXED);
+        return deserializeIndexedRow(
+                sizeInBytes - rowOffset, segment, offset + rowOffset, fieldTypes);
     }
 
     /** Write the record to input `target` and return its size. */
-    public static int writeTo(MemorySegmentOutputView outputView, RowKind rowKind, InternalRow row)
+    public static int writeTo(MemorySegmentOutputView outputView, RowKind rowKind, IndexedRow row)
             throws IOException {
         int sizeInBytes = calculateSizeInBytes(row);
 
@@ -144,59 +138,43 @@ public class DefaultLogRecord implements LogRecord {
         outputView.writeByte(rowKind.toByteValue());
 
         // write internal row.
-        serializeInternalRow(outputView, row);
+        serializeIndexedRow(outputView, row);
 
         return sizeInBytes + LENGTH_LENGTH;
     }
 
-    public static DefaultLogRecord readFrom(
+    public static IndexedLogRecord readFrom(
             MemorySegment segment,
             int position,
             long logOffset,
             long logTimestamp,
             DataType[] colTypes) {
         int sizeInBytes = segment.getInt(position);
-        DefaultLogRecord logRecord = new DefaultLogRecord(logOffset, logTimestamp, colTypes);
+        IndexedLogRecord logRecord = new IndexedLogRecord(logOffset, logTimestamp, colTypes);
         logRecord.pointTo(segment, position, sizeInBytes + LENGTH_LENGTH);
         return logRecord;
     }
 
-    public static int sizeOf(InternalRow row) {
+    public static int sizeOf(IndexedRow row) {
         int sizeInBytes = calculateSizeInBytes(row);
         return sizeInBytes + LENGTH_LENGTH;
     }
 
-    private static int calculateSizeInBytes(InternalRow row) {
+    private static int calculateSizeInBytes(IndexedRow row) {
         int size = 1; // always one byte for attributes
         size += ((MemoryAwareGetters) row).getSizeInBytes();
         return size;
     }
 
-    private static void serializeInternalRow(
-            MemorySegmentOutputView outputView, InternalRow internalRow) throws IOException {
-        if (internalRow instanceof IndexedRow) {
-            IndexedRow indexedRow = (IndexedRow) internalRow;
-            IndexedRowWriter.serializeIndexedRow(indexedRow, outputView);
-        } else {
-            throw new IllegalArgumentException(
-                    "No such internal row serializer for: "
-                            + internalRow.getClass().getSimpleName());
-        }
+    private static void serializeIndexedRow(
+            MemorySegmentOutputView outputView, IndexedRow indexedRow) throws IOException {
+        IndexedRowWriter.serializeIndexedRow(indexedRow, outputView);
     }
 
-    private static InternalRow deserializeInternalRow(
-            int length,
-            MemorySegment segment,
-            int position,
-            DataType[] fieldTypes,
-            LogFormat logFormat) {
-        if (logFormat == LogFormat.INDEXED) {
-            IndexedRow indexedRow = new IndexedRow(fieldTypes);
-            indexedRow.pointTo(segment, position, length);
-            return indexedRow;
-        } else {
-            throw new IllegalArgumentException(
-                    "No such internal row deserializer for: " + logFormat);
-        }
+    private static InternalRow deserializeIndexedRow(
+            int length, MemorySegment segment, int position, DataType[] fieldTypes) {
+        IndexedRow indexedRow = new IndexedRow(fieldTypes);
+        indexedRow.pointTo(segment, position, length);
+        return indexedRow;
     }
 }

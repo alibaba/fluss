@@ -275,6 +275,7 @@ public abstract class WriteBatch {
     public enum WriteBatchType {
         ARROW_LOG,
         INDEXED_LOG,
+        COMPACTED_LOG,
         KV
     }
 
