@@ -18,6 +18,7 @@ package com.alibaba.fluss.server.testutils;
 
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
 import com.alibaba.fluss.record.DefaultValueRecordBatch;
 import com.alibaba.fluss.record.KvRecordBatch;
@@ -25,6 +26,7 @@ import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.record.bytesview.MemorySegmentBytesView;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
+import com.alibaba.fluss.rpc.messages.AlterTableRequest;
 import com.alibaba.fluss.rpc.messages.CreateDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.CreateTableRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
@@ -44,11 +46,13 @@ import com.alibaba.fluss.rpc.messages.PbFetchLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForTable;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForTable;
+import com.alibaba.fluss.rpc.messages.PbKeyValue;
 import com.alibaba.fluss.rpc.messages.PbLookupReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbProduceLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbProduceLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbPutKvReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbTablePath;
+import com.alibaba.fluss.rpc.messages.PbUpdateProperties;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
 import com.alibaba.fluss.rpc.messages.ProduceLogResponse;
 import com.alibaba.fluss.rpc.messages.PutKvRequest;
@@ -228,6 +232,36 @@ public class RpcMessageTestUtils {
                         .setTableId(tableId);
         listOffsetsRequest.addBucketId(bucketId);
         return listOffsetsRequest;
+    }
+
+    public static AlterTableRequest newAlterTableRequest(
+            TablePath tablePath, UpdateProperties updateProperties) {
+        AlterTableRequest alterTableRequest = new AlterTableRequest();
+        alterTableRequest
+                .setTablePath()
+                .setDatabaseName(tablePath.getDatabaseName())
+                .setTableName(tablePath.getTableName());
+        PbUpdateProperties pbUpdateProperties = new PbUpdateProperties();
+        pbUpdateProperties.addAllSetProperties(
+                updateProperties.getSetProperties().entrySet().stream()
+                        .map(
+                                entry ->
+                                        new PbKeyValue()
+                                                .setKey(entry.getKey())
+                                                .setValue(entry.getValue()))
+                        .collect(Collectors.toList()));
+        pbUpdateProperties.addAllResetProperties(updateProperties.getResetProperties());
+        pbUpdateProperties.addAllSetCustomProperties(
+                updateProperties.getSetCustomProperties().entrySet().stream()
+                        .map(
+                                entry ->
+                                        new PbKeyValue()
+                                                .setKey(entry.getKey())
+                                                .setValue(entry.getValue()))
+                        .collect(Collectors.toList()));
+        pbUpdateProperties.addAllResetCustomProperties(updateProperties.getResetCustomProperties());
+        alterTableRequest.setUpdateProperties(pbUpdateProperties);
+        return alterTableRequest;
     }
 
     public static long createTable(
