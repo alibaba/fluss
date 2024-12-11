@@ -96,7 +96,7 @@ public abstract class ClientToServerITCaseBase {
         return admin.getTable(tablePath).get().getTableId();
     }
 
-    private static Configuration initConfig() {
+    public static Configuration initConfig() {
         Configuration conf = new Configuration();
         conf.setInt(ConfigOptions.DEFAULT_REPLICATION_FACTOR, 3);
         // set a shorter interval for testing purpose
@@ -117,7 +117,7 @@ public abstract class ClientToServerITCaseBase {
         return table.getLogScanner(new LogScan().withProjectedFields(projectFields));
     }
 
-    protected static void subscribeFromBeginning(LogScanner logScanner, Table table) {
+    public static void subscribeFromBeginning(LogScanner logScanner, Table table) {
         int bucketCount = getBucketCount(table);
         for (int i = 0; i < bucketCount; i++) {
             logScanner.subscribeFromBeginning(i);
