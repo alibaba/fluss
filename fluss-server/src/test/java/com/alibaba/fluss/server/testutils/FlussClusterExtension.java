@@ -365,10 +365,10 @@ public final class FlussClusterExtension
     public void waitUtilAllGatewayHasSameMetadata() {
         for (AdminReadOnlyGateway gateway : collectAllRpcGateways()) {
             retry(
-                    Duration.ofMinutes(2),
+                    Duration.ofMinutes(1),
                     () -> {
                         MetadataResponse response =
-                                gateway.metadata(new MetadataRequest()).get(2L, TimeUnit.MINUTES);
+                                gateway.metadata(new MetadataRequest()).get(1L, TimeUnit.MINUTES);
                         assertThat(response.hasCoordinatorServer()).isTrue();
                         // check coordinator server node
                         ServerNode coordinatorNode =

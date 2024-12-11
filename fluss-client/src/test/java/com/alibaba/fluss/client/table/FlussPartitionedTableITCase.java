@@ -42,7 +42,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static com.alibaba.fluss.testutils.DataTestUtils.keyRow;
@@ -99,7 +98,7 @@ class FlussPartitionedTableITCase extends ClientToServerITCaseBase {
         Schema schema = createPartitionedTable(tablePath, false);
         Map<String, Long> partitionIdByNames =
                 FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
-        Table table = conn.getTable(DATA1_TABLE_PATH);
+        Table table = conn.getTable(tablePath);
         AppendWriter appendWriter = table.getAppendWriter();
         int recordsPerPartition = 5;
         Map<Long, List<InternalRow>> expectPartitionAppendRows = new HashMap<>();

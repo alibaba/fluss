@@ -17,7 +17,6 @@
 package com.alibaba.fluss.server.zk;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
@@ -650,18 +649,6 @@ public class ZooKeeperClient implements AutoCloseable {
     // --------------------------------------------------------------------------------------------
     // Utils
     // --------------------------------------------------------------------------------------------
-
-    /** Deletes a zk path. */
-    @VisibleForTesting
-    public void deletePath(String path) {
-        uncheck(
-                () -> {
-                    if (zkClient.checkExists().forPath(path) != null) {
-                        zkClient.delete().guaranteed().forPath(path);
-                    }
-                },
-                "Fail to delete path: " + path);
-    }
 
     /**
      * Gets all the child nodes at a given zk node path.
