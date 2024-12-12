@@ -21,16 +21,16 @@ git clone git@github.com:alibaba/fluss.git
 The simplest way of building Fluss is by running:
 
 ```bash
-mvn clean install -DskipTests
+./mvnw clean install -DskipTests
 ```
 
-This instructs [Maven](http://maven.apache.org) (`mvn`) to first remove all existing builds (`clean`) and then create a new Fluss binary (`install`).
+This instructs [Maven](http://maven.apache.org) (ran via the [Maven Wrapper](https://maven.apache.org/wrapper/) `mvnw`) to first remove all existing builds (`clean`) and then create a new Fluss binary (`install`).
 
 To speed up the build you can:
 - skip tests by using ` -DskipTests`
-- use Maven's parallel build feature, e.g., `mvn package -T 1C` will attempt to build 1 module for each CPU core in parallel.
+- use Maven's parallel build feature, e.g., `./mvnw package -T 1C` will attempt to build 1 module for each CPU core in parallel.
 
 The build script will be:
 ```bash
-mvn clean install -DskipTests -T 1C
+./mvnw clean install -DskipTests -T 1C
 ```
