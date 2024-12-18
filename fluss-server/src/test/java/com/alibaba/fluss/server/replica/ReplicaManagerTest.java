@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.server.replica;
 
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -68,9 +69,11 @@ import static com.alibaba.fluss.record.TestData.ANOTHER_DATA1;
 import static com.alibaba.fluss.record.TestData.DATA1;
 import static com.alibaba.fluss.record.TestData.DATA1_KEY_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
+import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA_PK;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID_PK;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.record.TestData.DATA_1_WITH_KEY_AND_VALUE;
 import static com.alibaba.fluss.record.TestData.DEFAULT_SCHEMA_ID;
 import static com.alibaba.fluss.server.coordinator.CoordinatorContext.INITIAL_COORDINATOR_EPOCH;
@@ -438,7 +441,10 @@ class ReplicaManagerTest extends ReplicaTestBase {
         replicaManager.putRecordsToKv(
                 20000,
                 1,
-                Collections.singletonMap(tb, genKvRecordBatchWithWriterId(data1, 100L, 0)),
+                Collections.singletonMap(
+                        tb,
+                        genKvRecordBatchWithWriterId(
+                                data1, DATA1_KEY_TYPE, DATA1_ROW_TYPE, 100L, 0)),
                 null,
                 future::complete);
         assertThat(future.get()).containsOnly(new PutKvResultForBucket(tb, 5));
@@ -475,7 +481,10 @@ class ReplicaManagerTest extends ReplicaTestBase {
         replicaManager.putRecordsToKv(
                 20000,
                 1,
-                Collections.singletonMap(tb, genKvRecordBatchWithWriterId(data2, 100L, 3)),
+                Collections.singletonMap(
+                        tb,
+                        genKvRecordBatchWithWriterId(
+                                data2, DATA1_KEY_TYPE, DATA1_ROW_TYPE, 100L, 3)),
                 null,
                 future::complete);
         PutKvResultForBucket putKvResultForBucket = future.get().get(0);
@@ -508,7 +517,10 @@ class ReplicaManagerTest extends ReplicaTestBase {
         replicaManager.putRecordsToKv(
                 20000,
                 1,
-                Collections.singletonMap(tb, genKvRecordBatchWithWriterId(data3, 100L, 1)),
+                Collections.singletonMap(
+                        tb,
+                        genKvRecordBatchWithWriterId(
+                                data3, DATA1_KEY_TYPE, DATA1_ROW_TYPE, 100L, 1)),
                 null,
                 future::complete);
         assertThat(future.get()).containsOnly(new PutKvResultForBucket(tb, 8));
@@ -563,7 +575,7 @@ class ReplicaManagerTest extends ReplicaTestBase {
         byte[] key3Bytes = keyEncoder.encode(row(DATA1_KEY_TYPE, key3));
         verifyLookup(tb, key3Bytes, null);
 
-        // Get key from none pk table.
+        // Lookup from none pk table.
         TableBucket tb2 = new TableBucket(DATA1_TABLE_ID, 1);
         makeLogTableAsLeader(tb2.getBucket());
         replicaManager.multiLookupValues(
@@ -576,6 +588,20 @@ class ReplicaManagerTest extends ReplicaTestBase {
                     assertThat(apiError.message())
                             .isEqualTo("the primary key table not exists for %s", tb2);
                 });
+    }
+
+    @Test
+    void testIndexLookup() throws Exception {
+        long tableId =
+                registerTableInZkClient(
+                        DATA1_TABLE_PATH_PK,
+                        DATA1_SCHEMA_PK,
+                        DATA1_TABLE_ID_PK,
+                        Collections.singletonMap(ConfigOptions.TABLE_INDEX_KEY.key(), "idx0=b"));
+        TableBucket tb = new TableBucket(tableId, 0);
+        makeKvTableAsLeader(tb.getBucket());
+
+        // TODO
     }
 
     @Test

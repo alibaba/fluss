@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.client.table;
+package com.alibaba.fluss.client.lookup;
 
 import com.alibaba.fluss.annotation.PublicEvolving;
+import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.row.InternalRow;
 
-import javax.annotation.Nullable;
-
-import java.util.Objects;
+import java.util.List;
 
 /**
  * The result of {@link Table#lookup(InternalRow)}.
@@ -30,14 +29,14 @@ import java.util.Objects;
  */
 @PublicEvolving
 public final class LookupResult {
-    private final @Nullable InternalRow row;
+    private final List<InternalRow> rowList;
 
-    public LookupResult(@Nullable InternalRow row) {
-        this.row = row;
+    public LookupResult(List<InternalRow> rowList) {
+        this.rowList = rowList;
     }
 
-    public @Nullable InternalRow getRow() {
-        return row;
+    public List<InternalRow> getRowList() {
+        return rowList;
     }
 
     @Override
@@ -50,16 +49,16 @@ public final class LookupResult {
         }
 
         LookupResult lookupResult = (LookupResult) o;
-        return Objects.equals(row, lookupResult.row);
+        return rowList.equals(lookupResult.rowList);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(row);
+        return rowList.hashCode();
     }
 
     @Override
     public String toString() {
-        return "LookupResult{row=" + row + '}';
+        return "LookupResult{" + "rowList=" + rowList + '}';
     }
 }

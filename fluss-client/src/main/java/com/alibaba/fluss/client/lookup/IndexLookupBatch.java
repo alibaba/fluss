@@ -20,59 +20,46 @@ import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.TableBucket;
 
-import java.util.ArrayList;
 import java.util.List;
 
-/** A batch that contains the lookup operations that send to same tablet bucket together. */
+/**
+ * A batch that contains the index operations that send to same destination and some table together.
+ */
 @Internal
-public class LookupBatch {
+public class IndexLookupBatch extends AbstractLookupBatch {
 
-    /** The table bucket that the lookup operations should fall into. */
     private final TableBucket tableBucket;
 
-    private final List<Lookup> lookups;
-
-    public LookupBatch(TableBucket tableBucket) {
+    public IndexLookupBatch(TableBucket tableBucket) {
+        super();
         this.tableBucket = tableBucket;
-        this.lookups = new ArrayList<>();
-    }
-
-    public void addLookup(Lookup lookup) {
-        lookups.add(lookup);
-    }
-
-    public List<Lookup> lookups() {
-        return lookups;
     }
 
     public TableBucket tableBucket() {
         return tableBucket;
     }
 
-    /** Complete the lookup operations using given values . */
+    @Override
     public void complete(List<List<byte[]>> values) {
-        // if the size of return values of lookup operation are not equal to the number of lookups,
-        // should complete an exception.
         if (values.size() != lookups.size()) {
             completeExceptionally(
                     new FlussRuntimeException(
                             String.format(
-                                    "The number of return values of lookup operation is not equal to the number of "
-                                            + "lookups. Return %d values, but expected %d.",
+                                    "The number of values return by index lookup request is not equal to the number of "
+                                            + "index lookups send. Got %d values, but expected %d.",
                                     values.size(), lookups.size())));
         } else {
             for (int i = 0; i < values.size(); i++) {
                 AbstractLookup lookup = lookups.get(i);
-                // single value.
                 lookup.future().complete(values.get(i));
             }
         }
     }
 
-    /** Complete the lookup operations with given exception. */
+    @Override
     public void completeExceptionally(Exception exception) {
-        for (Lookup lookup : lookups) {
-            lookup.future().completeExceptionally(exception);
+        for (AbstractLookup get : lookups) {
+            get.future().completeExceptionally(exception);
         }
     }
 }

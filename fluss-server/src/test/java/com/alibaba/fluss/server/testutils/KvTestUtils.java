@@ -19,7 +19,10 @@ package com.alibaba.fluss.server.testutils;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.LookupResponse;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForKey;
 import com.alibaba.fluss.rpc.messages.PbLookupRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbValue;
 import com.alibaba.fluss.server.kv.rocksdb.RocksDBKv;
@@ -171,5 +174,24 @@ public class KvTestUtils {
         PbValue pbValue = pbLookupRespForBucket.getValueAt(0);
         byte[] lookupValue = pbValue.hasValues() ? pbValue.getValues() : null;
         assertThat(lookupValue).isEqualTo(expectedValue);
+    }
+
+    public static void assertIndexLookupResponse(
+            IndexLookupResponse indexLookupResponse, List<List<byte[]>> expectedValues) {
+        checkArgument(indexLookupResponse.getBucketsRespsCount() == 1);
+        PbIndexLookupRespForBucket pbIndexLookupRespForBucket =
+                indexLookupResponse.getBucketsRespAt(0);
+        checkArgument(pbIndexLookupRespForBucket.getKeysRespsCount() == expectedValues.size());
+        for (int i = 0; i < expectedValues.size(); i++) {
+            PbIndexLookupRespForKey pbIndexLookupRespForKey =
+                    pbIndexLookupRespForBucket.getKeysRespAt(i);
+            List<byte[]> bytesResultForOneIndexKey = expectedValues.get(i);
+            checkArgument(
+                    pbIndexLookupRespForKey.getValuesCount() == bytesResultForOneIndexKey.size());
+            for (int j = 0; j < bytesResultForOneIndexKey.size(); j++) {
+                assertThat(pbIndexLookupRespForKey.getValueAt(j))
+                        .isEqualTo(bytesResultForOneIndexKey.get(j));
+            }
+        }
     }
 }

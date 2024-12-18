@@ -22,11 +22,19 @@ import com.alibaba.fluss.connector.flink.FlinkConnectorOptions.ScanStartupMode;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.api.config.TableConfigOptions;
+import org.apache.flink.table.types.logical.RowType;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
+import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.INDEX_LOOKUP_KEY;
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.SCAN_STARTUP_MODE;
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.SCAN_STARTUP_TIMESTAMP;
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.ScanStartupMode.TIMESTAMP;
@@ -43,8 +51,10 @@ public class FlinkConnectorOptionsUtils {
                 : ZoneId.of(timeZone);
     }
 
-    public static void validateTableSourceOptions(ReadableConfig tableOptions) {
+    public static void validateTableSourceOptions(
+            ReadableConfig tableOptions, RowType tableOutputType) {
         validateScanStartupMode(tableOptions);
+        validateIndexKeys(tableOptions, tableOutputType);
     }
 
     public static StartupOptions getStartupOptions(ReadableConfig tableOptions, ZoneId timeZone) {
@@ -71,6 +81,81 @@ public class FlinkConnectorOptionsUtils {
                                 SCAN_STARTUP_TIMESTAMP.key(), TIMESTAMP));
             }
         }
+    }
+
+    private static void validateIndexKeys(ReadableConfig tableOptions, RowType tableOutputType) {
+        if (!tableOptions.getOptional(INDEX_LOOKUP_KEY).isPresent()) {
+            return;
+        }
+
+        List<String> columnNames = tableOutputType.getFieldNames();
+
+        String indexKeysString = tableOptions.get(INDEX_LOOKUP_KEY);
+        String indexKeysError = detectInvalidIndexKeys(indexKeysString, columnNames);
+        if (indexKeysError != null) {
+            throw new ValidationException(
+                    "Option 'index.key' = '" + indexKeysString + "' is invalid: " + indexKeysError);
+        }
+    }
+
+    private static String detectInvalidIndexKeys(String indexKeysString, List<String> columnNames) {
+        String[] indexKeyStringList = indexKeysString.split(";");
+        if (indexKeyStringList.length <= 0) {
+            return "Index key is empty or index key doesn't split by ';'.";
+        }
+
+        List<int[]> orderedIndexKey = new ArrayList<>();
+        for (String indexKeyFieldsStr : indexKeyStringList) {
+            String[] indexNameAndFields = indexKeyFieldsStr.split("=");
+            if (indexNameAndFields.length != 2) {
+                return "There is an index key not follow the format 'indexKeyName=indexKeyFields'.";
+            }
+
+            String[] fieldStrings = indexNameAndFields[1].split(",");
+            if (fieldStrings.length <= 0) {
+                return "There is an index key is empty or column field in index key doesn't split by ','.";
+            }
+
+            List<Integer> indexKeyPosList = new ArrayList<>();
+            for (String field : fieldStrings) {
+                int fieldIndex = columnNames.indexOf(field);
+                if (fieldIndex < 0) {
+                    return "Index key '" + field + "' does not exist in the schema.";
+                }
+                indexKeyPosList.add(fieldIndex);
+            }
+
+            Collections.sort(indexKeyPosList);
+            if (orderedIndexKey.stream()
+                    .anyMatch(
+                            f ->
+                                    Arrays.equals(
+                                            f,
+                                            indexKeyPosList.stream()
+                                                    .mapToInt(Integer::intValue)
+                                                    .toArray()))) {
+                return "There is an index key is duplicate.";
+            }
+            orderedIndexKey.add(indexKeyPosList.stream().mapToInt(Integer::intValue).toArray());
+        }
+
+        return null;
+    }
+
+    public static Map<String, int[]> getIndexKeys(String indexKeyString, RowType rowType) {
+        List<String> columnNames = rowType.getFieldNames();
+        Map<String, int[]> indexKeyIndexes = new HashMap<>();
+        for (String indexKeyStr : indexKeyString.split(";")) {
+            String[] indexNameAndFields = indexKeyStr.split("=");
+            String indexKeyName = indexNameAndFields[0];
+            List<Integer> indexKeyList = new ArrayList<>();
+            for (String field : indexNameAndFields[1].split(",")) {
+                indexKeyList.add(columnNames.indexOf(field));
+            }
+            indexKeyIndexes.put(
+                    indexKeyName, indexKeyList.stream().mapToInt(Integer::intValue).toArray());
+        }
+        return indexKeyIndexes;
     }
 
     /**

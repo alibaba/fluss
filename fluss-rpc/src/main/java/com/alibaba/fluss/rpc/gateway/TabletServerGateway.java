@@ -19,6 +19,8 @@ package com.alibaba.fluss.rpc.gateway;
 import com.alibaba.fluss.rpc.RpcGateway;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.InitWriterRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
@@ -98,6 +100,14 @@ public interface TabletServerGateway extends RpcGateway, AdminReadOnlyGateway {
      */
     @RPC(api = ApiKeys.LOOKUP)
     CompletableFuture<LookupResponse> lookup(LookupRequest request);
+
+    /**
+     * Index lookup to get value by index key.
+     *
+     * @return Index lookup response.
+     */
+    @RPC(api = ApiKeys.INDEX_LOOKUP)
+    CompletableFuture<IndexLookupResponse> indexLookup(IndexLookupRequest request);
 
     /**
      * Get limit number of values from the specified table bucket.

@@ -52,6 +52,7 @@ import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotResponse;
 import com.alibaba.fluss.rpc.messages.GetLakeTableSnapshotResponse;
 import com.alibaba.fluss.rpc.messages.GetPartitionSnapshotResponse;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.LimitScanResponse;
 import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
@@ -72,6 +73,7 @@ import com.alibaba.fluss.rpc.messages.PbFetchLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForTable;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForTable;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbKeyValue;
 import com.alibaba.fluss.rpc.messages.PbLakeSnapshotForBucket;
 import com.alibaba.fluss.rpc.messages.PbLakeStorageInfo;
@@ -586,6 +588,28 @@ public class RpcMessageUtils {
         long tableId = lookupRequest.getTableId();
         Map<TableBucket, List<byte[]>> lookupEntryData = new HashMap<>();
         for (PbLookupReqForBucket lookupReqForBucket : lookupRequest.getBucketsReqsList()) {
+            TableBucket tb =
+                    new TableBucket(
+                            tableId,
+                            lookupReqForBucket.hasPartitionId()
+                                    ? lookupReqForBucket.getPartitionId()
+                                    : null,
+                            lookupReqForBucket.getBucketId());
+            List<byte[]> keys = new ArrayList<>(lookupReqForBucket.getKeysCount());
+            for (int i = 0; i < lookupReqForBucket.getKeysCount(); i++) {
+                keys.add(lookupReqForBucket.getKeyAt(i));
+            }
+            lookupEntryData.put(tb, keys);
+        }
+        return lookupEntryData;
+    }
+
+    public static Map<TableBucket, List<byte[]>> toIndexLookupData(
+            IndexLookupRequest indexLookupRequest) {
+        long tableId = indexLookupRequest.getTableId();
+        Map<TableBucket, List<byte[]>> lookupEntryData = new HashMap<>();
+        for (PbIndexLookupReqForBucket lookupReqForBucket :
+                indexLookupRequest.getBucketsReqsList()) {
             TableBucket tb =
                     new TableBucket(
                             tableId,

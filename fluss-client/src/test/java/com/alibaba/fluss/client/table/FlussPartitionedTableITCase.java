@@ -83,7 +83,8 @@ class FlussPartitionedTableITCase extends ClientToServerITCaseBase {
                 InternalRow lookupRow =
                         table.lookup(keyRow(schema, new Object[] {i, null, partition}))
                                 .get()
-                                .getRow();
+                                .getRowList()
+                                .get(0);
                 assertThat(lookupRow).isEqualTo(actualRow);
             }
         }
