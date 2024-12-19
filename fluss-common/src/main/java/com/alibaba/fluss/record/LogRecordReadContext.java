@@ -17,7 +17,6 @@
 package com.alibaba.fluss.record;
 
 import com.alibaba.fluss.annotation.VisibleForTesting;
-import com.alibaba.fluss.exception.InvalidColumnProjectionException;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -72,10 +71,6 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
                 return createArrowReadContext(projectedRowType, schemaId, vectorRoot, allocator);
             }
         } else if (logFormat == LogFormat.INDEXED) {
-            if (projection != null) {
-                throw new InvalidColumnProjectionException(
-                        "Column projection is not supported for INDEXED log format.");
-            }
             return createIndexedReadContext(rowType, schemaId);
         } else {
             throw new IllegalArgumentException("Unsupported log format: " + logFormat);
