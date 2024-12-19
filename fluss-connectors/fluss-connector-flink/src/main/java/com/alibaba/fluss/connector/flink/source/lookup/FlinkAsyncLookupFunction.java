@@ -31,10 +31,8 @@ import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.ProjectedRow;
 
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.utils.ProjectedRowData;
 import org.apache.flink.table.functions.AsyncLookupFunction;
 import org.apache.flink.table.functions.FunctionContext;
-import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,16 +80,6 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
         this.projection = projection;
     }
 
-    private RowType toPkRowType(RowType rowType, int[] pkIndex) {
-        LogicalType[] types = new LogicalType[pkIndex.length];
-        String[] names = new String[pkIndex.length];
-        for (int i = 0; i < pkIndex.length; i++) {
-            types[i] = rowType.getTypeAt(pkIndex[i]);
-            names[i] = rowType.getFieldNames().get(pkIndex[i]);
-        }
-        return RowType.of(rowType.isNullable(), types, names);
-    }
-
     @Override
     public void open(FunctionContext context) {
         LOG.info("start open ...");
@@ -100,9 +88,12 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
         // TODO: convert to Fluss GenericRow to avoid unnecessary deserialization
         flinkRowToFlussRowConverter =
                 FlinkRowToFlussRowConverter.create(
-                        toPkRowType(flinkRowType, pkIndexes), table.getDescriptor().getKvFormat());
+                        FlinkLookupFunction.filterRowType(flinkRowType, pkIndexes),
+                        table.getDescriptor().getKvFormat());
         flussRowToFlinkRowConverter =
-                new FlussRowToFlinkRowConverter(FlinkConversions.toFlussRowType(flinkRowType));
+                new FlussRowToFlinkRowConverter(
+                        FlinkConversions.toFlussRowType(
+                                FlinkLookupFunction.filterRowType(flinkRowType, projection)));
         LOG.info("end open.");
     }
 
@@ -178,20 +169,11 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
                             if (remainingFilter != null && !remainingFilter.isMatch(flinkRow)) {
                                 resultFuture.complete(Collections.emptyList());
                             } else {
-                                resultFuture.complete(
-                                        Collections.singletonList(maybeProject(flinkRow)));
+                                resultFuture.complete(Collections.singletonList(flinkRow));
                             }
                         }
                     }
                 });
-    }
-
-    private RowData maybeProject(RowData row) {
-        if (projection == null) {
-            return row;
-        }
-        // should not reuse objects for async operations
-        return ProjectedRowData.from(projection).replaceRow(row);
     }
 
     @Override
