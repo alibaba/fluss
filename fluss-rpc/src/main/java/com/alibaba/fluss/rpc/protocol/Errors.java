@@ -24,6 +24,7 @@ import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.DuplicateSequenceException;
 import com.alibaba.fluss.exception.FencedLeaderEpochException;
+import com.alibaba.fluss.exception.InvalidAlterTableException;
 import com.alibaba.fluss.exception.InvalidColumnProjectionException;
 import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidCoordinatorException;
@@ -174,8 +175,9 @@ public enum Errors {
     INVALID_TIMESTAMP_EXCEPTION(38, "The timestamp is invalid.", InvalidTimestampException::new),
     INVALID_CONFIG_EXCEPTION(39, "The config is invalid.", InvalidConfigException::new),
     LAKE_STORAGE_NOT_CONFIGURED_EXCEPTION(
-            40, "The lake storage is not configured.", LakeStorageNotConfiguredException::new);
-    ;
+            40, "The lake storage is not configured.", LakeStorageNotConfiguredException::new),
+    INVALID_ALTER_TABLE_EXCEPTION(
+            41, "The alter table is invalid.", InvalidAlterTableException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 

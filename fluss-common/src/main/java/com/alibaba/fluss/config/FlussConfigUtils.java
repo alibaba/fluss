@@ -20,8 +20,12 @@ import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.exception.InvalidConfigException;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import static com.alibaba.fluss.config.ConfigOptions.TABLE_DATALAKE_ENABLED;
 
 /** Utilities of Fluss {@link ConfigOptions}. */
 @Internal
@@ -29,6 +33,10 @@ public class FlussConfigUtils {
 
     public static final Map<String, ConfigOption<?>> TABLE_OPTIONS;
     public static final Map<String, ConfigOption<?>> CLIENT_OPTIONS;
+
+    // table properties that support alter.
+    public static final List<String> TABLE_OPTIONS_SUPPORT_ALTER =
+            Collections.singletonList(TABLE_DATALAKE_ENABLED.key());
 
     static {
         TABLE_OPTIONS = extractConfigOptions("table.");

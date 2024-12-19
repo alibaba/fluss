@@ -182,6 +182,72 @@ class FlinkCatalogITCase {
     }
 
     @Test
+    void testAlterTable() throws Exception {
+        tEnv.executeSql("create table append_only_table(a int, b int) with ('bucket.num' = '10')");
+        Schema.Builder schemaBuilder = Schema.newBuilder();
+        schemaBuilder.column("a", DataTypes.INT()).column("b", DataTypes.INT());
+        Schema expectedSchema = schemaBuilder.build();
+        CatalogTable table =
+                (CatalogTable) catalog.getTable(new ObjectPath(DEFAULT_DB, "append_only_table"));
+        assertThat(table.getUnresolvedSchema()).isEqualTo(expectedSchema);
+        Map<String, String> expectedOptions = new HashMap<>();
+        expectedOptions.put("bucket.num", "10");
+        assertOptionsEqual(table.getOptions(), expectedOptions);
+
+        // alter table add table property.
+        tEnv.executeSql("alter table append_only_table set ('table.datalake.enabled' = 'true')");
+        table = (CatalogTable) catalog.getTable(new ObjectPath(DEFAULT_DB, "append_only_table"));
+        expectedOptions = new HashMap<>();
+        expectedOptions.put("bucket.num", "10");
+        expectedOptions.put("table.datalake.enabled", "true");
+        assertOptionsEqual(table.getOptions(), expectedOptions);
+
+        // alter table reset table property.
+        tEnv.executeSql("alter table append_only_table reset ('table.datalake.enabled')");
+        table = (CatalogTable) catalog.getTable(new ObjectPath(DEFAULT_DB, "append_only_table"));
+        expectedOptions = new HashMap<>();
+        expectedOptions.put("bucket.num", "10");
+        assertOptionsEqual(table.getOptions(), expectedOptions);
+
+        // test alter table with unsupported table property.
+        assertThatThrownBy(
+                        () ->
+                                tEnv.executeSql(
+                                        "alter table append_only_table set ('table.log.ttl' = '1d')"))
+                .cause()
+                .isInstanceOf(CatalogException.class)
+                .hasRootCauseMessage(
+                        "Update table property: 'table.log.ttl' is not supported yet.");
+
+        // alter table add custom property.
+        tEnv.executeSql("alter table append_only_table set ('my.option' = 'hello')");
+        table = (CatalogTable) catalog.getTable(new ObjectPath(DEFAULT_DB, "append_only_table"));
+        expectedOptions = new HashMap<>();
+        expectedOptions.put("bucket.num", "10");
+        expectedOptions.put("my.option", "hello");
+        assertOptionsEqual(table.getOptions(), expectedOptions);
+
+        // alter table reset custom property.
+        tEnv.executeSql("alter table append_only_table reset ('my.option')");
+        table = (CatalogTable) catalog.getTable(new ObjectPath(DEFAULT_DB, "append_only_table"));
+        expectedOptions = new HashMap<>();
+        expectedOptions.put("bucket.num", "10");
+        assertOptionsEqual(table.getOptions(), expectedOptions);
+
+        // test alter table: add column which is unsupported now.
+        assertThatThrownBy(
+                        () ->
+                                tEnv.executeSql(
+                                        "alter table append_only_table add col1 STRING COMMENT 'col1 is string'"))
+                .cause()
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessageContaining(
+                        "Altering table operation: "
+                                + "org.apache.flink.table.catalog.TableChange$AddColumn is not supported. Currently, "
+                                + "We only support altering table properties and custom properties.");
+    }
+
+    @Test
     void testCreatePartitionedTable() throws Exception {
         tEnv.executeSql(
                 "create table test_partitioned_table (a int, b string) partitioned by (b) "

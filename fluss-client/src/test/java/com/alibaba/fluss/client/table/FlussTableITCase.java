@@ -35,6 +35,7 @@ import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.row.BinaryString;
 import com.alibaba.fluss.row.InternalRow;
@@ -58,8 +59,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.config.ConfigOptions.TABLE_DATALAKE_ENABLED;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA;
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA_PK;
@@ -789,5 +792,71 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 .hasMessage(
                         "Only ARROW log format supports column projection, but the log format "
                                 + "of table 'test_db_1.test_non_pk_table_1' is INDEXED");
+    }
+
+    @Test
+    void testAlterTable() throws Exception {
+        TableDescriptor tableDescriptor = TableDescriptor.builder().schema(DATA1_SCHEMA).build();
+        createTable(DATA1_TABLE_PATH, tableDescriptor, false);
+        Table table = conn.getTable(DATA1_TABLE_PATH);
+
+        Map<String, String> properties = table.getDescriptor().getProperties();
+        assertThat(properties.containsKey(TABLE_DATALAKE_ENABLED.key())).isFalse();
+
+        // 1. set support table property.
+        table.updateProperties(
+                        UpdateProperties.builder()
+                                .setProperty(TABLE_DATALAKE_ENABLED.key(), "true")
+                                .build())
+                .get();
+        // create a new connection to update table metadata.
+        conn = ConnectionFactory.createConnection(clientConf);
+        table = conn.getTable(DATA1_TABLE_PATH);
+        properties = table.getDescriptor().getProperties();
+        assertThat(properties.get(TABLE_DATALAKE_ENABLED.key())).isEqualTo("true");
+
+        // 2. set unsupported table property.
+        assertThatThrownBy(
+                        () ->
+                                conn.getTable(DATA1_TABLE_PATH)
+                                        .updateProperties(
+                                                UpdateProperties.builder()
+                                                        .setProperty(
+                                                                ConfigOptions.TABLE_LOG_TTL.key(),
+                                                                "true")
+                                                        .build())
+                                        .get())
+                .hasMessageContaining(
+                        "Update table property: 'table.log.ttl' is not supported yet.");
+
+        // 3. reset table property.
+        table.updateProperties(
+                        UpdateProperties.builder()
+                                .resetProperty(TABLE_DATALAKE_ENABLED.key())
+                                .build())
+                .get();
+        conn = ConnectionFactory.createConnection(clientConf);
+        table = conn.getTable(DATA1_TABLE_PATH);
+        properties = table.getDescriptor().getProperties();
+        assertThat(properties.containsKey(TABLE_DATALAKE_ENABLED.key())).isFalse();
+
+        Map<String, String> customProperties = table.getDescriptor().getCustomProperties();
+        assertThat(customProperties.containsKey("my.option")).isFalse();
+        // 4. set custom property.
+        table.updateProperties(
+                        UpdateProperties.builder().setCustomProperty("my.option", "hello").build())
+                .get();
+        conn = ConnectionFactory.createConnection(clientConf);
+        table = conn.getTable(DATA1_TABLE_PATH);
+        customProperties = table.getDescriptor().getCustomProperties();
+        assertThat(customProperties.get("my.option")).isEqualTo("hello");
+
+        // 5. reset custom property.
+        table.updateProperties(UpdateProperties.builder().resetCustomProperty("my.option").build())
+                .get();
+        conn = ConnectionFactory.createConnection(clientConf);
+        table = conn.getTable(DATA1_TABLE_PATH);
+        customProperties = table.getDescriptor().getCustomProperties();
+        assertThat(customProperties.containsKey("my.option")).isFalse();
     }
 }

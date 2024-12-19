@@ -24,6 +24,7 @@ import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.record.BytesViewLogRecords;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
 import com.alibaba.fluss.record.DefaultValueRecordBatch;
@@ -42,6 +43,7 @@ import com.alibaba.fluss.rpc.entity.ProduceLogResultForBucket;
 import com.alibaba.fluss.rpc.entity.PutKvResultForBucket;
 import com.alibaba.fluss.rpc.messages.AdjustIsrRequest;
 import com.alibaba.fluss.rpc.messages.AdjustIsrResponse;
+import com.alibaba.fluss.rpc.messages.AlterTableRequest;
 import com.alibaba.fluss.rpc.messages.CommitKvSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.CommitLakeTableSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.CommitRemoteLogManifestRequest;
@@ -96,6 +98,7 @@ import com.alibaba.fluss.rpc.messages.PbStopReplicaReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbStopReplicaRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbTableBucket;
 import com.alibaba.fluss.rpc.messages.PbTablePath;
+import com.alibaba.fluss.rpc.messages.PbUpdateProperties;
 import com.alibaba.fluss.rpc.messages.PbValue;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
 import com.alibaba.fluss.rpc.messages.ProduceLogResponse;
@@ -106,6 +109,7 @@ import com.alibaba.fluss.rpc.messages.StopReplicaResponse;
 import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
 import com.alibaba.fluss.rpc.protocol.ApiError;
 import com.alibaba.fluss.server.entity.AdjustIsrResultForBucket;
+import com.alibaba.fluss.server.entity.AlterTableData;
 import com.alibaba.fluss.server.entity.CommitLakeTableSnapshotData;
 import com.alibaba.fluss.server.entity.CommitRemoteLogManifestData;
 import com.alibaba.fluss.server.entity.FetchData;
@@ -1216,5 +1220,31 @@ public class RpcMessageUtils {
                     .setValue(entry.getValue());
         }
         return pbLakeStorageInfo;
+    }
+
+    public static AlterTableData getAlterTableData(AlterTableRequest request) {
+        PbTablePath pbTablePath = request.getTablePath();
+        TablePath tablePath =
+                TablePath.of(pbTablePath.getDatabaseName(), pbTablePath.getTableName());
+
+        PbUpdateProperties pbUpdateProperties = request.getUpdateProperties();
+        UpdateProperties.Builder builder = UpdateProperties.builder();
+        for (PbKeyValue setProperty : pbUpdateProperties.getSetPropertiesList()) {
+            builder.setProperty(setProperty.getKey(), setProperty.getValue());
+        }
+
+        for (String resetProperty : pbUpdateProperties.getResetPropertiesList()) {
+            builder.resetProperty(resetProperty);
+        }
+
+        for (PbKeyValue setCustomProperty : pbUpdateProperties.getSetCustomPropertiesList()) {
+            builder.setCustomProperty(setCustomProperty.getKey(), setCustomProperty.getValue());
+        }
+
+        for (String resetCustomProperty : pbUpdateProperties.getResetCustomPropertiesList()) {
+            builder.resetCustomProperty(resetCustomProperty);
+        }
+
+        return new AlterTableData(tablePath, builder.build());
     }
 }

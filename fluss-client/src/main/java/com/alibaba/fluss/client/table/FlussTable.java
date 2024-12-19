@@ -47,6 +47,7 @@ import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.record.DefaultValueRecordBatch;
 import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordBatch;
@@ -63,6 +64,7 @@ import com.alibaba.fluss.row.encode.KeyEncoder;
 import com.alibaba.fluss.row.encode.ValueDecoder;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
 import com.alibaba.fluss.rpc.RpcClient;
+import com.alibaba.fluss.rpc.gateway.AdminGateway;
 import com.alibaba.fluss.rpc.gateway.AdminReadOnlyGateway;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
@@ -85,6 +87,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
+import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeAlterTableRequest;
 import static com.alibaba.fluss.client.utils.MetadataUtils.getOneAvailableTabletServerNode;
 
 /**
@@ -400,6 +403,16 @@ public class FlussTable implements Table {
                 tableInfo.getTableDescriptor().getKvFormat(),
                 remoteFileDownloader,
                 snapshotScan);
+    }
+
+    @Override
+    public CompletableFuture<Void> updateProperties(UpdateProperties updateProperties) {
+        AdminGateway adminGateway =
+                GatewayClientProxy.createGatewayProxy(
+                        metadataUpdater::getCoordinatorServer, rpcClient, AdminGateway.class);
+        return adminGateway
+                .alterTable(makeAlterTableRequest(tablePath, updateProperties))
+                .thenApply(r -> null);
     }
 
     @Override

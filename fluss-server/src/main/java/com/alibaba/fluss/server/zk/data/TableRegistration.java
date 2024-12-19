@@ -84,6 +84,17 @@ public class TableRegistration {
                 tableDescriptor.getCustomProperties());
     }
 
+    public TableRegistration copy(
+            Map<String, String> newProperties, Map<String, String> newCustomProperties) {
+        return new TableRegistration(
+                tableId,
+                comment,
+                partitionKeys,
+                tableDistribution,
+                newProperties,
+                newCustomProperties);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

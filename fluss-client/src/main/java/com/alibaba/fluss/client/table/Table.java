@@ -26,8 +26,11 @@ import com.alibaba.fluss.client.scanner.snapshot.SnapshotScanner;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.UpsertWrite;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
+import com.alibaba.fluss.exception.InvalidAlterTableException;
+import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.row.InternalRow;
 
 import javax.annotation.Nullable;
@@ -112,4 +115,18 @@ public interface Table extends AutoCloseable {
      * @return the {@link SnapshotScanner} to scan data from this table.
      */
     SnapshotScanner getSnapshotScanner(SnapshotScan snapshotScan);
+
+    /**
+     * Update the table properties with this table.
+     *
+     * <p>The following exceptions can be anticipated when calling {@code get()} on returned future.
+     *
+     * <ul>
+     *   <li>{@link TableNotExistException} if the table does not exist.
+     *   <li>{@link InvalidAlterTableException} if the update properties is invalid.
+     * </ul>
+     *
+     * @param updateProperties the update properties.
+     */
+    CompletableFuture<Void> updateProperties(UpdateProperties updateProperties);
 }

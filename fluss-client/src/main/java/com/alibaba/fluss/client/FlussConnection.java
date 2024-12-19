@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.client;
 
+import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.client.admin.FlussAdmin;
 import com.alibaba.fluss.client.lookup.LookupClient;
@@ -33,7 +34,8 @@ import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import java.time.Duration;
 import java.util.List;
 
-final class FlussConnection implements Connection {
+/** A default implement of {@link Connection}. */
+public final class FlussConnection implements Connection {
     private final Configuration conf;
     private final RpcClient rpcClient;
     private final MetadataUpdater metadataUpdater;
@@ -129,5 +131,10 @@ final class FlussConnection implements Connection {
         clientMetricGroup.close();
         rpcClient.close();
         metricRegistry.closeAsync().get();
+    }
+
+    @VisibleForTesting
+    public MetadataUpdater getMetadataUpdater() {
+        return metadataUpdater;
     }
 }

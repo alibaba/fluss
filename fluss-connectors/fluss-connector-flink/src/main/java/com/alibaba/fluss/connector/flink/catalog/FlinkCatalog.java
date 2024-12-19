@@ -28,6 +28,7 @@ import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metadata.UpdateProperties;
 import com.alibaba.fluss.utils.ExceptionUtils;
 import com.alibaba.fluss.utils.IOUtils;
 
@@ -42,6 +43,7 @@ import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.CatalogView;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
+import org.apache.flink.table.catalog.TableChange;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.catalog.exceptions.DatabaseAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.DatabaseNotEmptyException;
@@ -69,6 +71,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.alibaba.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS;
+import static com.alibaba.fluss.config.FlussConfigUtils.TABLE_OPTIONS;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /** A Flink Catalog for fluss. */
@@ -351,9 +354,57 @@ public class FlinkCatalog implements Catalog {
     }
 
     @Override
-    public void alterTable(ObjectPath objectPath, CatalogBaseTable catalogBaseTable, boolean b)
+    public void alterTable(
+            ObjectPath objectPath, CatalogBaseTable newTable, boolean ignoreIfNotExists)
             throws TableNotExistException, CatalogException {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void alterTable(
+            ObjectPath objectPath,
+            CatalogBaseTable newTable,
+            List<TableChange> tableChanges,
+            boolean ignoreIfNotExists)
+            throws TableNotExistException, CatalogException {
+        UpdateProperties.Builder updatePropertiesBuilder = UpdateProperties.builder();
+        for (TableChange tableChange : tableChanges) {
+            if (tableChange instanceof TableChange.ResetOption) {
+                String resetOptionKey = ((TableChange.ResetOption) tableChange).getKey();
+                if (TABLE_OPTIONS.containsKey(resetOptionKey)) {
+                    updatePropertiesBuilder.resetProperty(resetOptionKey);
+                } else {
+                    updatePropertiesBuilder.resetCustomProperty(resetOptionKey);
+                }
+            } else if (tableChange instanceof TableChange.SetOption) {
+                TableChange.SetOption setOption = (TableChange.SetOption) tableChange;
+                String setOptionKey = setOption.getKey();
+                if (TABLE_OPTIONS.containsKey(setOptionKey)) {
+                    updatePropertiesBuilder.setProperty(setOptionKey, setOption.getValue());
+                } else {
+                    updatePropertiesBuilder.setCustomProperty(setOptionKey, setOption.getValue());
+                }
+            } else {
+                throw new UnsupportedOperationException(
+                        "Altering table operation: "
+                                + tableChange.getClass().getName()
+                                + " is not supported. "
+                                + "Currently, We only support altering table properties and custom properties.");
+            }
+        }
+
+        TablePath tablePath = toTablePath(objectPath);
+        try {
+            connection.getTable(tablePath).updateProperties(updatePropertiesBuilder.build()).get();
+        } catch (Exception e) {
+            Throwable t = ExceptionUtils.stripExecutionException(e);
+            if (CatalogExceptionUtil.isTableNotExist(t)) {
+                throw new TableNotExistException(getName(), objectPath);
+            } else {
+                throw new CatalogException(
+                        String.format("Failed to alter table %s in %s", objectPath, getName()), t);
+            }
+        }
     }
 
     @Override
