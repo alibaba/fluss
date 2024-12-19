@@ -42,6 +42,8 @@ import com.alibaba.fluss.rpc.messages.DropDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.DropDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.DropTableRequest;
 import com.alibaba.fluss.rpc.messages.DropTableResponse;
+import com.alibaba.fluss.rpc.messages.RenameTableRequest;
+import com.alibaba.fluss.rpc.messages.RenameTableResponse;
 import com.alibaba.fluss.server.RpcServiceBase;
 import com.alibaba.fluss.server.coordinator.event.AdjustIsrReceivedEvent;
 import com.alibaba.fluss.server.coordinator.event.CommitKvSnapshotEvent;
@@ -205,6 +207,16 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         DropTableResponse response = new DropTableResponse();
         metadataManager.dropTable(
                 toTablePath(request.getTablePath()), request.isIgnoreIfNotExists());
+        return CompletableFuture.completedFuture(response);
+    }
+
+    @Override
+    public CompletableFuture<RenameTableResponse> renameTable(RenameTableRequest request) {
+        RenameTableResponse response = new RenameTableResponse();
+        metadataManager.renameTable(
+                toTablePath(request.getFromTablePath()),
+                toTablePath(request.getToTablePath()),
+                request.isIgnoreIfNotExists());
         return CompletableFuture.completedFuture(response);
     }
 

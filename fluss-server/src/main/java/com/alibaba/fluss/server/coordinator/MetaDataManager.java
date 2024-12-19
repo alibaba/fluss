@@ -137,6 +137,25 @@ public class MetaDataManager {
         uncheck(() -> zookeeperClient.deleteTable(tablePath), "Fail to drop table: " + tablePath);
     }
 
+    public void renameTable(
+            TablePath fromTablePath, TablePath toTablePath, boolean ignoreIfNotExists)
+            throws TableNotExistException, TableAlreadyExistException {
+        if (!tableExists(fromTablePath)) {
+            if (ignoreIfNotExists) {
+                return;
+            }
+            throw new TableNotExistException("Table " + fromTablePath + " does not exist.");
+        }
+
+        if (tableExists(toTablePath)) {
+            throw new TableAlreadyExistException("Table " + toTablePath + " already exists.");
+        }
+
+        uncheck(
+                () -> zookeeperClient.renameTable(fromTablePath, toTablePath),
+                "Fail to rename table. from: " + fromTablePath + ", to: " + toTablePath);
+    }
+
     public void completeDeleteTable(long tableId) {
         // final step for delete a table.
         // delete bucket assignments node, which will also delete the bucket state node,
