@@ -850,22 +850,30 @@ public final class Replica {
     }
 
     /**
-     * Check and maybe increment the high watermark of the replica (leader). this function can be
-     * triggered when:
+     * Check and maybe increment the high watermark of the replica (leader), we will first try to
+     * increment ackedLogEndOffset, if the ackedLogEndOffset incremented, for log table, we would
+     * directly increment highWatermark in this function. For kv table, we will first to flushKv
+     * (see {@link #mayFlushKv(long)}) and then increment highWatermark if flush success. The
+     * function can be triggered when:
      *
      * <pre>
      *     1. bucket ISR changed.
      *     2. any follower replica's LEO changed.
      * </pre>
      *
-     * <p>The HW is determined by the smallest log end offset among all follower replicas that are
-     * in sync. This way, if a replica is considered caught-up, but its log end offset is smaller
-     * than HW, we will wait for this replica to catch up to the HW before advancing the HW.
+     * <p>The high watermark is determined by the smallest log end offset among all follower
+     * replicas that are in sync and the kv data in memory buffer already flush to rocksdb. This
+     * way, if a replica is considered caught-up, but its lpg end offset is smaller than high
+     * watermark, we will wait for this replica to catch up tp the high watermark before advancing
+     * it.
      *
      * <p>Note There is no need to acquire the leaderIsrUpdate lock here since all callers of this
      * private API acquires that lock.
      *
-     * @return true if the high watermark is incremented, and false otherwise.
+     * <p>Note: the high watermark is equal to the ackedLogEndOffset for log table, but may not
+     * equal to the ackedLogEndOffset for kv table. For kv table, the HW is equal to
+     * min(ackedLogEndOffset, flushedLogOffset). The flushedLogOffset means the largest record
+     * offset which already be flushed to kv store (rocksDb).
      */
     private boolean maybeIncrementLeaderHW(LogTablet leaderLog, long currentTimeMs)
             throws IOException {
@@ -880,7 +888,7 @@ public final class Replica {
         // maybeIncrementLeaderHW is in the hot path, the following code is written to
         // avoid unnecessary collection generation.
         LogOffsetMetadata leaderLogEndOffset = leaderLog.getLocalEndOffsetMetadata();
-        LogOffsetMetadata newHighWatermark = leaderLogEndOffset;
+        LogOffsetMetadata newAckedLogEndOffset = leaderLogEndOffset;
 
         for (FollowerReplica remoteFollowerReplica : followerReplicasMap.values()) {
             // Note here we are using the "maximal", see explanation above.
@@ -888,20 +896,26 @@ public final class Replica {
                     remoteFollowerReplica.stateSnapshot();
             int followerId = remoteFollowerReplica.getFollowerId();
             if (replicaState.getLogEndOffsetMetadata().getMessageOffset()
-                            < newHighWatermark.getMessageOffset()
+                            < newAckedLogEndOffset.getMessageOffset()
                     && (isrState.maximalIsr().contains(followerId)
                             || shouldWaitForReplicaToJoinIsr(
                                     replicaState, leaderLogEndOffset, currentTimeMs, followerId))) {
-                newHighWatermark = replicaState.getLogEndOffsetMetadata();
+                newAckedLogEndOffset = replicaState.getLogEndOffsetMetadata();
             }
         }
 
-        Optional<LogOffsetMetadata> oldWatermark =
-                leaderLog.maybeIncrementHighWatermark(newHighWatermark);
-        if (oldWatermark.isPresent()) {
-            LOG.debug("High watermark update from {} to {}.", oldWatermark.get(), newHighWatermark);
-            // when watermark advanced, we may need to flush kv if it's kv replica
-            mayFlushKv(newHighWatermark.getMessageOffset());
+        Optional<LogOffsetMetadata> optOldAckedLogEndOffset =
+                leaderLog.maybeIncrementAckedLogEndOffset(newAckedLogEndOffset);
+        if (optOldAckedLogEndOffset.isPresent()) {
+            long messageOffset = optOldAckedLogEndOffset.get().getMessageOffset();
+            LOG.debug(
+                    "AckedLogEndOffset update from {} to {}.", messageOffset, newAckedLogEndOffset);
+
+            // when ackedLogEndOffset advanced, we may need to flush kv if it's kv replica
+            mayFlushKv(newAckedLogEndOffset.getMessageOffset());
+
+            LOG.debug("Highwatermark update from {} to {}.", messageOffset, newAckedLogEndOffset);
+            leaderLog.updateHighWatermark(newAckedLogEndOffset.getMessageOffset());
             return true;
         } else {
             return false;
