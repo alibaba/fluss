@@ -34,6 +34,7 @@ import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
 import com.alibaba.fluss.rpc.messages.GetTableRequest;
 import com.alibaba.fluss.rpc.messages.GetTableResponse;
+import com.alibaba.fluss.rpc.messages.IndexLookupRequest;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
 import com.alibaba.fluss.rpc.messages.LimitScanResponse;
 import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
@@ -44,6 +45,7 @@ import com.alibaba.fluss.rpc.messages.PbFetchLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForTable;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForTable;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbLookupReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbProduceLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbProduceLogRespForBucket;
@@ -213,6 +215,17 @@ public class RpcMessageTestUtils {
         PbLookupReqForBucket pbLookupReqForBucket = lookupRequest.addBucketsReq();
         pbLookupReqForBucket.setBucketId(bucketId).addKey(key);
         return lookupRequest;
+    }
+
+    public static IndexLookupRequest newIndexLookupRequest(
+            long tableId, int bucketId, List<byte[]> indexKeys) {
+        IndexLookupRequest indexLookupRequest = new IndexLookupRequest().setTableId(tableId);
+        PbIndexLookupReqForBucket pbIndexLookupReqForBucket = indexLookupRequest.addBucketsReq();
+        pbIndexLookupReqForBucket.setBucketId(bucketId);
+        for (byte[] indexKey : indexKeys) {
+            pbIndexLookupReqForBucket.addKey(indexKey);
+        }
+        return indexLookupRequest;
     }
 
     public static LimitScanRequest newLimitScanRequest(long tableId, int bucketId, int limit) {

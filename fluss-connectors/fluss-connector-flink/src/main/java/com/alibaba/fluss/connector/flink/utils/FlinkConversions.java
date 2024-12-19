@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.BUCKET_KEY;
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.BUCKET_NUMBER;
+import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.INDEX_LOOKUP_KEY;
 import static org.apache.flink.table.factories.FactoryUtil.CONNECTOR;
 
 /** Utils for conversion between Flink and Fluss. */
@@ -213,6 +214,11 @@ public class FlinkConversions {
         // then set distributed by information
         List<String> bucketKey;
         if (flinkTableConf.containsKey(BUCKET_KEY.key())) {
+            if (flinkTableConf.containsKey(INDEX_LOOKUP_KEY.key())) {
+                throw new CatalogException(
+                        "Bucket key and table index key cannot be set at the same time.");
+            }
+
             bucketKey =
                     Arrays.stream(flinkTableConf.get(BUCKET_KEY).split(","))
                             .map(String::trim)

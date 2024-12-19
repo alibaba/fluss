@@ -37,8 +37,10 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 /** A flink lookup function for fluss. */
 public class FlinkLookupFunction extends LookupFunction {
@@ -50,7 +52,7 @@ public class FlinkLookupFunction extends LookupFunction {
     private final TablePath tablePath;
     private final int maxRetryTimes;
     private final RowType flinkRowType;
-    private final int[] pkIndexes;
+    private final int[] lookupKeyIndexes;
     private final LookupNormalizer lookupNormalizer;
     @Nullable private final int[] projection;
 
@@ -64,7 +66,7 @@ public class FlinkLookupFunction extends LookupFunction {
             Configuration flussConfig,
             TablePath tablePath,
             RowType flinkRowType,
-            int[] pkIndexes,
+            int[] lookupKeyIndexes,
             int maxRetryTimes,
             LookupNormalizer lookupNormalizer,
             @Nullable int[] projection) {
@@ -72,17 +74,17 @@ public class FlinkLookupFunction extends LookupFunction {
         this.tablePath = tablePath;
         this.maxRetryTimes = maxRetryTimes;
         this.flinkRowType = flinkRowType;
-        this.pkIndexes = pkIndexes;
+        this.lookupKeyIndexes = lookupKeyIndexes;
         this.lookupNormalizer = lookupNormalizer;
         this.projection = projection;
     }
 
-    private RowType toPkRowType(RowType rowType, int[] pkIndex) {
-        LogicalType[] types = new LogicalType[pkIndex.length];
-        String[] names = new String[pkIndex.length];
-        for (int i = 0; i < pkIndex.length; i++) {
-            types[i] = rowType.getTypeAt(pkIndex[i]);
-            names[i] = rowType.getFieldNames().get(pkIndex[i]);
+    private RowType toLookupKeyRowType(RowType rowType, int[] lookupKeyIndex) {
+        LogicalType[] types = new LogicalType[lookupKeyIndex.length];
+        String[] names = new String[lookupKeyIndex.length];
+        for (int i = 0; i < lookupKeyIndex.length; i++) {
+            types[i] = rowType.getTypeAt(lookupKeyIndex[i]);
+            names[i] = rowType.getFieldNames().get(lookupKeyIndex[i]);
         }
         return RowType.of(rowType.isNullable(), types, names);
     }
@@ -98,7 +100,8 @@ public class FlinkLookupFunction extends LookupFunction {
         // TODO: convert to Fluss GenericRow to avoid unnecessary deserialization
         flinkRowToFlussRowConverter =
                 FlinkRowToFlussRowConverter.create(
-                        toPkRowType(flinkRowType, pkIndexes), table.getDescriptor().getKvFormat());
+                        toLookupKeyRowType(flinkRowType, lookupKeyIndexes),
+                        table.getDescriptor().getKvFormat());
         flussRowToFlinkRowConverter =
                 new FlussRowToFlinkRowConverter(FlinkConversions.toFlussRowType(flinkRowType));
         LOG.info("end open.");
@@ -115,6 +118,7 @@ public class FlinkLookupFunction extends LookupFunction {
         RowData normalizedKeyRow = lookupNormalizer.normalizeLookupKey(keyRow);
         LookupNormalizer.RemainingFilter remainingFilter =
                 lookupNormalizer.createRemainingFilter(keyRow);
+        String indexName = lookupNormalizer.getIndexName();
         // to lookup a key, we will need to do two data conversion,
         // first is converting from flink row to fluss row,
         // second is extracting key from the fluss row when calling method table.get(flussKeyRow)
@@ -122,16 +126,26 @@ public class FlinkLookupFunction extends LookupFunction {
         InternalRow flussKeyRow = flinkRowToFlussRowConverter.toInternalRow(normalizedKeyRow);
         for (int retry = 0; retry <= maxRetryTimes; retry++) {
             try {
-                InternalRow row = table.lookup(flussKeyRow).get().getRow();
-                if (row != null) {
-                    // TODO: we can project fluss row first, to avoid deserialize unnecessary fields
-                    RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
-                    if (remainingFilter == null || remainingFilter.isMatch(flinkRow)) {
-                        return Collections.singletonList(maybeProject(flinkRow));
-                    } else {
-                        return Collections.emptyList();
+                List<RowData> projectedRows = new ArrayList<>();
+                List<InternalRow> lookupRows;
+                if (indexName == null) {
+                    lookupRows = table.lookup(flussKeyRow).get().getRowList();
+                } else {
+                    lookupRows = table.indexLookup(indexName, flussKeyRow).get().getRowList();
+                }
+
+                for (InternalRow row : lookupRows) {
+                    if (row != null) {
+                        // TODO: we can project fluss row first, to avoid deserialize unnecessary
+                        // fields
+                        RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
+                        if (remainingFilter == null || remainingFilter.isMatch(flinkRow)) {
+                            projectedRows.add(maybeProject(flinkRow));
+                        }
                     }
                 }
+
+                return projectedRows;
             } catch (Exception e) {
                 LOG.error(String.format("Fluss lookup error, retry times = %d", retry), e);
                 if (retry >= maxRetryTimes) {

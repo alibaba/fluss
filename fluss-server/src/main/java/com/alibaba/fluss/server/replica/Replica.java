@@ -167,6 +167,7 @@ public final class Replica {
     private final long logTTLMs;
     private final boolean dataLakeEnabled;
     private final int tieredLogLocalSegments;
+    private final Map<String, int[]> indexKeyIndexes;
     private final AtomicReference<Integer> leaderReplicaIdOpt = new AtomicReference<>();
     private final ReadWriteLock leaderIsrUpdateLock = new ReentrantReadWriteLock();
 
@@ -228,6 +229,7 @@ public final class Replica {
         this.dataLakeEnabled = tableDescriptor.isDataLakeEnabled();
         this.tieredLogLocalSegments = tableDescriptor.getTieredLogLocalSegments();
         this.partitionKeys = tableDescriptor.getPartitionKeys();
+        this.indexKeyIndexes = tableDescriptor.getIndexKeyIndexes();
         this.snapshotContext = snapshotContext;
         // create a closeable registry for the replica
         this.closeableRegistry = new CloseableRegistry();
@@ -305,6 +307,10 @@ public final class Replica {
 
     public long getLogTTLMs() {
         return logTTLMs;
+    }
+
+    public boolean supportIndexLookup() {
+        return indexKeyIndexes != null && !indexKeyIndexes.isEmpty();
     }
 
     public int writerIdCount() {
@@ -1021,6 +1027,38 @@ public final class Replica {
                         String errorMsg =
                                 String.format(
                                         "Failed to lookup from local kv for table bucket %s, the cause is: %s",
+                                        tableBucket, e.getMessage());
+                        LOG.error(errorMsg, e);
+                        throw new KvStorageException(errorMsg, e);
+                    }
+                });
+    }
+
+    public List<byte[]> indexLookup(byte[] indexKey) {
+        if (!isKvTable()) {
+            throw new NonPrimaryKeyTableException(
+                    "Try to do index lookup on a non primary key table: " + getTablePath());
+        }
+
+        return inReadLock(
+                leaderIsrUpdateLock,
+                () -> {
+                    try {
+                        if (!isLeader()) {
+                            throw new NotLeaderOrFollowerException(
+                                    String.format(
+                                            "Leader not local for bucket %s on tabletServer %d",
+                                            tableBucket, localTabletServerId));
+                        }
+                        checkNotNull(
+                                kvTablet, "KvTablet for the replica to get key shouldn't be null.");
+                        // the index key is serialized by index name + index key fields, see
+                        // IndexKeyEncoder.
+                        return kvTablet.indexLookup(indexKey);
+                    } catch (IOException e) {
+                        String errorMsg =
+                                String.format(
+                                        "Failed to do index lookup from local kv for table bucket %s, the cause is: %s",
                                         tableBucket, e.getMessage());
                         LOG.error(errorMsg, e);
                         throw new KvStorageException(errorMsg, e);

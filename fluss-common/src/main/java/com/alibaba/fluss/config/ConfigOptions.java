@@ -734,6 +734,12 @@ public class ConfigOptions {
                     .withDescription(
                             "The maximum number of unacknowledged lookup requests for lookup operations.");
 
+    public static final ConfigOption<Duration> CLIENT_LOOKUP_BATCH_TIMEOUT =
+            key("client.lookup.batch-timeout")
+                    .durationType()
+                    .defaultValue(Duration.ofMillis(100))
+                    .withDescription("The lookup batch timeout ms.");
+
     public static final ConfigOption<Integer> CLIENT_SCANNER_REMOTE_LOG_PREFETCH_NUM =
             key("client.scanner.remote-log.prefetch-num")
                     .intType()
@@ -890,6 +896,18 @@ public class ConfigOptions {
                             "Whether enable lakehouse storage for the table. Disabled by default. "
                                     + "When this option is set to ture and the datalake tiering service is up,"
                                     + " the table will be tiered and compacted into datalake format stored on lakehouse storage.");
+
+    public static final ConfigOption<String> TABLE_INDEX_KEY =
+            key("table.index.key")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "The index key is used to build non-key secondary indexes on a pk table, "
+                                    + "enabling fast data queries. You can define multiple index keys, separated by ';'."
+                                    + " Each index key can specify a index name, like indexName=indexKeyFields. "
+                                    + " indexKeyFields support multiple fields, which can be nullable filed,"
+                                    + " and fields within a key are separated by ','."
+                                    + " For example: 'index1=num_orders;index2=num_orders,total_amount'");
 
     // ------------------------------------------------------------------------
     //  ConfigOptions for Kv

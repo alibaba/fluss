@@ -18,7 +18,7 @@ package com.alibaba.fluss.connector.flink.source.lookup;
 
 import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
-import com.alibaba.fluss.client.table.LookupResult;
+import com.alibaba.fluss.client.lookup.LookupResult;
 import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.source.lookup.LookupNormalizer.RemainingFilter;
@@ -40,8 +40,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /** A flink async lookup function for fluss. */
@@ -55,7 +56,7 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
     private final TablePath tablePath;
     private final int maxRetryTimes;
     private final RowType flinkRowType;
-    private final int[] pkIndexes;
+    private final int[] lookupKeyIndexes;
     private final LookupNormalizer lookupNormalizer;
     @Nullable private final int[] projection;
 
@@ -68,7 +69,7 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
             Configuration flussConfig,
             TablePath tablePath,
             RowType flinkRowType,
-            int[] pkIndexes,
+            int[] lookupKeyIndexes,
             int maxRetryTimes,
             LookupNormalizer lookupNormalizer,
             @Nullable int[] projection) {
@@ -76,17 +77,17 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
         this.tablePath = tablePath;
         this.maxRetryTimes = maxRetryTimes;
         this.flinkRowType = flinkRowType;
-        this.pkIndexes = pkIndexes;
+        this.lookupKeyIndexes = lookupKeyIndexes;
         this.lookupNormalizer = lookupNormalizer;
         this.projection = projection;
     }
 
-    private RowType toPkRowType(RowType rowType, int[] pkIndex) {
-        LogicalType[] types = new LogicalType[pkIndex.length];
-        String[] names = new String[pkIndex.length];
-        for (int i = 0; i < pkIndex.length; i++) {
-            types[i] = rowType.getTypeAt(pkIndex[i]);
-            names[i] = rowType.getFieldNames().get(pkIndex[i]);
+    private RowType toLookupKeyRowType(RowType rowType, int[] lookupKeyIndex) {
+        LogicalType[] types = new LogicalType[lookupKeyIndex.length];
+        String[] names = new String[lookupKeyIndex.length];
+        for (int i = 0; i < lookupKeyIndex.length; i++) {
+            types[i] = rowType.getTypeAt(lookupKeyIndex[i]);
+            names[i] = rowType.getFieldNames().get(lookupKeyIndex[i]);
         }
         return RowType.of(rowType.isNullable(), types, names);
     }
@@ -99,7 +100,8 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
         // TODO: convert to Fluss GenericRow to avoid unnecessary deserialization
         flinkRowToFlussRowConverter =
                 FlinkRowToFlussRowConverter.create(
-                        toPkRowType(flinkRowType, pkIndexes), table.getDescriptor().getKvFormat());
+                        toLookupKeyRowType(flinkRowType, lookupKeyIndexes),
+                        table.getDescriptor().getKvFormat());
         flussRowToFlinkRowConverter =
                 new FlussRowToFlinkRowConverter(FlinkConversions.toFlussRowType(flinkRowType));
         LOG.info("end open.");
@@ -117,7 +119,7 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
         InternalRow flussKeyRow = flinkRowToFlussRowConverter.toInternalRow(normalizedKeyRow);
         CompletableFuture<Collection<RowData>> future = new CompletableFuture<>();
         // fetch result
-        fetchResult(future, 0, flussKeyRow, remainingFilter);
+        fetchResult(future, 0, flussKeyRow, remainingFilter, lookupNormalizer.getIndexName());
         return future;
     }
 
@@ -128,13 +130,21 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
      * @param currentRetry Current number of retries.
      * @param keyRow the key row to get.
      * @param remainingFilter the nullable remaining filter to filter the result.
+     * @param indexName the index name to get.
      */
     private void fetchResult(
             CompletableFuture<Collection<RowData>> resultFuture,
             int currentRetry,
             InternalRow keyRow,
-            @Nullable RemainingFilter remainingFilter) {
-        CompletableFuture<LookupResult> responseFuture = table.lookup(keyRow);
+            @Nullable RemainingFilter remainingFilter,
+            @Nullable String indexName) {
+        CompletableFuture<LookupResult> responseFuture;
+        if (indexName == null) {
+            responseFuture = table.lookup(keyRow);
+        } else {
+            responseFuture = table.indexLookup(indexName, keyRow);
+        }
+
         responseFuture.whenComplete(
                 (result, throwable) -> {
                     if (throwable != null) {
@@ -163,24 +173,24 @@ public class FlinkAsyncLookupFunction extends AsyncLookupFunction {
                                     resultFuture.completeExceptionally(e1);
                                 }
                                 fetchResult(
-                                        resultFuture, currentRetry + 1, keyRow, remainingFilter);
+                                        resultFuture,
+                                        currentRetry + 1,
+                                        keyRow,
+                                        remainingFilter,
+                                        indexName);
                             }
                         }
                     } else {
-                        InternalRow row = result.getRow();
-                        if (row == null) {
-                            resultFuture.complete(Collections.emptyList());
-                        } else {
-                            // TODO: we can project fluss row first,
-                            //  to avoid deserialize unnecessary fields
-                            RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
-                            if (remainingFilter != null && !remainingFilter.isMatch(flinkRow)) {
-                                resultFuture.complete(Collections.emptyList());
-                            } else {
-                                resultFuture.complete(
-                                        Collections.singletonList(maybeProject(flinkRow)));
+                        List<RowData> projectedRow = new ArrayList<>();
+                        for (InternalRow row : result.getRowList()) {
+                            if (row != null) {
+                                RowData flinkRow = flussRowToFlinkRowConverter.toFlinkRowData(row);
+                                if (remainingFilter == null || remainingFilter.isMatch(flinkRow)) {
+                                    projectedRow.add(maybeProject(flinkRow));
+                                }
                             }
                         }
+                        resultFuture.complete(projectedRow);
                     }
                 });
     }

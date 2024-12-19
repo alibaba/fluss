@@ -17,37 +17,54 @@
 package com.alibaba.fluss.client.lookup;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.metadata.TableBucket;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Class to represent a Lookup operation, it contains the table bucket that the key should lookup
- * from, the bytes of the key, and a future for the lookup operation.
+ * Class to represent an index lookup operation, it contains the table id, bucketNums and related
+ * CompletableFuture.
  */
 @Internal
-public class Lookup extends AbstractLookup {
-
-    private final TableBucket tableBucket;
+public class IndexLookup extends AbstractLookup {
+    private final int destination;
+    private final long tableId;
+    private final int bucketId;
+    private final String indexName;
     private final CompletableFuture<List<byte[]>> future;
 
-    Lookup(TableBucket tableBucket, byte[] key) {
-        super(key);
-        this.tableBucket = tableBucket;
+    public IndexLookup(
+            int destination, long tableId, int bucketId, String indexName, byte[] indexKey) {
+        super(indexKey);
+        this.destination = destination;
+        this.tableId = tableId;
+        this.bucketId = bucketId;
+        this.indexName = indexName;
         this.future = new CompletableFuture<>();
     }
 
-    public TableBucket tableBucket() {
-        return tableBucket;
+    public int destination() {
+        return destination;
     }
 
-    @Override
-    public LookupType lookupType() {
-        return LookupType.LOOKUP;
+    public long tableId() {
+        return tableId;
+    }
+
+    public int bucketId() {
+        return bucketId;
+    }
+
+    public String indexName() {
+        return indexName;
     }
 
     public CompletableFuture<List<byte[]>> future() {
         return future;
+    }
+
+    @Override
+    public LookupType lookupType() {
+        return LookupType.INDEX_LOOKUP;
     }
 }

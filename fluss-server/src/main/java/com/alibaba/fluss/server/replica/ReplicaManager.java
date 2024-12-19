@@ -24,6 +24,7 @@ import com.alibaba.fluss.exception.FencedLeaderEpochException;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.InvalidCoordinatorException;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
+import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.exception.LogOffsetOutOfRangeException;
 import com.alibaba.fluss.exception.LogStorageException;
 import com.alibaba.fluss.exception.NotLeaderOrFollowerException;
@@ -50,9 +51,12 @@ import com.alibaba.fluss.rpc.entity.ProduceLogResultForBucket;
 import com.alibaba.fluss.rpc.entity.PutKvResultForBucket;
 import com.alibaba.fluss.rpc.entity.WriteResultForBucket;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
+import com.alibaba.fluss.rpc.messages.IndexLookupResponse;
 import com.alibaba.fluss.rpc.messages.NotifyKvSnapshotOffsetResponse;
 import com.alibaba.fluss.rpc.messages.NotifyLakeTableOffsetResponse;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsResponse;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbIndexLookupRespForKey;
 import com.alibaba.fluss.rpc.protocol.ApiError;
 import com.alibaba.fluss.rpc.protocol.Errors;
 import com.alibaba.fluss.server.coordinator.CoordinatorContext;
@@ -454,6 +458,50 @@ public class ReplicaManager {
         }
         LOG.debug("Lookup from local kv in {}ms", System.currentTimeMillis() - startTime);
         responseCallback.accept(lookupResultForBucketMap);
+    }
+
+    /** Lookup by index keys on kv store. */
+    public void indexLookup(
+            Map<TableBucket, List<byte[]>> entriesPerBucket,
+            Consumer<IndexLookupResponse> responseCallback) {
+        IndexLookupResponse response = new IndexLookupResponse();
+        PhysicalTableMetricGroup tableMetrics = null;
+        List<PbIndexLookupRespForBucket> resultForAll = new ArrayList<>();
+        for (Map.Entry<TableBucket, List<byte[]>> entry : entriesPerBucket.entrySet()) {
+            TableBucket tb = entry.getKey();
+            PbIndexLookupRespForBucket respForBucket = new PbIndexLookupRespForBucket();
+            respForBucket.setBucketId(tb.getBucket());
+            try {
+                Replica replica = getReplicaOrException(tb);
+                if (!replica.supportIndexLookup()) {
+                    throw new KvStorageException(
+                            "Table bucket " + tb + " does not support index lookup");
+                }
+
+                tableMetrics = replica.tableMetrics();
+                tableMetrics.totalIndexLookupRequests().inc();
+                List<PbIndexLookupRespForKey> keyResultList = new ArrayList<>();
+                for (byte[] indexKey : entry.getValue()) {
+                    PbIndexLookupRespForKey pbIndexLookupRespForKey = new PbIndexLookupRespForKey();
+                    for (byte[] result : replica.indexLookup(indexKey)) {
+                        pbIndexLookupRespForKey.addValue(result);
+                    }
+                    keyResultList.add(pbIndexLookupRespForKey);
+                }
+                respForBucket.addAllKeysResps(keyResultList);
+            } catch (Exception e) {
+                LOG.error("Error processing index lookup operation on replica {}", tb, e);
+                if (tableMetrics != null) {
+                    tableMetrics.failedIndexLookupRequests().inc();
+                }
+                throw e;
+            }
+
+            resultForAll.add(respForBucket);
+        }
+
+        response.addAllBucketsResps(resultForAll);
+        responseCallback.accept(response);
     }
 
     public void listOffsets(
