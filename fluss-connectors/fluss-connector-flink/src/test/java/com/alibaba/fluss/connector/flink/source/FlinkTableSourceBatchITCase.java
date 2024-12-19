@@ -38,12 +38,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.fluss.connector.flink.FlinkConnectorOptions.BOOTSTRAP_SERVERS;
 import static com.alibaba.fluss.server.testutils.FlussClusterExtension.BUILTIN_DATABASE;
@@ -170,14 +173,12 @@ class FlinkTableSourceBatchITCase extends FlinkTestBase {
     @Test
     void testScanSingleRowFilterException() throws Exception {
         String tableName = prepareSourceTable(new String[] {"id", "name"}, null);
+        // doesn't have all condition for primary key
         String query = String.format("SELECT * FROM %s WHERE id = 1", tableName);
 
-        // doesn't have all condition for primary key, doesn't support to execute
-        assertThatThrownBy(() -> tEnv.explainSql(query))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage(
-                        "Currently, Fluss only support queries on table with datalake enabled"
-                                + " or point queries on primary key when it's in batch execution mode.");
+        CloseableIterator<Row> collected = tEnv.executeSql(query).collect();
+        List<String> expected = Collections.singletonList("+I[1, address1, name1]");
+        assertResultsIgnoreOrder(collected, expected, true);
     }
 
     @Test
@@ -281,6 +282,75 @@ class FlinkTableSourceBatchITCase extends FlinkTestBase {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"initial", "earliest"})
+    void testScanNoFilterOnPartitionedTable(String scanStartupMode) throws Exception {
+        String tableName =
+                prepareSourceTable(
+                        new String[] {"id", "dt"},
+                        "dt",
+                        Collections.singletonMap("scan.startup.mode", scanStartupMode));
+        TablePath tablePath = TablePath.of(DEFAULT_DB, tableName);
+        Map<Long, String> partitionNameById =
+                waitUntilPartitions(FLUSS_CLUSTER_EXTENSION.getZooKeeperClient(), tablePath);
+        Iterator<String> partitionIterator =
+                partitionNameById.values().stream().sorted().iterator();
+        String partition1 = partitionIterator.next();
+        String query = String.format("SELECT * FROM %s ", tableName);
+
+        CloseableIterator<Row> collected = tEnv.executeSql(query).collect();
+        List<String> expected =
+                IntStream.range(1, 6)
+                        .mapToObj(
+                                i ->
+                                        String.format(
+                                                "+I[%s, address%s, name%s, %s]",
+                                                i, i, i, partition1))
+                        .collect(Collectors.toList());
+        assertResultsIgnoreOrder(collected, expected, true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"initial", "earliest"})
+    void testScanSingleRowProjectionAndNonPkFilter(String scanStartupMode) throws Exception {
+        String tableName =
+                prepareSourceTable(
+                        new String[] {"name"},
+                        null,
+                        Collections.singletonMap("scan.startup.mode", scanStartupMode));
+        String query = String.format("SELECT address FROM %s where id = 2 ", tableName);
+        CloseableIterator<Row> collected = tEnv.executeSql(query).collect();
+        List<String> expected = Arrays.asList("+I[address2]");
+        assertResultsIgnoreOrder(collected, expected, true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"initial", "earliest"})
+    void testScanTableNoFilter(String scanStartupMode) throws Exception {
+        String tableName =
+                prepareSourceTable(
+                        new String[] {"name", "id"},
+                        null,
+                        Collections.singletonMap("scan.startup.mode", scanStartupMode));
+        String query = String.format("SELECT * FROM %s ", tableName);
+
+        assertThat(tEnv.explainSql(query))
+                .contains(
+                        String.format(
+                                "TableSourceScan(table=[[testcatalog, defaultdb, %s]], "
+                                        + "fields=[id, address, name])",
+                                tableName));
+        CloseableIterator<Row> collected = tEnv.executeSql(query).collect();
+        List<String> expected =
+                Arrays.asList(
+                        "+I[1, address1, name1]",
+                        "+I[2, address2, name2]",
+                        "+I[3, address3, name3]",
+                        "+I[4, address4, name4]",
+                        "+I[5, address5, name5]");
+        assertResultsIgnoreOrder(collected, expected, true);
+    }
+
+    @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void testCountPushDown(boolean partitionTable) throws Exception {
         String tableName = partitionTable ? preparePartitionedLogTable() : prepareLogTable();
@@ -297,35 +367,48 @@ class FlinkTableSourceBatchITCase extends FlinkTestBase {
         CloseableIterator<Row> iterRows = tEnv.executeSql(query).collect();
         List<String> collected = assertAndCollectRecords(iterRows, 1);
         List<String> expected = Collections.singletonList(String.format("+I[%s]", expectedRows));
+
         assertThat(collected).isEqualTo(expected);
 
         // test not push down grouping count.
-        assertThatThrownBy(
-                        () ->
-                                tEnv.explainSql(
-                                                String.format(
-                                                        "SELECT COUNT(*) FROM %s group by id",
-                                                        tableName))
-                                        .wait())
-                .hasMessageContaining(
-                        "Currently, Fluss only support queries on table with datalake enabled or point queries on primary key when it's in batch execution mode.");
+        query = String.format("SELECT id, COUNT(*) FROM %s group by id", tableName);
+        iterRows = tEnv.executeSql(query).collect();
+        collected = assertAndCollectRecords(iterRows, 5);
+        expected = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            expected.add(String.format("+I[%s, %s]", i, partitionTable ? 4 : 1));
+        }
+        assertThat(collected).containsExactlyInAnyOrderElementsOf(expected);
 
         // test not support primary key now
         String primaryTableName = prepareSourceTable(new String[] {"id"}, null);
-        assertThatThrownBy(
-                        () ->
-                                tEnv.explainSql(
-                                                String.format(
-                                                        "SELECT COUNT(*) FROM %s ",
-                                                        primaryTableName))
-                                        .wait())
-                .hasMessageContaining(
-                        "Currently, Fluss only support queries on table with datalake enabled or point queries on primary key when it's in batch execution mode.");
+        query = String.format("SELECT COUNT(*) FROM %s ", primaryTableName);
+        iterRows = tEnv.executeSql(query).collect();
+        collected = assertAndCollectRecords(iterRows, 1);
+        expected = Collections.singletonList(String.format("+I[%s]", 5));
+        assertThat(collected).isEqualTo(expected);
     }
 
     private String prepareSourceTable(String[] keys, String partitionedKey) throws Exception {
+        return prepareSourceTable(keys, partitionedKey, Collections.emptyMap());
+    }
+
+    private String prepareSourceTable(
+            String[] keys, String partitionedKey, Map<String, String> otherOptions)
+            throws Exception {
         String tableName =
                 String.format("test_%s_%s", String.join("_", keys), RandomUtils.nextInt());
+        String options =
+                otherOptions.isEmpty()
+                        ? ""
+                        : ","
+                                + otherOptions.entrySet().stream()
+                                        .map(
+                                                e ->
+                                                        String.format(
+                                                                "'%s'='%s'",
+                                                                e.getKey(), e.getValue()))
+                                        .collect(Collectors.joining(","));
         if (partitionedKey == null) {
             tEnv.executeSql(
                     String.format(
@@ -334,8 +417,10 @@ class FlinkTableSourceBatchITCase extends FlinkTestBase {
                                     + "  address varchar,"
                                     + "  name varchar,"
                                     + "  primary key (%s) NOT ENFORCED)"
-                                    + " with ('bucket.num' = '4')",
-                            tableName, String.join(",", keys)));
+                                    + " with ('bucket.num' = '4'"
+                                    + " %s "
+                                    + ")",
+                            tableName, String.join(",", keys), options));
         } else {
             tEnv.executeSql(
                     String.format(
@@ -348,8 +433,10 @@ class FlinkTableSourceBatchITCase extends FlinkTestBase {
                                     + " with ("
                                     + "  'bucket.num' = '4', "
                                     + "  'table.auto-partition.enabled' = 'true',"
-                                    + "  'table.auto-partition.time-unit' = 'year')",
-                            tableName, String.join(",", keys), partitionedKey));
+                                    + "  'table.auto-partition.time-unit' = 'year'"
+                                    + " %s "
+                                    + ")",
+                            tableName, String.join(",", keys), partitionedKey, options));
         }
 
         TablePath tablePath = TablePath.of(DEFAULT_DB, tableName);

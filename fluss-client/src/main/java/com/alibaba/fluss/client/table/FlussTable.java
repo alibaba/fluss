@@ -25,6 +25,8 @@ import com.alibaba.fluss.client.scanner.ScanRecord;
 import com.alibaba.fluss.client.scanner.log.FlussLogScanner;
 import com.alibaba.fluss.client.scanner.log.LogScan;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
+import com.alibaba.fluss.client.scanner.snapshot.HybridScan;
+import com.alibaba.fluss.client.scanner.snapshot.HybridScanner;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScan;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScanner;
 import com.alibaba.fluss.client.table.getter.PartitionGetter;
@@ -84,6 +86,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 import static com.alibaba.fluss.client.utils.MetadataUtils.getOneAvailableTabletServerNode;
 
@@ -400,6 +403,32 @@ public class FlussTable implements Table {
                 tableInfo.getTableDescriptor().getKvFormat(),
                 remoteFileDownloader,
                 snapshotScan);
+    }
+
+    @Override
+    public HybridScanner getHybridScanner(HybridScan hybridScan) {
+        mayPrepareSecurityTokeResource();
+        mayPrepareRemoteFileDownloader();
+        int[] logProjectedFields = null;
+        if (hybridScan.getProjectedFields() != null) {
+            int[] primaryKeyIndexes =
+                    tableInfo.getTableDescriptor().getSchema().getPrimaryKeyIndexes();
+            logProjectedFields =
+                    IntStream.concat(
+                                    IntStream.of(hybridScan.getProjectedFields()),
+                                    IntStream.of(primaryKeyIndexes))
+                            .distinct()
+                            .toArray();
+        }
+
+        return new HybridScanner(
+                conf,
+                tableInfo.getTableDescriptor().getKvFormat(),
+                remoteFileDownloader,
+                (byte) tableInfo.getSchemaId(),
+                hybridScan,
+                logProjectedFields,
+                getLogScanner(new LogScan().withProjectedFields(logProjectedFields)));
     }
 
     @Override
