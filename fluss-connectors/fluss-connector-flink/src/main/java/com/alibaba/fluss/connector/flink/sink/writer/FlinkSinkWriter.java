@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.connector.flink.sink;
+package com.alibaba.fluss.connector.flink.sink.writer;
 
 import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
@@ -30,14 +30,11 @@ import com.alibaba.fluss.metrics.Metric;
 import com.alibaba.fluss.metrics.MetricNames;
 import com.alibaba.fluss.row.InternalRow;
 
+import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
 import org.apache.flink.runtime.metrics.groups.InternalSinkWriterMetricGroup;
-import org.apache.flink.runtime.state.FunctionInitializationContext;
-import org.apache.flink.runtime.state.FunctionSnapshotContext;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
@@ -48,16 +45,13 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 
-/** Flink's {@link SinkFunction} implementation for Fluss. */
-abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
-        implements CheckpointedFunction, Serializable {
+/** Base class for Flink {@link SinkWriter} implementations in Fluss. */
+public abstract class FlinkSinkWriter implements SinkWriter<RowData> {
 
-    private static final long serialVersionUID = 1L;
-    protected static final Logger LOG = LoggerFactory.getLogger(FlinkSinkFunction.class);
+    protected static final Logger LOG = LoggerFactory.getLogger(FlinkSinkWriter.class);
 
     private final TablePath tablePath;
     private final Configuration flussConfig;
@@ -75,11 +69,11 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
     private transient Counter numRecordsOutErrorsCounter;
     private volatile Throwable asyncWriterException;
 
-    public FlinkSinkFunction(TablePath tablePath, Configuration flussConfig, RowType tableRowType) {
+    public FlinkSinkWriter(TablePath tablePath, Configuration flussConfig, RowType tableRowType) {
         this(tablePath, flussConfig, tableRowType, null);
     }
 
-    public FlinkSinkFunction(
+    public FlinkSinkWriter(
             TablePath tablePath,
             Configuration flussConfig,
             RowType tableRowType,
@@ -90,14 +84,13 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
         this.tableRowType = tableRowType;
     }
 
-    @Override
-    public void open(org.apache.flink.configuration.Configuration config) {
+    public void initialize(WriterInitContext context) {
         LOG.info(
                 "Opening Fluss {}, database: {} and table: {}",
                 this.getClass().getSimpleName(),
                 tablePath.getDatabaseName(),
                 tablePath.getTableName());
-        metricGroup = InternalSinkWriterMetricGroup.wrap(getRuntimeContext().getMetricGroup());
+        metricGroup = InternalSinkWriterMetricGroup.wrap(context.metricGroup());
         flinkMetricRegistry =
                 new FlinkMetricRegistry(
                         metricGroup, Collections.singleton(MetricNames.WRITER_SEND_LATENCY_MS));
@@ -115,7 +108,7 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
     }
 
     @Override
-    public void invoke(RowData value, SinkFunction.Context context) throws IOException {
+    public void write(RowData value, Context context) throws IOException, InterruptedException {
         checkAsyncException();
         InternalRow internalRow = dataConverter.toInternalRow(value);
         CompletableFuture<Void> writeFuture = writeRow(value.getRowKind(), internalRow);
@@ -131,19 +124,7 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
     }
 
     @Override
-    public void snapshotState(FunctionSnapshotContext functionSnapshotContext) throws IOException {
-        flush();
-    }
-
-    @Override
-    public void initializeState(FunctionInitializationContext functionInitializationContext) {}
-
-    @Override
-    public void finish() throws IOException {
-        flush();
-    }
-
-    abstract void flush() throws IOException;
+    public abstract void flush(boolean endOfInput) throws IOException, InterruptedException;
 
     abstract FlinkRowToFlussRowConverter createFlinkRowToFlussRowConverter();
 
@@ -151,8 +132,6 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
 
     @Override
     public void close() throws Exception {
-        super.close();
-
         try {
             if (table != null) {
                 table.close();
@@ -193,7 +172,7 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
 
     private void sanityCheck(TableDescriptor flussTableDescriptor) {
         // when it's UpsertSinkFunction, it means it has primary key got from Flink's metadata
-        boolean hasPrimaryKey = this instanceof UpsertSinkFunction;
+        boolean hasPrimaryKey = this instanceof UpsertSinkWriter;
         if (flussTableDescriptor.hasPrimaryKey() != hasPrimaryKey) {
             throw new ValidationException(
                     String.format(
