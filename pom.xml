@@ -889,7 +889,7 @@
                         <dependency>
                             <groupId>com.puppycrawl.tools</groupId>
                             <artifactId>checkstyle</artifactId>
-                            <!-- Note: match version with docs/flinkDev/ide_setup.md -->
+                            <!-- Note: match version with docs/dev/ide-setup.md -->
                             <version>8.14</version>
                         </dependency>
                     </dependencies>

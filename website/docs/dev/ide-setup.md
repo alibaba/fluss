@@ -68,7 +68,7 @@ adding a Copyright profile:
     See the License for the specific language governing permissions and
     limitations under the License.
    ```
-4. Go to "Editor" → "Copyright" and choose the "Fluss" profile as the default profile for this
+4. Go to "Editor" → "Copyright" and choose the "Alibaba" profile as the default profile for this
    project.
 5. Click "Apply".
 
