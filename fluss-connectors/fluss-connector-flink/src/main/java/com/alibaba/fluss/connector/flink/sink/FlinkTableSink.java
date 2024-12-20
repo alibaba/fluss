@@ -149,7 +149,7 @@ public class FlinkTableSink
                 (primaryKeyIndexes.length > 0)
                         ? new FlinkSink.UpsertSinkWriterBuilder(
                                 tablePath, flussConfig, tableRowType, targetColumnIndexes)
-                        : new FlinkSink.AppendSinkSinkWriterBuilder(
+                        : new FlinkSink.AppendSinkWriterBuilder(
                                 tablePath, flussConfig, tableRowType);
 
         FlinkSink flinkSink = new FlinkSink(flinkSinkWriterBuilder);
