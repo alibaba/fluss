@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.server.kv;
 
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidTargetColumnException;
 import com.alibaba.fluss.exception.OutOfOrderSequenceException;
@@ -99,32 +100,9 @@ class KvTabletTest {
     @BeforeEach
     void beforeEach() throws Exception {
         PhysicalTablePath tablePath = PhysicalTablePath.of(TablePath.of("testDb", "t1"));
-        long tableId = 0L;
-        File logTabletDir =
-                LogTestUtils.makeRandomLogTabletDir(
-                        tempLogDir, tablePath.getDatabaseName(), tableId, tablePath.getTableName());
-        logTablet =
-                LogTablet.create(
-                        tablePath,
-                        logTabletDir,
-                        conf,
-                        0,
-                        new FlussScheduler(1),
-                        LogFormat.ARROW,
-                        1,
-                        true,
-                        SystemClock.getInstance());
+        logTablet = createLogTablet(tempLogDir, 0L, tablePath);
         TableBucket tableBucket = logTablet.getTableBucket();
-        kvTablet =
-                KvTablet.create(
-                        tablePath,
-                        tableBucket,
-                        logTablet,
-                        tmpKvDir,
-                        conf,
-                        new RootAllocator(Long.MAX_VALUE),
-                        new TestingMemorySegmentPool(10 * 1024),
-                        KvFormat.COMPACTED);
+        kvTablet = createKvTablet(tablePath, tableBucket, logTablet, tmpKvDir, null);
         executor = Executors.newFixedThreadPool(2);
     }
 
@@ -133,6 +111,42 @@ class KvTabletTest {
         if (executor != null) {
             executor.shutdown();
         }
+    }
+
+    private LogTablet createLogTablet(File tempLogDir, long tableId, PhysicalTablePath tablePath)
+            throws Exception {
+        File logTabletDir =
+                LogTestUtils.makeRandomLogTabletDir(
+                        tempLogDir, tablePath.getDatabaseName(), tableId, tablePath.getTableName());
+        return LogTablet.create(
+                tablePath,
+                logTabletDir,
+                conf,
+                0,
+                new FlussScheduler(1),
+                LogFormat.ARROW,
+                1,
+                true,
+                SystemClock.getInstance());
+    }
+
+    private KvTablet createKvTablet(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            LogTablet logTablet,
+            File tmpKvDir,
+            ConfigOptions.MergeEngine mergeEngine)
+            throws Exception {
+        return KvTablet.create(
+                tablePath,
+                tableBucket,
+                logTablet,
+                tmpKvDir,
+                conf,
+                new RootAllocator(Long.MAX_VALUE),
+                new TestingMemorySegmentPool(10 * 1024),
+                KvFormat.COMPACTED,
+                mergeEngine);
     }
 
     @Test
@@ -536,11 +550,74 @@ class KvTabletTest {
         assertThat(kvTablet.getKvPreWriteBuffer().getMaxLSN()).isEqualTo(3);
     }
 
+    @Test
+    void testFirstRowMergeEngine(@TempDir File tempLogDir, @TempDir File tmpKvDir)
+            throws Exception {
+        PhysicalTablePath tablePath =
+                PhysicalTablePath.of(TablePath.of("testDb", "test_first_row"));
+
+        LogTablet logTablet = createLogTablet(tempLogDir, 1L, tablePath);
+        TableBucket tableBucket = logTablet.getTableBucket();
+        KvTablet kvTablet =
+                createKvTablet(
+                        tablePath,
+                        tableBucket,
+                        logTablet,
+                        tmpKvDir,
+                        ConfigOptions.MergeEngine.FIRST_ROW);
+
+        List<KvRecord> kvData1 =
+                Arrays.asList(
+                        kvRecordFactory.ofRecord("k1".getBytes(), new Object[] {1, "v11"}),
+                        kvRecordFactory.ofRecord("k2".getBytes(), new Object[] {2, "v21"}),
+                        kvRecordFactory.ofRecord("k2".getBytes(), new Object[] {2, "v23"}));
+        KvRecordBatch kvRecordBatch1 = kvRecordBatchFactory.ofRecords(kvData1);
+        kvTablet.putAsLeader(kvRecordBatch1, null, DATA1_SCHEMA_PK);
+
+        long endOffset = logTablet.localLogEndOffset();
+        LogRecords actualLogRecords = readLogRecords(logTablet);
+        List<MemoryLogRecords> expectedLogs =
+                Collections.singletonList(
+                        logRecords(
+                                DATA1_SCHEMA_PK.toRowType(),
+                                0,
+                                Arrays.asList(RowKind.INSERT, RowKind.INSERT),
+                                Arrays.asList(new Object[] {1, "v11"}, new Object[] {2, "v21"})));
+        checkEqual(actualLogRecords, expectedLogs);
+
+        List<KvRecord> kvData2 =
+                Arrays.asList(
+                        kvRecordFactory.ofRecord("k2".getBytes(), new Object[] {2, "v22"}),
+                        kvRecordFactory.ofRecord("k1".getBytes(), new Object[] {1, "v21"}),
+                        kvRecordFactory.ofRecord("k1".getBytes(), null),
+                        kvRecordFactory.ofRecord("k3".getBytes(), new Object[] {3, "v31"}));
+        KvRecordBatch kvRecordBatch2 = kvRecordBatchFactory.ofRecords(kvData2);
+        kvTablet.putAsLeader(kvRecordBatch2, null, DATA1_SCHEMA_PK);
+
+        expectedLogs =
+                Collections.singletonList(
+                        logRecords(
+                                DATA1_SCHEMA_PK.toRowType(),
+                                endOffset,
+                                Collections.singletonList(RowKind.INSERT),
+                                Collections.singletonList(new Object[] {3, "v31"})));
+        actualLogRecords = readLogRecords(logTablet, endOffset);
+        checkEqual(actualLogRecords, expectedLogs);
+    }
+
     private LogRecords readLogRecords() throws Exception {
         return readLogRecords(0L);
     }
 
     private LogRecords readLogRecords(long startOffset) throws Exception {
+        return readLogRecords(logTablet, startOffset);
+    }
+
+    private LogRecords readLogRecords(LogTablet logTablet) throws Exception {
+        return readLogRecords(logTablet, 0L);
+    }
+
+    private LogRecords readLogRecords(LogTablet logTablet, long startOffset) throws Exception {
         return logTablet
                 .read(startOffset, Integer.MAX_VALUE, FetchIsolation.LOG_END, false, null)
                 .getRecords();

@@ -164,6 +164,7 @@ public final class Replica {
     private final Schema schema;
     private final LogFormat logFormat;
     private final KvFormat kvFormat;
+    private final @Nullable ConfigOptions.MergeEngine mergeEngine;
     private final long logTTLMs;
     private final boolean dataLakeEnabled;
     private final int tieredLogLocalSegments;
@@ -227,6 +228,7 @@ public final class Replica {
         this.logTTLMs = tableDescriptor.getLogTTLMs();
         this.dataLakeEnabled = tableDescriptor.isDataLakeEnabled();
         this.tieredLogLocalSegments = tableDescriptor.getTieredLogLocalSegments();
+        this.mergeEngine = tableDescriptor.getMergeEngine();
         this.partitionKeys = tableDescriptor.getPartitionKeys();
         this.snapshotContext = snapshotContext;
         // create a closeable registry for the replica
@@ -588,7 +590,9 @@ public final class Replica {
                 LOG.info("No snapshot found, restore from log.");
                 // actually, kv manager always create a kv tablet since we will drop the kv
                 // if it exists before init kv tablet
-                kvTablet = kvManager.getOrCreateKv(physicalPath, tableBucket, logTablet, kvFormat);
+                kvTablet =
+                        kvManager.getOrCreateKv(
+                                physicalPath, tableBucket, logTablet, kvFormat, mergeEngine);
             }
             logTablet.updateMinRetainOffset(restoreStartOffset);
             recoverKvTablet(restoreStartOffset);
