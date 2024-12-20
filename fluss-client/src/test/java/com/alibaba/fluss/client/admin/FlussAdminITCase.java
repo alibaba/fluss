@@ -28,6 +28,7 @@ import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
+import com.alibaba.fluss.exception.InvalidIndexKeysException;
 import com.alibaba.fluss.exception.InvalidReplicationFactorException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
@@ -198,6 +199,35 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                 .cause()
                 .isInstanceOf(InvalidConfigException.class)
                 .hasMessage("'table.log.tiered.local-segments' must be greater than 0.");
+
+        TableDescriptor t4 =
+                TableDescriptor.builder()
+                        .schema(DEFAULT_SCHEMA)
+                        .comment("test table")
+                        // invalid property value
+                        .property("table.index.key", "")
+                        .build();
+        // should throw exception
+        assertThatThrownBy(() -> admin.createTable(tablePath, t4, false).get())
+                .cause()
+                .isInstanceOf(InvalidIndexKeysException.class)
+                .hasMessageContaining(
+                        "Option 'table.index.key' = '' is invalid: "
+                                + "There is an index key not follow the format 'indexKeyName=indexKeyFields'");
+        TableDescriptor t5 =
+                TableDescriptor.builder()
+                        .schema(DEFAULT_SCHEMA)
+                        .comment("test table")
+                        // invalid property value
+                        .property("table.index.key", "idx0=a;idx1=b")
+                        .build();
+        // should throw exception
+        assertThatThrownBy(() -> admin.createTable(tablePath, t5, false).get())
+                .cause()
+                .isInstanceOf(InvalidIndexKeysException.class)
+                .hasMessageContaining(
+                        "Option 'table.index.key' = 'idx0=a;idx1=b' is invalid: Currently, "
+                                + "Fluss only support to define single index key, but there is more than one index key.");
     }
 
     @Test

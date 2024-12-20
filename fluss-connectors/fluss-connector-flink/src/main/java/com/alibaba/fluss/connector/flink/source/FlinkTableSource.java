@@ -101,6 +101,7 @@ public class FlinkTableSource
 
     private final long scanPartitionDiscoveryIntervalMs;
     private final boolean isDataLakeEnabled;
+    private final Map<String, int[]> indexKeys;
 
     // output type after projection pushdown
     private LogicalType producedDataType;
@@ -130,7 +131,8 @@ public class FlinkTableSource
             boolean lookupAsync,
             @Nullable LookupCache cache,
             long scanPartitionDiscoveryIntervalMs,
-            boolean isDataLakeEnabled) {
+            boolean isDataLakeEnabled,
+            Map<String, int[]> indexKeys) {
         this.tablePath = tablePath;
         this.flussConfig = flussConfig;
         this.tableOutputType = tableOutputType;
@@ -146,6 +148,7 @@ public class FlinkTableSource
 
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.isDataLakeEnabled = isDataLakeEnabled;
+        this.indexKeys = indexKeys;
     }
 
     @Override
@@ -279,14 +282,20 @@ public class FlinkTableSource
     public LookupRuntimeProvider getLookupRuntimeProvider(LookupContext context) {
         LookupNormalizer lookupNormalizer =
                 LookupNormalizer.validateAndCreateLookupNormalizer(
-                        context.getKeys(), primaryKeyIndexes, tableOutputType, projectedFields);
+                        context.getKeys(),
+                        primaryKeyIndexes,
+                        indexKeys,
+                        tableOutputType,
+                        projectedFields);
         if (lookupAsync) {
             AsyncLookupFunction asyncLookupFunction =
                     new FlinkAsyncLookupFunction(
                             flussConfig,
                             tablePath,
                             tableOutputType,
-                            primaryKeyIndexes,
+                            lookupNormalizer.getIndexName() == null
+                                    ? primaryKeyIndexes
+                                    : indexKeys.get(lookupNormalizer.getIndexName()),
                             lookupMaxRetryTimes,
                             lookupNormalizer,
                             projectedFields);
@@ -301,7 +310,9 @@ public class FlinkTableSource
                             flussConfig,
                             tablePath,
                             tableOutputType,
-                            primaryKeyIndexes,
+                            lookupNormalizer.getIndexName() == null
+                                    ? primaryKeyIndexes
+                                    : indexKeys.get(lookupNormalizer.getIndexName()),
                             lookupMaxRetryTimes,
                             lookupNormalizer,
                             projectedFields);
@@ -328,7 +339,8 @@ public class FlinkTableSource
                         lookupAsync,
                         cache,
                         scanPartitionDiscoveryIntervalMs,
-                        isDataLakeEnabled);
+                        isDataLakeEnabled,
+                        indexKeys);
         source.producedDataType = producedDataType;
         source.projectedFields = projectedFields;
         source.singleRowFilter = singleRowFilter;

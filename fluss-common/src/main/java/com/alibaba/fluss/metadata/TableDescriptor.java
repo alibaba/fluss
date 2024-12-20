@@ -22,6 +22,7 @@ import com.alibaba.fluss.config.ConfigOption;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.ConfigurationUtils;
+import com.alibaba.fluss.exception.InvalidIndexKeysException;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.json.JsonSerdeUtils;
@@ -135,6 +136,78 @@ public final class TableDescriptor implements Serializable {
         }
     }
 
+    /** Validate the table descriptor. */
+    public void validate() throws InvalidIndexKeysException {
+        validateIndexKeys();
+    }
+
+    private void validateIndexKeys() throws InvalidIndexKeysException {
+        Configuration conf = configuration();
+        if (!conf.contains(ConfigOptions.TABLE_INDEX_KEY)) {
+            return;
+        }
+
+        String indexKeysString = conf.get(ConfigOptions.TABLE_INDEX_KEY);
+        String indexKeysError = detectInvalidIndexKeys(indexKeysString);
+        if (indexKeysError != null) {
+            throw new InvalidIndexKeysException(
+                    "Option 'table.index.key' = '"
+                            + indexKeysString
+                            + "' is invalid: "
+                            + indexKeysError);
+        }
+    }
+
+    private String detectInvalidIndexKeys(String indexKeysString) {
+        List<String> columnNames =
+                schema.getColumns().stream()
+                        .map(Schema.Column::getName)
+                        .collect(Collectors.toList());
+        String[] indexKeyStringList = indexKeysString.split(";");
+        if (indexKeyStringList.length <= 0) {
+            return "Index key is empty or index key doesn't split by ';'.";
+        } else if (indexKeyStringList.length > 1) {
+            return "Currently, Fluss only support to define single index key, but there is more than one index key.";
+        }
+
+        List<int[]> orderedIndexKey = new ArrayList<>();
+        for (String indexKeyFieldsStr : indexKeyStringList) {
+            String[] indexNameAndFields = indexKeyFieldsStr.split("=");
+            if (indexNameAndFields.length != 2) {
+                return "There is an index key not follow the format 'indexKeyName=indexKeyFields'.";
+            }
+
+            String[] fieldStrings = indexNameAndFields[1].split(",");
+            if (fieldStrings.length <= 0) {
+                return "There is an index key is empty or column field in index key doesn't split by ','.";
+            }
+
+            List<Integer> indexKeyPosList = new ArrayList<>();
+            for (String field : fieldStrings) {
+                int fieldIndex = columnNames.indexOf(field);
+                if (fieldIndex < 0) {
+                    return "Index key '" + field + "' does not exist in the schema.";
+                }
+                indexKeyPosList.add(fieldIndex);
+            }
+
+            Collections.sort(indexKeyPosList);
+            if (orderedIndexKey.stream()
+                    .anyMatch(
+                            f ->
+                                    Arrays.equals(
+                                            f,
+                                            indexKeyPosList.stream()
+                                                    .mapToInt(Integer::intValue)
+                                                    .toArray()))) {
+                return "There is an index key is duplicate.";
+            }
+            orderedIndexKey.add(indexKeyPosList.stream().mapToInt(Integer::intValue).toArray());
+        }
+
+        return null;
+    }
+
     /** Creates a builder for building table descriptor. */
     public static Builder builder() {
         return new Builder();
@@ -237,6 +310,32 @@ public final class TableDescriptor implements Serializable {
     /** Gets the local segments to retain for tiered log of the table. */
     public int getTieredLogLocalSegments() {
         return configuration().get(ConfigOptions.TABLE_TIERED_LOG_LOCAL_SEGMENTS);
+    }
+
+    /** Return a list of index key indexes in the table. */
+    public Map<String, int[]> getIndexKeyIndexes() {
+        Configuration conf = configuration();
+        if (!conf.contains(ConfigOptions.TABLE_INDEX_KEY)) {
+            return Collections.emptyMap();
+        }
+
+        List<String> columnNames =
+                schema.getColumns().stream()
+                        .map(Schema.Column::getName)
+                        .collect(Collectors.toList());
+
+        Map<String, int[]> indexKeyIndexes = new HashMap<>();
+        for (String indexKeyStr : conf.get(ConfigOptions.TABLE_INDEX_KEY).split(";")) {
+            String[] indexNameAndFields = indexKeyStr.split("=");
+            String indexKeyName = indexNameAndFields[0];
+            List<Integer> indexKeyList = new ArrayList<>();
+            for (String field : indexNameAndFields[1].split(",")) {
+                indexKeyList.add(columnNames.indexOf(field));
+            }
+            indexKeyIndexes.put(
+                    indexKeyName, indexKeyList.stream().mapToInt(Integer::intValue).toArray());
+        }
+        return indexKeyIndexes;
     }
 
     /** Whether the data lake is enabled. */

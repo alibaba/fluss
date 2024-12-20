@@ -20,6 +20,7 @@ import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
+import com.alibaba.fluss.exception.InvalidIndexKeysException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.metadata.Schema;
@@ -133,6 +134,11 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         }
 
         TableDescriptor tableDescriptor = TableDescriptor.fromJsonBytes(request.getTableJson());
+        try {
+            tableDescriptor.validate();
+        } catch (InvalidIndexKeysException e) {
+            return FutureUtils.failedFuture(e);
+        }
 
         int bucketCount = defaultBucketNumber;
         // not set distribution

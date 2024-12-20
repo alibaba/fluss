@@ -26,33 +26,55 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A queue that buffers the pending lookup operations and provides a list of {@link Lookup} when
- * call method {@link #drain()}.
+ * call method {@link #drain(LookupType)}.
  */
 @ThreadSafe
 @Internal
 class LookupQueue {
 
     private volatile boolean closed;
-    private final ArrayBlockingQueue<Lookup> lookupQueue;
+    private final ArrayBlockingQueue<AbstractLookup> lookupQueue;
+    private final ArrayBlockingQueue<AbstractLookup> indexLookupQueue;
+    // next drain queue, 0 or 1, 0 means lookupQueue, 1 means indexLookupQueue.
+    private final AtomicInteger nextDrainQueue;
     private final int maxBatchSize;
+    private final long batchTimeoutMs;
 
     LookupQueue(Configuration conf) {
         this.lookupQueue =
                 new ArrayBlockingQueue<>(conf.get(ConfigOptions.CLIENT_LOOKUP_QUEUE_SIZE));
+        this.indexLookupQueue =
+                new ArrayBlockingQueue<>(conf.get(ConfigOptions.CLIENT_LOOKUP_QUEUE_SIZE));
+        this.nextDrainQueue = new AtomicInteger(0);
         this.maxBatchSize = conf.get(ConfigOptions.CLIENT_LOOKUP_MAX_BATCH_SIZE);
+        this.batchTimeoutMs = conf.get(ConfigOptions.CLIENT_LOOKUP_BATCH_TIMEOUT).toMillis();
         this.closed = false;
     }
 
-    void appendLookup(Lookup lookup) {
+    LookupType nexDrainLookupType() {
+        int drainQueueId = nextDrainQueue.updateAndGet(i -> i == 0 ? 1 : 0);
+        if (drainQueueId == 0) {
+            return LookupType.LOOKUP;
+        } else {
+            return LookupType.INDEX_LOOKUP;
+        }
+    }
+
+    void appendLookup(AbstractLookup lookup) {
         if (closed) {
             throw new IllegalStateException(
                     "Can not append lookup operation since the LookupQueue is closed.");
         }
         try {
-            lookupQueue.put(lookup);
+            if (lookup.lookupType() == LookupType.LOOKUP) {
+                lookupQueue.put(lookup);
+            } else {
+                indexLookupQueue.put(lookup);
+            }
         } catch (InterruptedException e) {
             lookup.future().completeExceptionally(e);
         }
@@ -63,21 +85,43 @@ class LookupQueue {
     }
 
     /** Drain a batch of {@link Lookup}s from the lookup queue. */
-    List<Lookup> drain() throws Exception {
-        List<Lookup> lookups = new ArrayList<>(maxBatchSize);
-        Lookup firstLookup = lookupQueue.poll(300, TimeUnit.MILLISECONDS);
-        if (firstLookup != null) {
-            lookups.add(firstLookup);
-            lookupQueue.drainTo(lookups, maxBatchSize - 1);
+    List<AbstractLookup> drain(LookupType lookupType) throws Exception {
+        long start = System.currentTimeMillis();
+        List<AbstractLookup> lookupOperations = new ArrayList<>(maxBatchSize);
+        ArrayBlockingQueue<AbstractLookup> queue = getQueue(lookupType);
+        int count = 0;
+        while (true) {
+            if (System.currentTimeMillis() - start > batchTimeoutMs) {
+                break;
+            }
+
+            AbstractLookup lookup = queue.poll(300, TimeUnit.MILLISECONDS);
+            if (lookup == null) {
+                break;
+            }
+            count++;
+            lookupOperations.add(lookup);
+            if (count >= maxBatchSize) {
+                break;
+            }
         }
-        return lookups;
+        return lookupOperations;
     }
 
     /** Drain all the {@link Lookup}s from the lookup queue. */
-    List<Lookup> drainAll() {
-        List<Lookup> lookups = new ArrayList<>(lookupQueue.size());
-        lookupQueue.drainTo(lookups);
-        return lookups;
+    List<AbstractLookup> drainAll(LookupType lookupType) {
+        ArrayBlockingQueue<AbstractLookup> queue = getQueue(lookupType);
+        List<AbstractLookup> lookupOperations = new ArrayList<>(queue.size());
+        queue.drainTo(lookupOperations);
+        return lookupOperations;
+    }
+
+    private ArrayBlockingQueue<AbstractLookup> getQueue(LookupType lookupType) {
+        if (lookupType == LookupType.LOOKUP) {
+            return this.lookupQueue;
+        } else {
+            return this.indexLookupQueue;
+        }
     }
 
     public void close() {

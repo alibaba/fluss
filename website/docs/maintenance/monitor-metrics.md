@@ -434,8 +434,8 @@ Some metrics might not be exposed when using other JVM implementations (e.g. IBM
   </thead>
   <tbody>
     <tr>
-      <th rowspan="31"><strong>tabletServer</strong></th>
-      <td rowspan="16">table</td>
+      <th rowspan="35"><strong>tabletServer</strong></th>
+      <td rowspan="20">table</td>
       <td>messagesInPerSecond</td>
       <td>The number of messages written per second to this table</td>
       <td>Meter</td>
@@ -488,6 +488,26 @@ Some metrics might not be exposed when using other JVM implementations (e.g. IBM
     <tr>
       <td>failedLookupRequestsPerSecond</td>
       <td>The number of failed lookup requests to lookup value by key from this table per second.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>totalLimitScanRequestsPerSecond</td>
+      <td>The number of limit scn requests to scan records with limit from this table per second.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>failedLimitScanRequestsPerSecond</td>
+      <td>The number of failed limit scn requests to scan records with limit from this table per second.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>totalIndexLookupRequestsPerSecond</td>
+      <td>The number of index lookup requests to index lookup value by key from this table per second.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>failedIndexLookupRequestsPerSecond</td>
+      <td>The number of failed index lookup requests to index lookup value by key from this table per second.</td>
       <td>Meter</td>
     </tr>
     <tr>

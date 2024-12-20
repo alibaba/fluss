@@ -58,4 +58,20 @@ public final class BytesUtils {
         }
         return dest;
     }
+
+    /**
+     * Check if the given two byte arrays have the same prefix.
+     *
+     * @param bytes1 The first byte array
+     * @param bytes2 The second byte array
+     * @return true if the given two byte arrays have the same prefix, false otherwise
+     */
+    public static boolean isPrefixEquals(byte[] bytes1, byte[] bytes2) {
+        for (int i = 0; i < bytes1.length; i++) {
+            if (bytes1[i] != bytes2[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
 }

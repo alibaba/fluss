@@ -23,8 +23,10 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
 import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
+import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
@@ -75,6 +77,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -229,22 +232,18 @@ public class ReplicaTestBase {
         zkClient.registerSchema(DATA2_TABLE_PATH, DATA2_SCHEMA);
     }
 
-    protected long registerTableInZkClient(int tieredLogLocalSegment) throws Exception {
-        long tableId = 200;
-        TableDescriptor tableDescriptor =
-                TableDescriptor.builder()
-                        .schema(DATA1_SCHEMA)
-                        .distributedBy(3)
-                        .property(
-                                ConfigOptions.TABLE_TIERED_LOG_LOCAL_SEGMENTS,
-                                tieredLogLocalSegment)
-                        .build();
+    protected long registerTableInZkClient(
+            TablePath tablePath, Schema schema, long tableId, Map<String, String> properties)
+            throws Exception {
+        TableDescriptor.Builder builder = TableDescriptor.builder().schema(schema).distributedBy(3);
+        properties.forEach(builder::property);
+        TableDescriptor tableDescriptor = builder.build();
         // if exists, drop it firstly
-        if (zkClient.tableExist(DATA1_TABLE_PATH)) {
-            zkClient.deleteTable(DATA1_TABLE_PATH);
+        if (zkClient.tableExist(tablePath)) {
+            zkClient.deleteTable(tablePath);
         }
-        zkClient.registerTable(DATA1_TABLE_PATH, TableRegistration.of(tableId, tableDescriptor));
-        zkClient.registerSchema(DATA1_TABLE_PATH, DATA1_SCHEMA);
+        zkClient.registerTable(tablePath, TableRegistration.of(tableId, tableDescriptor));
+        zkClient.registerSchema(tablePath, schema);
         return tableId;
     }
 

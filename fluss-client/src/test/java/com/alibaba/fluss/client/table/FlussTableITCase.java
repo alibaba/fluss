@@ -19,6 +19,7 @@ package com.alibaba.fluss.client.table;
 import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.admin.ClientToServerITCaseBase;
+import com.alibaba.fluss.client.lookup.LookupResult;
 import com.alibaba.fluss.client.scanner.ScanRecord;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
 import com.alibaba.fluss.client.scanner.log.ScanRecords;
@@ -58,6 +59,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
@@ -216,6 +218,66 @@ class FlussTableITCase extends ClientToServerITCaseBase {
     }
 
     @Test
+    void testPutAndIndexLookup() throws Exception {
+        TablePath tablePath = TablePath.of("test_db_1", "test_put_and_index_lookup_table");
+        Schema schema =
+                Schema.newBuilder()
+                        .column("a", DataTypes.INT())
+                        .column("b", DataTypes.STRING())
+                        .column("c", DataTypes.BIGINT())
+                        .column("d", DataTypes.STRING())
+                        .primaryKey("a", "b", "c")
+                        .build();
+        TableDescriptor descriptor =
+                TableDescriptor.builder()
+                        .schema(schema)
+                        .property("table.index.key", "idx0=a,b")
+                        .build();
+        createTable(tablePath, descriptor, false);
+        Table table = conn.getTable(tablePath);
+        verifyPutAndLookup(table, schema, new Object[] {1, "a", 1L, "value1"});
+        verifyPutAndLookup(table, schema, new Object[] {1, "a", 2L, "value2"});
+        verifyPutAndLookup(table, schema, new Object[] {1, "a", 3L, "value3"});
+        verifyPutAndLookup(table, schema, new Object[] {2, "a", 4L, "value4"});
+        RowType rowType = schema.toRowType();
+
+        // test index lookup.
+        Schema indexKeySchema =
+                Schema.newBuilder()
+                        .column("a", DataTypes.INT())
+                        .column("b", DataTypes.STRING())
+                        .build();
+        CompletableFuture<LookupResult> result =
+                table.indexLookup(
+                        "idx0", compactedRow(indexKeySchema.toRowType(), new Object[] {1, "a"}));
+        LookupResult lookupResult = result.get();
+        assertThat(lookupResult).isNotNull();
+        List<InternalRow> rowList = lookupResult.getRowList();
+        assertThat(rowList.size()).isEqualTo(3);
+        for (int i = 0; i < rowList.size(); i++) {
+            assertRowValueEquals(
+                    rowType, rowList.get(i), new Object[] {1, "a", i + 1L, "value" + (i + 1)});
+        }
+
+        result =
+                table.indexLookup(
+                        "idx0", compactedRow(indexKeySchema.toRowType(), new Object[] {2, "a"}));
+        lookupResult = result.get();
+        assertThat(lookupResult).isNotNull();
+        rowList = lookupResult.getRowList();
+        assertThat(rowList.size()).isEqualTo(1);
+        assertRowValueEquals(rowType, rowList.get(0), new Object[] {2, "a", 4L, "value4"});
+
+        result =
+                table.indexLookup(
+                        "idx0", compactedRow(indexKeySchema.toRowType(), new Object[] {3, "a"}));
+        lookupResult = result.get();
+        assertThat(lookupResult).isNotNull();
+        rowList = lookupResult.getRowList();
+        assertThat(rowList.size()).isEqualTo(0);
+    }
+
+    @Test
     void testLookupForNotReadyTable() throws Exception {
         TablePath tablePath = TablePath.of("test_db_1", "test_lookup_unready_table_t1");
         TableDescriptor descriptor =
@@ -349,7 +411,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
 
     private InternalRow lookupRow(Table table, IndexedRow keyRow) throws Exception {
         // lookup this key.
-        return table.lookup(keyRow).get().getRow();
+        return table.lookup(keyRow).get().getRowList().get(0);
     }
 
     @Test

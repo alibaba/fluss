@@ -17,7 +17,9 @@
 package com.alibaba.fluss.server.tablet;
 
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
+import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.metadata.LogFormat;
+import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
@@ -36,6 +38,10 @@ import com.alibaba.fluss.rpc.messages.PutKvResponse;
 import com.alibaba.fluss.rpc.protocol.Errors;
 import com.alibaba.fluss.server.log.ListOffsetsParam;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
+import com.alibaba.fluss.types.DataField;
+import com.alibaba.fluss.types.DataTypes;
+import com.alibaba.fluss.types.RowType;
+import com.alibaba.fluss.utils.types.Tuple2;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -43,6 +49,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static com.alibaba.fluss.record.TestData.ANOTHER_DATA1;
@@ -56,12 +64,14 @@ import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.record.TestData.DATA_1_WITH_KEY_AND_VALUE;
 import static com.alibaba.fluss.record.TestData.DEFAULT_SCHEMA_ID;
+import static com.alibaba.fluss.server.testutils.KvTestUtils.assertIndexLookupResponse;
 import static com.alibaba.fluss.server.testutils.KvTestUtils.assertLookupResponse;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.assertFetchLogResponse;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.assertLimitScanResponse;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.assertProduceLogResponse;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createTable;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newFetchLogRequest;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newIndexLookupRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newLimitScanRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newListOffsetsRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newLookupRequest;
@@ -305,7 +315,7 @@ public class TabletServiceITCase {
     }
 
     @Test
-    void testGetKey() throws Exception {
+    void testLookup() throws Exception {
         long tableId =
                 createTable(
                         FLUSS_CLUSTER_EXTENSION,
@@ -319,7 +329,7 @@ public class TabletServiceITCase {
         TabletServerGateway leaderGateWay =
                 FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
 
-        // first get key without in table, key = 1.
+        // first lookup without in table, key = 1.
         Object[] key1 = DATA_1_WITH_KEY_AND_VALUE.get(0).f0;
         KeyEncoder keyEncoder = new KeyEncoder(DATA1_ROW_TYPE, new int[] {0});
         byte[] key1Bytes = keyEncoder.encode(row(DATA1_KEY_TYPE, key1));
@@ -334,7 +344,7 @@ public class TabletServiceITCase {
                                         tableId, 0, 1, genKvRecordBatch(DATA_1_WITH_KEY_AND_VALUE)))
                         .get());
 
-        // second get key in table, key = 1, value = 1, "a1".
+        // second lookup in table, key = 1, value = 1, "a1".
         Object[] value1 = DATA_1_WITH_KEY_AND_VALUE.get(3).f1;
         byte[] value1Bytes =
                 ValueEncoder.encodeValue(DEFAULT_SCHEMA_ID, compactedRow(DATA1_ROW_TYPE, value1));
@@ -359,7 +369,7 @@ public class TabletServiceITCase {
                 Errors.UNKNOWN_TABLE_OR_BUCKET_EXCEPTION,
                 "Unknown table or bucket: TableBucket{tableId=10005, bucket=6}");
 
-        // Get key from a non-pk table.
+        // Lookup from a non-pk table.
         long logTableId =
                 createTable(
                         FLUSS_CLUSTER_EXTENSION,
@@ -381,6 +391,162 @@ public class TabletServiceITCase {
                 pbLookupRespForBucket,
                 Errors.NON_PRIMARY_KEY_TABLE_EXCEPTION,
                 "the primary key table not exists for TableBucket");
+    }
+
+    @Test
+    void testIndexLookup() throws Exception {
+        TablePath tablePath = TablePath.of("test_db_1", "test_index_lookup_t1");
+        Schema schema =
+                Schema.newBuilder()
+                        .column("a", DataTypes.INT())
+                        .column("b", DataTypes.STRING())
+                        .column("c", DataTypes.BIGINT())
+                        .column("d", DataTypes.STRING())
+                        .primaryKey("a", "b", "c")
+                        .build();
+        RowType rowType = schema.toRowType();
+        RowType primaryKeyType =
+                DataTypes.ROW(
+                        new DataField("a", DataTypes.INT()),
+                        new DataField("b", DataTypes.STRING()),
+                        new DataField("c", DataTypes.BIGINT()));
+        RowType indexKeyType =
+                DataTypes.ROW(
+                        new DataField("a", DataTypes.INT()),
+                        new DataField("b", DataTypes.STRING()));
+
+        TableDescriptor descriptor =
+                TableDescriptor.builder()
+                        .schema(schema)
+                        .property("table.index.key", "idx0=a,b")
+                        .build();
+        long tableId = createTable(FLUSS_CLUSTER_EXTENSION, tablePath, descriptor);
+        TableBucket tb = new TableBucket(tableId, 0);
+
+        FLUSS_CLUSTER_EXTENSION.waitUtilAllReplicaReady(tb);
+
+        int leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
+        TabletServerGateway leaderGateWay =
+                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
+        // first index lookup without in table, index key = (1, "a").
+        Object[] indexKey1 = new Object[] {1, "a"};
+        KeyEncoder keyEncoder = new KeyEncoder(rowType, new int[] {0, 1});
+        byte[] indexKey1Bytes = keyEncoder.encode(row(indexKeyType, indexKey1));
+        assertIndexLookupResponse(
+                leaderGateWay
+                        .indexLookup(
+                                newIndexLookupRequest(
+                                        tableId, 0, Collections.singletonList(indexKey1Bytes)))
+                        .get(),
+                Collections.singletonList(Collections.emptyList()));
+
+        // send one batch kv.
+        assertPutKvResponse(
+                leaderGateWay
+                        .putKv(
+                                newPutKvRequest(
+                                        tableId,
+                                        0,
+                                        1,
+                                        genKvRecordBatch(
+                                                primaryKeyType,
+                                                rowType,
+                                                Arrays.asList(
+                                                        Tuple2.of(
+                                                                new Object[] {1, "a", 1L},
+                                                                new Object[] {
+                                                                    1, "a", 1L, "value1"
+                                                                }),
+                                                        Tuple2.of(
+                                                                new Object[] {1, "a", 2L},
+                                                                new Object[] {
+                                                                    1, "a", 2L, "value2"
+                                                                }),
+                                                        Tuple2.of(
+                                                                new Object[] {1, "a", 3L},
+                                                                new Object[] {
+                                                                    1, "a", 3L, "value3"
+                                                                }),
+                                                        Tuple2.of(
+                                                                new Object[] {2, "a", 4L},
+                                                                new Object[] {
+                                                                    2, "a", 4L, "value4"
+                                                                })))))
+                        .get());
+
+        // second index lookup in table, index key = (1, "a").
+        assertIndexLookupResponse(
+                leaderGateWay
+                        .indexLookup(
+                                newIndexLookupRequest(
+                                        tableId, 0, Collections.singletonList(indexKey1Bytes)))
+                        .get(),
+                Collections.singletonList(
+                        Arrays.asList(
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(rowType, new Object[] {1, "a", 1L, "value1"})),
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(rowType, new Object[] {1, "a", 2L, "value2"})),
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(
+                                                rowType, new Object[] {1, "a", 3L, "value3"})))));
+
+        // third index lookup in table for multi index key, index key = (1, "a") and (2, "a").
+        Object[] indexKey2 = new Object[] {2, "a"};
+        byte[] indexKey2Bytes = keyEncoder.encode(row(indexKeyType, indexKey2));
+        assertIndexLookupResponse(
+                leaderGateWay
+                        .indexLookup(
+                                newIndexLookupRequest(
+                                        tableId, 0, Arrays.asList(indexKey1Bytes, indexKey2Bytes)))
+                        .get(),
+                Arrays.asList(
+                        Arrays.asList(
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(rowType, new Object[] {1, "a", 1L, "value1"})),
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(rowType, new Object[] {1, "a", 2L, "value2"})),
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(
+                                                rowType, new Object[] {1, "a", 3L, "value3"}))),
+                        Collections.singletonList(
+                                ValueEncoder.encodeValue(
+                                        DEFAULT_SCHEMA_ID,
+                                        compactedRow(
+                                                rowType, new Object[] {2, "a", 4L, "value4"})))));
+
+        // index lookup an unsupported index table.
+        long tableId2 =
+                createTable(
+                        FLUSS_CLUSTER_EXTENSION,
+                        DATA1_TABLE_PATH_PK,
+                        DATA1_TABLE_INFO_PK.getTableDescriptor());
+        tb = new TableBucket(tableId2, 0);
+        FLUSS_CLUSTER_EXTENSION.waitUtilAllReplicaReady(tb);
+        leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
+        TabletServerGateway leaderGateWay2 =
+                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
+        assertThatThrownBy(
+                        () ->
+                                leaderGateWay2
+                                        .indexLookup(
+                                                newIndexLookupRequest(
+                                                        tableId2,
+                                                        0,
+                                                        Collections.singletonList(indexKey1Bytes)))
+                                        .get())
+                .cause()
+                .isInstanceOf(KvStorageException.class)
+                .hasMessageContaining(
+                        "Table bucket TableBucket{tableId="
+                                + tableId2
+                                + ", bucket=0} does not support index lookup");
     }
 
     @Test
