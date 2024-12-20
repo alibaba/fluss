@@ -592,7 +592,7 @@ public class FlussPaths {
      * <p>The path contract:
      *
      * <pre>
-     * {remoteKvDir}/{databaseName}/{tableName}-{tableId}/{bucket}
+     * {remoteKvDir}/{databaseName}/{tableName}-{tableId}
      * </pre>
      *
      * @param remoteKvDir the remote kv directory, usually should be "{$remote.data.dir}/kv"
