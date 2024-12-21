@@ -17,15 +17,13 @@
 package com.alibaba.fluss.client.scanner.log;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.client.scanner.ScanRecord;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.record.FileLogRecords;
-import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordReadContext;
-import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.row.ProjectedRow;
+import com.alibaba.fluss.row.InternalRow.FieldGetter;
 import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.Projection;
 
 import javax.annotation.Nullable;
@@ -82,25 +80,26 @@ class RemoteCompletedFetch extends CompletedFetch {
         recycleCallback.run();
     }
 
-    // TODO: optimize this to avoid deep copying the record.
-    //  refactor #fetchRecords to return an iterator which lazily deserialize
-    //  from underlying record stream and arrow buffer.
     @Override
-    protected ScanRecord toScanRecord(LogRecord record) {
-        GenericRow newRow = new GenericRow(fieldGetters.length);
-        InternalRow internalRow = record.getRow();
-        for (int i = 0; i < fieldGetters.length; i++) {
-            newRow.setField(i, fieldGetters[i].getFieldOrNull(internalRow));
-        }
+    protected FieldGetter[] buildFieldGetters() {
+        RowType rowType = readContext.getRowType();
+        FieldGetter[] fieldGetters;
         if (projection != null) {
-            return new ScanRecord(
-                    record.logOffset(),
-                    record.timestamp(),
-                    record.getRowKind(),
-                    ProjectedRow.from(projection.projection()).replaceRow(newRow));
+            int[] projectionInOrder = projection.getProjectionInOrder();
+            fieldGetters = new FieldGetter[projectionInOrder.length];
+            for (int i = 0; i < fieldGetters.length; i++) {
+                fieldGetters[i] =
+                        InternalRow.createFieldGetter(
+                                rowType.getChildren().get(projectionInOrder[i]),
+                                projectionInOrder[i]);
+            }
         } else {
-            return new ScanRecord(
-                    record.logOffset(), record.timestamp(), record.getRowKind(), newRow);
+            fieldGetters = new FieldGetter[rowType.getChildren().size()];
+            for (int i = 0; i < fieldGetters.length; i++) {
+                fieldGetters[i] = InternalRow.createFieldGetter(rowType.getChildren().get(i), i);
+            }
         }
+
+        return fieldGetters;
     }
 }
