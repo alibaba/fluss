@@ -216,6 +216,39 @@ class FlussTableITCase extends ClientToServerITCaseBase {
     }
 
     @Test
+    void testDeleteNotExistRow() throws Exception {
+        TablePath tablePath = TablePath.of("test_db_1", "test_delete_not_exist_row");
+        TableDescriptor tableDescriptor = DATA1_TABLE_INFO_PK.getTableDescriptor();
+        Schema schema = tableDescriptor.getSchema();
+        createTable(tablePath, tableDescriptor, false);
+
+        try (Table table = conn.getTable(tablePath)) {
+            UpsertWriter upsertWriter = table.getUpsertWriter();
+            // delete a non-exist row
+            InternalRow row1 =
+                    compactedRow(tableDescriptor.getSchema().toRowType(), new Object[] {1, "2"});
+            upsertWriter.delete(row1).get();
+            // then insert the row
+            upsertWriter.upsert(row1).get();
+
+            // delete a non-exist row again
+            InternalRow row2 =
+                    compactedRow(tableDescriptor.getSchema().toRowType(), new Object[] {2, "2"});
+            upsertWriter.delete(row2).get();
+            upsertWriter.upsert(row2).get();
+
+            // look up the rows
+            RowType rowType = DATA1_SCHEMA_PK.toRowType();
+            assertThatRow(table.lookup(keyRow(schema, new Object[] {1, "2"})).get().getRow())
+                    .withSchema(rowType)
+                    .isEqualTo(row1);
+            assertThatRow(table.lookup(keyRow(schema, new Object[] {2, "2"})).get().getRow())
+                    .withSchema(rowType)
+                    .isEqualTo(row2);
+        }
+    }
+
+    @Test
     void testLookupForNotReadyTable() throws Exception {
         TablePath tablePath = TablePath.of("test_db_1", "test_lookup_unready_table_t1");
         TableDescriptor descriptor =
