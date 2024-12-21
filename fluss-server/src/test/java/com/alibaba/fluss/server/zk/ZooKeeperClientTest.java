@@ -191,9 +191,17 @@ class ZooKeeperClientTest {
         assertThat(optionalTable.isPresent()).isTrue();
         assertThat(optionalTable.get()).isEqualTo(tableReg);
 
-        // delete table.
-        zookeeperClient.deleteTable(tablePath);
+        // rename table.
+        TablePath toTablePath = TablePath.of("db", "tb_2");
+        assertThat(zookeeperClient.getTable(toTablePath)).isEmpty();
+
+        zookeeperClient.renameTable(tablePath, toTablePath);
         assertThat(zookeeperClient.getTable(tablePath)).isEmpty();
+        assertThat(zookeeperClient.getTable(toTablePath)).isNotEmpty();
+
+        // delete table.
+        zookeeperClient.deleteTable(toTablePath);
+        assertThat(zookeeperClient.getTable(toTablePath)).isEmpty();
     }
 
     @Test
