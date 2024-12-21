@@ -891,6 +891,12 @@ public class ConfigOptions {
                                     + "When this option is set to ture and the datalake tiering service is up,"
                                     + " the table will be tiered and compacted into datalake format stored on lakehouse storage.");
 
+    public static final ConfigOption<MergeEngine> TABLE_MERGE_ENGINE =
+            key("table.merge-engine")
+                    .enumType(MergeEngine.class)
+                    .noDefaultValue()
+                    .withDescription("The merge engine for the primary key table.");
+
     // ------------------------------------------------------------------------
     //  ConfigOptions for Kv
     // ------------------------------------------------------------------------
@@ -1237,5 +1243,21 @@ public class ConfigOptions {
         SNAPPY,
         LZ4,
         ZSTD
+    }
+
+    /** The merge engine for primary key table. */
+    public enum MergeEngine {
+        FIRST_ROW("first_row");
+
+        private final String value;
+
+        MergeEngine(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
     }
 }

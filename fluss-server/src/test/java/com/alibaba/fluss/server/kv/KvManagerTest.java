@@ -260,7 +260,7 @@ final class KvManagerTest {
         LogTablet logTablet =
                 logManager.getOrCreateLog(physicalTablePath, tableBucket, LogFormat.ARROW, 1, true);
         return kvManager.getOrCreateKv(
-                physicalTablePath, tableBucket, logTablet, KvFormat.COMPACTED);
+                physicalTablePath, tableBucket, logTablet, KvFormat.COMPACTED, null);
     }
 
     private byte[] valueOf(KvRecord kvRecord) {
