@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.fluss.connector.flink.source.split.LogSplit.NO_STOPPING_OFFSET;
+
 /** A serializer for the {@link SourceSplitBase}. */
 public class SourceSplitSerializer implements SimpleVersionedSerializer<SourceSplitBase> {
 
@@ -36,13 +38,16 @@ public class SourceSplitSerializer implements SimpleVersionedSerializer<SourceSp
 
     private static final int VERSION_0 = 0;
 
+    // version 1 add stopping offset to HybridSnapshotLogSplit.
+    private static final int VERSION_1 = 1;
+
     private static final ThreadLocal<DataOutputSerializer> SERIALIZER_CACHE =
             ThreadLocal.withInitial(() -> new DataOutputSerializer(64));
 
     private static final byte HYBRID_SNAPSHOT_SPLIT_FLAG = 1;
     private static final byte LOG_SPLIT_FLAG = 2;
 
-    private static final int CURRENT_VERSION = VERSION_0;
+    private static final int CURRENT_VERSION = VERSION_1;
 
     private LakeSplitSerializer lakeSplitSerializer;
 
@@ -70,6 +75,11 @@ public class SourceSplitSerializer implements SimpleVersionedSerializer<SourceSp
                 out.writeBoolean(hybridSnapshotLogSplit.isSnapshotFinished());
                 // write log starting offset
                 out.writeLong(hybridSnapshotLogSplit.getLogStartingOffset());
+                // write log stopping offset
+                out.writeLong(
+                        hybridSnapshotLogSplit
+                                .getLogStoppingOffset()
+                                .orElse(LogSplit.NO_STOPPING_OFFSET));
             } else {
                 LogSplit logSplit = split.asLogSplit();
                 // write starting offset
@@ -127,7 +137,7 @@ public class SourceSplitSerializer implements SimpleVersionedSerializer<SourceSp
 
     @Override
     public SourceSplitBase deserialize(int version, byte[] serialized) throws IOException {
-        if (version != VERSION_0) {
+        if (version > CURRENT_VERSION) {
             throw new IOException("Unknown version " + version);
         }
         final DataInputDeserializer in = new DataInputDeserializer(serialized);
@@ -149,13 +159,18 @@ public class SourceSplitSerializer implements SimpleVersionedSerializer<SourceSp
             long recordsToSkip = in.readLong();
             boolean isSnapshotFinished = in.readBoolean();
             long logStartingOffset = in.readLong();
+            long logStoppingOffset = NO_STOPPING_OFFSET;
+            if (version >= VERSION_1) {
+                logStoppingOffset = in.readLong();
+            }
             return new HybridSnapshotLogSplit(
                     tableBucket,
                     partitionName,
                     fsPathAndFIleNames,
                     recordsToSkip,
                     isSnapshotFinished,
-                    logStartingOffset);
+                    logStartingOffset,
+                    logStoppingOffset);
         } else if (splitKind == LOG_SPLIT_FLAG) {
             long startingOffset = in.readLong();
             long stoppingOffset = in.readLong();

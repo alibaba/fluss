@@ -23,7 +23,6 @@ import com.alibaba.fluss.client.table.snapshot.BucketSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.BucketsSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.KvSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.PartitionSnapshotInfo;
-import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeSplitGenerator;
 import com.alibaba.fluss.connector.flink.source.enumerator.initializer.BucketOffsetsRetrieverImpl;
@@ -67,6 +66,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
@@ -201,8 +201,16 @@ public class FlinkSourceEnumerator
                     ExceptionUtils.stripCompletionException(e));
         }
 
+        if (streaming) {
+            startInStreamingMode();
+        } else {
+            startInBatchMode();
+        }
+    }
+
+    private void startInStreamingMode() {
         if (isPartitioned) {
-            if (streaming && scanPartitionDiscoveryIntervalMs > 0) {
+            if (scanPartitionDiscoveryIntervalMs > 0) {
                 // should do partition discovery
                 LOG.info(
                         "Starting the FlussSourceEnumerator for table {} "
@@ -216,40 +224,33 @@ public class FlinkSourceEnumerator
                         0,
                         scanPartitionDiscoveryIntervalMs);
             } else {
-                if (!streaming) {
-                    startInBatchMode();
-                } else {
-                    // just call once
-                    LOG.info(
-                            "Starting the FlussSourceEnumerator for table {} without partition discovery.",
-                            tablePath);
-                    context.callAsync(this::listPartitions, this::checkPartitionChanges);
-                }
+                // just call once
+                LOG.info(
+                        "Starting the FlussSourceEnumerator for table {} without partition discovery.",
+                        tablePath);
+                context.callAsync(this::listPartitions, this::checkPartitionChanges);
             }
-
         } else {
-            if (!streaming) {
-                startInBatchMode();
-            } else {
-                // init bucket splits and assign
-                context.callAsync(this::initNonPartitionedSplits, this::handleSplitsAdd);
-            }
+            // init bucket splits and assign
+            context.callAsync(this::initNonPartitionedSplits, this::handleSplitsAdd);
         }
     }
 
     private void startInBatchMode() {
         if (lakeEnabled) {
             context.callAsync(this::getLakeSplit, this::handleSplitsAdd);
+        } else if (isPartitioned) {
+            // just call once
+            LOG.info("Starting the FlussSourceEnumerator for table {} in batch mode.", tablePath);
+            context.callAsync(this::listPartitions, this::checkPartitionChanges);
         } else {
-            throw new UnsupportedOperationException(
-                    String.format(
-                            "Batch only supports when table option '%s' is set to true.",
-                            ConfigOptions.TABLE_DATALAKE_ENABLED));
+            // init bucket splits and assign
+            context.callAsync(this::initNonPartitionedSplits, this::handleSplitsAdd);
         }
     }
 
     private List<SourceSplitBase> initNonPartitionedSplits() {
-        if (hasPrimaryKey && startingOffsetsInitializer instanceof SnapshotOffsetsInitializer) {
+        if (hasPrimaryKey) {
             // get the table snapshot info
             KvSnapshotInfo kvSnapshotInfo;
             try {
@@ -260,7 +261,13 @@ public class FlinkSourceEnumerator
                         ExceptionUtils.stripCompletionException(e));
             }
             return getSnapshotAndLogSplits(
-                    kvSnapshotInfo.getTableId(), null, null, kvSnapshotInfo.getBucketsSnapshots());
+                    kvSnapshotInfo.getTableId(),
+                    null,
+                    null,
+                    kvSnapshotInfo.getBucketsSnapshots().getBucketIds(),
+                    startingOffsetsInitializer instanceof SnapshotOffsetsInitializer
+                            ? kvSnapshotInfo.getBucketsSnapshots()
+                            : new BucketsSnapshotInfo(Collections.emptyMap()));
         } else {
             return getLogSplit(null, null);
         }
@@ -338,8 +345,10 @@ public class FlinkSourceEnumerator
     }
 
     private List<SourceSplitBase> initPartitionedSplits(Collection<PartitionInfo> newPartitions) {
-        if (hasPrimaryKey && startingOffsetsInitializer instanceof SnapshotOffsetsInitializer) {
-            return initPrimaryKeyTablePartitionSplits(newPartitions);
+        if (hasPrimaryKey) {
+            return initPrimaryKeyTablePartitionSplits(
+                    newPartitions,
+                    startingOffsetsInitializer instanceof SnapshotOffsetsInitializer);
         } else {
             return initLogTablePartitionSplits(newPartitions);
         }
@@ -355,7 +364,7 @@ public class FlinkSourceEnumerator
     }
 
     private List<SourceSplitBase> initPrimaryKeyTablePartitionSplits(
-            Collection<PartitionInfo> newPartitions) {
+            Collection<PartitionInfo> newPartitions, boolean includedSnapshot) {
         List<SourceSplitBase> splits = new ArrayList<>();
         for (PartitionInfo partitionInfo : newPartitions) {
             PartitionSnapshotInfo partitionSnapshotInfo;
@@ -375,7 +384,10 @@ public class FlinkSourceEnumerator
                             partitionSnapshotInfo.getTableId(),
                             partitionInfo.getPartitionId(),
                             partitionInfo.getPartitionName(),
-                            partitionSnapshotInfo.getBucketsSnapshotInfo()));
+                            partitionSnapshotInfo.getBucketsSnapshotInfo().getBucketIds(),
+                            includedSnapshot
+                                    ? partitionSnapshotInfo.getBucketsSnapshotInfo()
+                                    : new BucketsSnapshotInfo(Collections.emptyMap())));
         }
         return splits;
     }
@@ -384,10 +396,14 @@ public class FlinkSourceEnumerator
             long tableId,
             @Nullable Long partitionId,
             @Nullable String partitionName,
+            Collection<Integer> bucketIds,
             BucketsSnapshotInfo bucketsSnapshotInfo) {
         List<SourceSplitBase> splits = new ArrayList<>();
         List<Integer> bucketsNeedInitOffset = new ArrayList<>();
-        for (Integer bucketId : bucketsSnapshotInfo.getBucketIds()) {
+        Map<Integer, Long> stoppingOffsets =
+                stoppingOffsetsInitializer.getBucketOffsets(
+                        partitionName, bucketIds, bucketOffsetsRetriever);
+        for (Integer bucketId : bucketIds) {
             TableBucket tb = new TableBucket(tableId, partitionId, bucketId);
             // the ignore logic rely on the enumerator will always send splits for same bucket
             // in one batch; if we can ignore the bucket, we can skip all the splits(snapshot +
@@ -406,7 +422,8 @@ public class FlinkSourceEnumerator
                                 tb,
                                 partitionName,
                                 snapshot.getSnapshotFiles(),
-                                snapshot.getLogOffset()));
+                                snapshot.getLogOffset(),
+                                stoppingOffsets.get(bucketId)));
             } else {
                 bucketsNeedInitOffset.add(bucketId);
             }
@@ -418,10 +435,19 @@ public class FlinkSourceEnumerator
                     .forEach(
                             (bucketId, startingOffset) ->
                                     splits.add(
-                                            new LogSplit(
-                                                    new TableBucket(tableId, partitionId, bucketId),
-                                                    partitionName,
-                                                    startingOffset)));
+                                            streaming
+                                                    ? new LogSplit(
+                                                            new TableBucket(
+                                                                    tableId, partitionId, bucketId),
+                                                            partitionName,
+                                                            startingOffset)
+                                                    : new HybridSnapshotLogSplit(
+                                                            new TableBucket(
+                                                                    tableId, partitionId, bucketId),
+                                                            partitionName,
+                                                            Collections.emptyList(),
+                                                            startingOffset,
+                                                            stoppingOffsets.get(bucketId))));
         }
 
         return splits;
@@ -441,6 +467,11 @@ public class FlinkSourceEnumerator
         }
 
         if (!bucketsNeedInitOffset.isEmpty()) {
+            Map<Integer, Long> stoppingOffsets =
+                    stoppingOffsetsInitializer.getBucketOffsets(
+                            partitionName,
+                            IntStream.range(0, bucketCount).boxed().collect(Collectors.toList()),
+                            bucketOffsetsRetriever);
             startingOffsetsInitializer
                     .getBucketOffsets(partitionName, bucketsNeedInitOffset, bucketOffsetsRetriever)
                     .forEach(
@@ -449,7 +480,8 @@ public class FlinkSourceEnumerator
                                             new LogSplit(
                                                     new TableBucket(tableId, partitionId, bucketId),
                                                     partitionName,
-                                                    startingOffset)));
+                                                    startingOffset,
+                                                    stoppingOffsets.get(bucketId))));
         }
         return splits;
     }
@@ -574,7 +606,7 @@ public class FlinkSourceEnumerator
             context.assignSplits(new SplitsAssignment<>(incrementalAssignment));
         }
 
-        if (noMoreNewSplits) {
+        if (noMoreNewSplits && !streaming) {
             LOG.info(
                     "No more FlussSplits to assign. Sending NoMoreSplitsEvent to reader {}",
                     pendingReaders);

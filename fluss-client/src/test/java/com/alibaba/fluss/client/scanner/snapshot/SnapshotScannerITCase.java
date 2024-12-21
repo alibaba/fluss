@@ -55,14 +55,14 @@ class SnapshotScannerITCase extends ClientToServerITCaseBase {
 
     private static final int DEFAULT_BUCKET_NUM = 3;
 
-    private static final Schema DEFAULT_SCHEMA =
+    protected static final Schema DEFAULT_SCHEMA =
             Schema.newBuilder()
                     .primaryKey("id")
                     .column("id", DataTypes.INT())
                     .column("name", DataTypes.STRING())
                     .build();
 
-    private static final TableDescriptor DEFAULT_TABLE_DESCRIPTOR =
+    protected static final TableDescriptor DEFAULT_TABLE_DESCRIPTOR =
             TableDescriptor.builder()
                     .schema(DEFAULT_SCHEMA)
                     .distributedBy(DEFAULT_BUCKET_NUM, "id")
@@ -117,8 +117,8 @@ class SnapshotScannerITCase extends ClientToServerITCaseBase {
         testSnapshotRead(tablePath, expectedRowByBuckets);
     }
 
-    private Map<TableBucket, List<InternalRow>> putRows(long tableId, TablePath tablePath, int rows)
-            throws Exception {
+    protected Map<TableBucket, List<InternalRow>> putRows(
+            long tableId, TablePath tablePath, int rows) throws Exception {
         Map<TableBucket, List<InternalRow>> rowsByBuckets = new HashMap<>();
         try (Table table = conn.getTable(tablePath)) {
             UpsertWriter upsertWriter = table.getUpsertWriter();
@@ -172,13 +172,13 @@ class SnapshotScannerITCase extends ClientToServerITCaseBase {
         return DEFAULT_BUCKET_ASSIGNER.assignBucket(key, Cluster.empty());
     }
 
-    private void waitUtilAllSnapshotFinished(Set<TableBucket> tableBuckets, long snapshotId) {
+    protected void waitUtilAllSnapshotFinished(Set<TableBucket> tableBuckets, long snapshotId) {
         for (TableBucket tableBucket : tableBuckets) {
             FLUSS_CLUSTER_EXTENSION.waitUtilSnapshotFinished(tableBucket, snapshotId);
         }
     }
 
-    private List<ScanRecord> collectRecords(SnapshotScanner snapshotScanner) {
+    protected List<ScanRecord> collectRecords(SnapshotScanner snapshotScanner) {
         List<ScanRecord> scanRecords = new ArrayList<>();
         Iterator<ScanRecord> recordIterator = snapshotScanner.poll(Duration.ofSeconds(10));
         while (recordIterator != null) {
@@ -192,7 +192,7 @@ class SnapshotScannerITCase extends ClientToServerITCaseBase {
         return scanRecords;
     }
 
-    private void assertScanRecords(
+    protected void assertScanRecords(
             List<ScanRecord> actualScanRecords, List<InternalRow> expectRows) {
         List<ScanRecord> expectedScanRecords = new ArrayList<>(expectRows.size());
         for (InternalRow row : expectRows) {

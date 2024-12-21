@@ -16,6 +16,8 @@
 
 package com.alibaba.fluss.connector.flink.source.split;
 
+import static com.alibaba.fluss.connector.flink.source.split.LogSplit.NO_STOPPING_OFFSET;
+
 /** The state of {@link LogSplit}. */
 public class LogSplitState extends SourceSplitState {
 
@@ -32,6 +34,10 @@ public class LogSplitState extends SourceSplitState {
     @Override
     public LogSplit toSourceSplit() {
         final LogSplit logSplit = (LogSplit) split;
-        return new LogSplit(logSplit.tableBucket, logSplit.getPartitionName(), offset);
+        return new LogSplit(
+                logSplit.tableBucket,
+                logSplit.getPartitionName(),
+                offset,
+                logSplit.getStoppingOffset().orElse(NO_STOPPING_OFFSET));
     }
 }

@@ -21,6 +21,8 @@ import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.scanner.ScanRecord;
 import com.alibaba.fluss.client.scanner.log.LogScan;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
+import com.alibaba.fluss.client.scanner.snapshot.HybridScan;
+import com.alibaba.fluss.client.scanner.snapshot.HybridScanner;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScan;
 import com.alibaba.fluss.client.scanner.snapshot.SnapshotScanner;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
@@ -112,4 +114,12 @@ public interface Table extends AutoCloseable {
      * @return the {@link SnapshotScanner} to scan data from this table.
      */
     SnapshotScanner getSnapshotScanner(SnapshotScan snapshotScan);
+
+    /**
+     * Get a {@link HybridScanner} to scan data from this table according to provided {@link
+     * HybridScan} and merge a piece of log.
+     *
+     * @return the {@link HybridScanner} to scan data from this table.
+     */
+    HybridScanner getHybridScanner(HybridScan hybridScan);
 }

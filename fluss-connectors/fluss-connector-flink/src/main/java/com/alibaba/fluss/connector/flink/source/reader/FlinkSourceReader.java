@@ -56,7 +56,8 @@ public class FlinkSourceReader
             RowType sourceOutputType,
             SourceReaderContext context,
             @Nullable int[] projectedFields,
-            FlinkSourceReaderMetrics flinkSourceReaderMetrics) {
+            FlinkSourceReaderMetrics flinkSourceReaderMetrics,
+            boolean streaming) {
         super(
                 elementsQueue,
                 new FlinkSourceFetcherManager(
@@ -67,7 +68,8 @@ public class FlinkSourceReader
                                         tablePath,
                                         sourceOutputType,
                                         projectedFields,
-                                        flinkSourceReaderMetrics),
+                                        flinkSourceReaderMetrics,
+                                        streaming),
                         (ignore) -> {}),
                 new FlinkRecordEmitter(sourceOutputType),
                 context.getConfiguration(),

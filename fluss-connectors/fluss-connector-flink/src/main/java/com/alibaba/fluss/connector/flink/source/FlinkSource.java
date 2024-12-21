@@ -136,6 +136,7 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
                 sourceOutputType,
                 context,
                 projectedFields,
-                flinkSourceReaderMetrics);
+                flinkSourceReaderMetrics,
+                streaming);
     }
 }

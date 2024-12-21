@@ -59,6 +59,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.alibaba.fluss.client.scanner.log.LogScanner.EARLIEST_OFFSET;
+import static com.alibaba.fluss.connector.flink.source.split.LogSplit.NO_STOPPING_OFFSET;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -80,28 +81,31 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
                 Duration.ofSeconds(10).toString());
     }
 
-    @Test
-    void testPkTableNoSnapshotSplits() throws Throwable {
-        long tableId = createTable(DEFAULT_TABLE_PATH, DEFAULT_PK_TABLE_DESCRIPTOR);
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testPkTableNoSnapshotSplits(boolean isStreamingMode) throws Throwable {
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "test-flink-table-" + isStreamingMode);
+        long tableId = createTable(tablePath, DEFAULT_PK_TABLE_DESCRIPTOR);
+        FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
         int numSubtasks = 3;
         // test get snapshot split & log split and the assignment
         try (MockSplitEnumeratorContext<SourceSplitBase> context =
                 new MockSplitEnumeratorContext<>(numSubtasks)) {
             FlinkSourceEnumerator enumerator =
                     new FlinkSourceEnumerator(
-                            DEFAULT_TABLE_PATH,
+                            tablePath,
                             flussConf,
                             true,
                             false,
                             context,
                             OffsetsInitializer.initial(),
                             DEFAULT_SCAN_PARTITION_DISCOVERY_INTERVAL_MS,
-                            streaming);
+                            isStreamingMode);
 
             enumerator.start();
 
             // register all read
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < numSubtasks; i++) {
                 registerReader(context, enumerator, i);
             }
 
@@ -113,36 +117,52 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
             Map<Integer, List<SourceSplitBase>> expectedAssignment = new HashMap<>();
             for (int i = 0; i < numSubtasks; i++) {
                 // one split for one subtask
-                expectedAssignment.put(i, Collections.singletonList(genLogSplit(tableId, i)));
+                expectedAssignment.put(
+                        i,
+                        Collections.singletonList(
+                                isStreamingMode
+                                        ? genLogSplit(tableId, i)
+                                        : new HybridSnapshotLogSplit(
+                                                new TableBucket(tableId, i),
+                                                null,
+                                                Collections.emptyList(),
+                                                -2,
+                                                0)));
             }
 
             Map<Integer, List<SourceSplitBase>> actualAssignment =
                     getLastReadersAssignments(context);
             assertThat(actualAssignment).isEqualTo(expectedAssignment);
+            for (int i = 0; i < numSubtasks; i++) {
+                assertThat(context.hasNoMoreSplits(i)).isEqualTo(!isStreamingMode);
+            }
         }
     }
 
-    @Test
-    void testPkTableWithSnapshotSplits() throws Throwable {
-        long tableId = createTable(DEFAULT_TABLE_PATH, DEFAULT_PK_TABLE_DESCRIPTOR);
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testPkTableWithSnapshotSplits(boolean isStreamingMode) throws Throwable {
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "test-flink-table-" + isStreamingMode);
+        long tableId = createTable(tablePath, DEFAULT_PK_TABLE_DESCRIPTOR);
         int numSubtasks = 5;
+        int rowNum = 10;
         // write data and wait snapshot finish to make sure
         // we can hava snapshot split
-        Map<Integer, Integer> bucketIdToNumRecords = putRows(DEFAULT_TABLE_PATH, 10);
+        Map<Integer, Integer> bucketIdToNumRecords = putRows(tablePath, rowNum);
         waitUntilSnapshot(tableId, 0);
 
         try (MockSplitEnumeratorContext<SourceSplitBase> context =
                 new MockSplitEnumeratorContext<>(numSubtasks)) {
             FlinkSourceEnumerator enumerator =
                     new FlinkSourceEnumerator(
-                            DEFAULT_TABLE_PATH,
+                            tablePath,
                             flussConf,
                             true,
                             false,
                             context,
                             OffsetsInitializer.initial(),
                             DEFAULT_SCAN_PARTITION_DISCOVERY_INTERVAL_MS,
-                            streaming);
+                            isStreamingMode);
             enumerator.start();
             // register all read
             for (int i = 0; i < numSubtasks; i++) {
@@ -169,7 +189,8 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
                                     bucket0,
                                     null,
                                     Collections.emptyList(),
-                                    bucketIdToNumRecords.get(0))));
+                                    bucketIdToNumRecords.get(0),
+                                    isStreamingMode ? NO_STOPPING_OFFSET : rowNum)));
             expectedAssignment.put(
                     1,
                     Collections.singletonList(
@@ -177,7 +198,8 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
                                     bucket1,
                                     null,
                                     Collections.emptyList(),
-                                    bucketIdToNumRecords.get(1))));
+                                    bucketIdToNumRecords.get(1),
+                                    isStreamingMode ? NO_STOPPING_OFFSET : rowNum)));
             expectedAssignment.put(
                     2,
                     Collections.singletonList(
@@ -185,8 +207,12 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
                                     bucket2,
                                     null,
                                     Collections.emptyList(),
-                                    bucketIdToNumRecords.get(2))));
+                                    bucketIdToNumRecords.get(2),
+                                    isStreamingMode ? NO_STOPPING_OFFSET : rowNum)));
             checkSplitAssignmentIgnoreSnapshotFiles(expectedAssignment, actualAssignment);
+            for (int i = 0; i < numSubtasks; i++) {
+                assertThat(context.hasNoMoreSplits(i)).isEqualTo(!isStreamingMode);
+            }
         }
     }
 

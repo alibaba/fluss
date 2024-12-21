@@ -52,29 +52,33 @@ class SnapshotFilesReader implements Iterator<ScanRecord>, AutoCloseable {
 
     private final ValueDecoder valueDecoder;
     @Nullable private final int[] projectedFields;
-    private RocksIteratorWrapper rocksIteratorWrapper;
-
-    private Snapshot snapshot;
-    private RocksDBHandle rocksDBHandle;
+    protected final Path rocksDbPath;
+    protected RocksIteratorWrapper rocksIteratorWrapper;
+    protected Snapshot snapshot;
+    protected RocksDBHandle rocksDBHandle;
+    protected RocksDB db;
     private boolean isClose = false;
 
-    private final CloseableRegistry closeableRegistry;
+    protected final CloseableRegistry closeableRegistry;
 
     SnapshotFilesReader(
             KvFormat kvFormat,
             Path rocksDbPath,
             Schema tableSchema,
-            @Nullable int[] projectedFields)
-            throws IOException {
+            @Nullable int[] projectedFields) {
         this.valueDecoder =
                 new ValueDecoder(
                         RowDecoder.create(
                                 kvFormat,
                                 tableSchema.toRowType().getChildren().toArray(new DataType[0])));
+        this.rocksDbPath = rocksDbPath;
         this.projectedFields = projectedFields;
         closeableRegistry = new CloseableRegistry();
+    }
+
+    public void init() throws IOException {
         try {
-            initRocksDB(rocksDbPath);
+            initRocksDB(rocksDbPath, true);
             initRocksIterator();
         } catch (Throwable t) {
             releaseSnapshot();
@@ -85,23 +89,26 @@ class SnapshotFilesReader implements Iterator<ScanRecord>, AutoCloseable {
         }
     }
 
-    private void initRocksDB(Path rocksDbPath) throws Exception {
+    protected void initRocksDB(Path rocksDbPath, boolean isReadonly) throws Exception {
         // create rocksdb
         DBOptions dbOptions = new DBOptions();
         closeableRegistry.registerCloseable(dbOptions::close);
         ColumnFamilyOptions columnFamilyOptions = new ColumnFamilyOptions();
         closeableRegistry.registerCloseable(columnFamilyOptions::close);
-
+        if (!isReadonly) {
+            // use writable rocksdb to merge log.
+            dbOptions.setCreateIfMissing(true);
+        }
         rocksDBHandle =
-                new RocksDBHandle(rocksDbPath.toFile(), dbOptions, columnFamilyOptions, true);
+                new RocksDBHandle(rocksDbPath.toFile(), dbOptions, columnFamilyOptions, isReadonly);
         closeableRegistry.registerCloseable(rocksDBHandle::close);
-    }
-
-    private void initRocksIterator() throws IOException {
         // open a db
         rocksDBHandle.openDB();
         // get the snapshot
-        RocksDB db = rocksDBHandle.getDb();
+        db = rocksDBHandle.getDb();
+    }
+
+    protected void initRocksIterator() throws IOException {
         snapshot = db.getSnapshot();
         closeableRegistry.registerCloseable(snapshot::close);
 
@@ -129,7 +136,7 @@ class SnapshotFilesReader implements Iterator<ScanRecord>, AutoCloseable {
         isClose = true;
     }
 
-    private void releaseSnapshot() {
+    protected void releaseSnapshot() {
         if (snapshot != null && rocksDBHandle != null) {
             rocksDBHandle.getDb().releaseSnapshot(snapshot);
             snapshot = null;
