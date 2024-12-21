@@ -21,6 +21,7 @@ import com.alibaba.fluss.exception.InvalidColumnProjectionException;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
+import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.shaded.arrow.org.apache.arrow.memory.BufferAllocator;
 import com.alibaba.fluss.shaded.arrow.org.apache.arrow.memory.RootAllocator;
 import com.alibaba.fluss.shaded.arrow.org.apache.arrow.vector.VectorSchemaRoot;
@@ -42,6 +43,8 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
     private final RowType rowType;
     // the static schemaId of the table, should support dynamic schema evolution in the future
     private final int schemaId;
+    // the fieldGetter to get the log value of the table;
+    private final InternalRow.FieldGetter[] fieldGetters;
     // the Arrow vector schema root of the table, should be null if not ARROW log format
     @Nullable private final VectorSchemaRoot vectorSchemaRoot;
     // the Arrow memory buffer allocator for the table, should be null if not ARROW log format
@@ -137,6 +140,10 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
         this.schemaId = schemaId;
         this.vectorSchemaRoot = vectorSchemaRoot;
         this.bufferAllocator = bufferAllocator;
+        this.fieldGetters = new InternalRow.FieldGetter[rowType.getFieldCount()];
+        for (int i = 0; i < fieldGetters.length; i++) {
+            fieldGetters[i] = InternalRow.createFieldGetter(rowType.getChildren().get(i), i);
+        }
     }
 
     @Override
@@ -156,6 +163,10 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
 
     public RowType getRowType() {
         return rowType;
+    }
+
+    public InternalRow.FieldGetter[] getFieldGetters() {
+        return fieldGetters;
     }
 
     @Override

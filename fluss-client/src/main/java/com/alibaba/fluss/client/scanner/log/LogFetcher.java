@@ -33,6 +33,8 @@ import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.LogRecordReadContext;
+import com.alibaba.fluss.record.LogRecords;
+import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
@@ -301,16 +303,21 @@ public class LogFetcher implements Closeable {
                                     fetchOffset,
                                     fetchResultForBucket.getHighWatermark());
                         } else {
-                            DefaultCompletedFetch completedFetch =
-                                    new DefaultCompletedFetch(
-                                            tb,
-                                            fetchResultForBucket,
-                                            readContext,
-                                            logScannerStatus,
-                                            isCheckCrcs,
-                                            fetchOffset,
-                                            projection);
-                            logFetchBuffer.add(completedFetch);
+                            LogRecords logRecords = fetchResultForBucket.recordsOrEmpty();
+                            if (!MemoryLogRecords.EMPTY.equals(logRecords)) {
+                                // In oder to not signal notEmptyCondition, add completed fetch to
+                                // buffer until log records is not empty.
+                                DefaultCompletedFetch completedFetch =
+                                        new DefaultCompletedFetch(
+                                                tb,
+                                                fetchResultForBucket,
+                                                readContext,
+                                                logScannerStatus,
+                                                isCheckCrcs,
+                                                fetchOffset,
+                                                projection);
+                                logFetchBuffer.add(completedFetch);
+                            }
                         }
                     }
                 }

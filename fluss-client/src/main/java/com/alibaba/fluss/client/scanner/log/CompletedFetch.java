@@ -25,10 +25,8 @@ import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordBatch;
 import com.alibaba.fluss.record.LogRecordReadContext;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.row.InternalRow.FieldGetter;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.protocol.ApiError;
-import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.CloseableIterator;
 import com.alibaba.fluss.utils.Projection;
 
@@ -95,11 +93,7 @@ abstract class CompletedFetch {
         this.logScannerStatus = logScannerStatus;
         this.projection = projection;
         this.nextFetchOffset = fetchOffset;
-        RowType rowType = readContext.getRowType();
-        this.fieldGetters = new FieldGetter[rowType.getFieldCount()];
-        for (int i = 0; i < fieldGetters.length; i++) {
-            fieldGetters[i] = InternalRow.createFieldGetter(rowType.getChildren().get(i), i);
-        }
+        this.fieldGetters = readContext.getFieldGetters();
     }
 
     protected abstract ScanRecord toScanRecord(LogRecord record);
