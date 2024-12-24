@@ -17,7 +17,9 @@
 package com.alibaba.fluss.metadata;
 
 import com.alibaba.fluss.record.MemoryLogRecordsArrowBuilder;
+import com.alibaba.fluss.record.MemoryLogRecordsCompactedBuilder;
 import com.alibaba.fluss.record.MemoryLogRecordsIndexedBuilder;
+import com.alibaba.fluss.row.compacted.CompactedRow;
 import com.alibaba.fluss.row.indexed.IndexedRow;
 
 /** The format of the log records in log store. The supported formats are 'arrow' and 'indexed'. */
@@ -40,7 +42,15 @@ public enum LogFormat {
      *
      * @see MemoryLogRecordsIndexedBuilder
      */
-    INDEXED;
+    INDEXED,
+
+    /**
+     * The log record batches are stored in {@link CompactedRow} format which is a columnar-oriented
+     * format. This can have better performance for saving storage space.
+     *
+     * @see MemoryLogRecordsCompactedBuilder
+     */
+    COMPACTED;
 
     /**
      * Creates a {@link LogFormat} from the given string. The string must be either 'arrow' or
@@ -52,6 +62,8 @@ public enum LogFormat {
                 return ARROW;
             case "INDEXED":
                 return INDEXED;
+            case "COMPACTED":
+                return COMPACTED;
             default:
                 throw new IllegalArgumentException("Unsupported log format: " + format);
         }

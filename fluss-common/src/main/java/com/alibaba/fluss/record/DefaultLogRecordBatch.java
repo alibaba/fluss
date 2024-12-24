@@ -232,7 +232,8 @@ public class DefaultLogRecordBatch implements LogRecordBatch {
                         context.getBufferAllocator(),
                         timestamp);
             case INDEXED:
-                return rowRecordIterator(rowType, timestamp);
+            case COMPACTED:
+                return rowRecordIterator(rowType, logFormat, timestamp);
             default:
                 throw new IllegalArgumentException("Unsupported log format: " + logFormat);
         }
@@ -259,7 +260,8 @@ public class DefaultLogRecordBatch implements LogRecordBatch {
         return MurmurHashUtils.hashBytes(segment, position, sizeInBytes());
     }
 
-    private CloseableIterator<LogRecord> rowRecordIterator(RowType rowType, long timestamp) {
+    private CloseableIterator<LogRecord> rowRecordIterator(
+            RowType rowType, LogFormat logFormat, long timestamp) {
         DataType[] fieldTypes = rowType.getChildren().toArray(new DataType[0]);
         return new LogRecordIterator() {
             int position = DefaultLogRecordBatch.this.position + RECORD_BATCH_HEADER_SIZE;
@@ -267,9 +269,19 @@ public class DefaultLogRecordBatch implements LogRecordBatch {
 
             @Override
             protected LogRecord readNext(long baseOffset) {
-                DefaultLogRecord logRecord =
-                        DefaultLogRecord.readFrom(
-                                segment, position, baseOffset + rowId, timestamp, fieldTypes);
+                LogRecord logRecord;
+                if (logFormat == LogFormat.INDEXED) {
+                    logRecord =
+                            IndexedLogRecord.readFrom(
+                                    segment, position, baseOffset + rowId, timestamp, fieldTypes);
+                } else if (logFormat == LogFormat.COMPACTED) {
+                    logRecord =
+                            CompactedLogRecord.readFrom(
+                                    segment, position, baseOffset + rowId, timestamp, fieldTypes);
+                } else {
+                    throw new IllegalArgumentException("Unsupported row log format: " + logFormat);
+                }
+
                 rowId++;
                 position += logRecord.getSizeInBytes();
                 return logRecord;

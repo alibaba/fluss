@@ -53,4 +53,9 @@ public class GenericRecord implements LogRecord {
     public InternalRow getRow() {
         return row;
     }
+
+    @Override
+    public int getSizeInBytes() {
+        throw new UnsupportedOperationException();
+    }
 }

@@ -790,4 +790,57 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                         "Only ARROW log format supports column projection, but the log format "
                                 + "of table 'test_db_1.test_non_pk_table_1' is INDEXED");
     }
+
+    @Test
+    void testWriteKvWithCompactedLogFormat() throws Exception {
+        Schema schema =
+                Schema.newBuilder()
+                        .column("a", DataTypes.INT())
+                        .column("b", DataTypes.INT())
+                        .column("c", DataTypes.STRING())
+                        .primaryKey("a")
+                        .build();
+        TableDescriptor tableDescriptor =
+                TableDescriptor.builder().schema(schema).logFormat(LogFormat.COMPACTED).build();
+        TablePath tablePath = TablePath.of("test_db_1", "test_pk_table_1");
+        createTable(tablePath, tableDescriptor, false);
+
+        try (Table table = conn.getTable(tablePath)) {
+            UpsertWriter writer = table.getUpsertWriter();
+            int expectedSize = 30;
+            for (int i = 0; i < expectedSize; i++) {
+                String value = i % 2 == 0 ? "hello, friend" + i : null;
+                InternalRow row = compactedRow(schema.toRowType(), new Object[] {i, 100, value});
+                writer.upsert(row);
+                if (i % 10 == 0) {
+                    // insert 3 bathes, each batch has 10 rows
+                    writer.flush();
+                }
+            }
+
+            // fetch data.
+            LogScanner logScanner = createLogScanner(table);
+            subscribeFromBeginning(logScanner, table);
+            int count = 0;
+            while (count < expectedSize) {
+                ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
+                for (ScanRecord scanRecord : scanRecords) {
+                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                    assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(3);
+                    assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
+                    assertThat(scanRecord.getRow().getInt(1)).isEqualTo(100);
+                    if (count % 2 == 0) {
+                        assertThat(scanRecord.getRow().getString(2).toString())
+                                .isEqualTo("hello, friend" + count);
+                    } else {
+                        // check null values
+                        assertThat(scanRecord.getRow().isNullAt(2)).isTrue();
+                    }
+                    count++;
+                }
+            }
+            assertThat(count).isEqualTo(expectedSize);
+            logScanner.close();
+        }
+    }
 }

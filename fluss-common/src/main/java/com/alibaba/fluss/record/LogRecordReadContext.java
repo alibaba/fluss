@@ -80,6 +80,12 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
                         "Column projection is not supported for INDEXED log format.");
             }
             return createIndexedReadContext(rowType, schemaId);
+        } else if (logFormat == LogFormat.COMPACTED) {
+            if (projection != null) {
+                throw new InvalidColumnProjectionException(
+                        "Column projection is not supported for COMPACTED log format.");
+            }
+            return createCompactedReadContext(rowType, schemaId);
         } else {
             throw new IllegalArgumentException("Unsupported log format: " + logFormat);
         }
@@ -127,6 +133,16 @@ public class LogRecordReadContext implements LogRecordBatch.ReadContext, AutoClo
      */
     public static LogRecordReadContext createIndexedReadContext(RowType rowType, int schemaId) {
         return new LogRecordReadContext(LogFormat.INDEXED, rowType, schemaId, null, null);
+    }
+
+    /**
+     * Creates a LogRecordReadContext for COMPACTED log format.
+     *
+     * @param rowType the schema of the table
+     * @param schemaId the schemaId of the table
+     */
+    public static LogRecordReadContext createCompactedReadContext(RowType rowType, int schemaId) {
+        return new LogRecordReadContext(LogFormat.COMPACTED, rowType, schemaId, null, null);
     }
 
     private LogRecordReadContext(

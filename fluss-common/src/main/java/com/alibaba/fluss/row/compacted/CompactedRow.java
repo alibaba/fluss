@@ -43,8 +43,8 @@ import com.alibaba.fluss.utils.MurmurHashUtils;
  * content in the data part. For example:
  *
  * <ul>
- *   <li>Row(1, 2) will stored as 4 bytes: ROW_KIND + NULL_BIT_SET + 1 + 2.
- *   <li>Row(null, 2) will stored as 3 bytes: ROW_KIND + NULL_BIT_SET(First bit is 1) + 2.
+ *   <li>Row(1, 2) will stored as 3 bytes: NULL_BIT_SET + 1 + 2.
+ *   <li>Row(null, 2) will stored as 2 bytes: NULL_BIT_SET(First bit is 1) + 2.
  * </ul>
  *
  * <p>In order to be read correctly, when reading occurs (lazy), deserialization will be triggered

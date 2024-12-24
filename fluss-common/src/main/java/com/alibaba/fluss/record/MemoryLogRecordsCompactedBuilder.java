@@ -20,7 +20,7 @@ import com.alibaba.fluss.memory.MemorySegment;
 import com.alibaba.fluss.memory.MemorySegmentOutputView;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.row.indexed.IndexedRow;
+import com.alibaba.fluss.row.compacted.CompactedRow;
 import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.crc.Crc32C;
 
@@ -37,9 +37,10 @@ import static com.alibaba.fluss.record.LogRecordBatch.NO_BATCH_SEQUENCE;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_WRITER_ID;
 
 /**
- * Default builder for {@link MemoryLogRecords} of log records in {@link LogFormat#INDEXED} format.
+ * Default builder for {@link MemoryLogRecords} of log records in {@link LogFormat#COMPACTED}
+ * format.
  */
-public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
+public class MemoryLogRecordsCompactedBuilder implements AutoCloseable {
     private static final int BUILDER_DEFAULT_OFFSET = 0;
 
     private final long baseLogOffset;
@@ -56,7 +57,7 @@ public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
     private boolean isClosed;
     private MemoryLogRecords builtRecords;
 
-    private MemoryLogRecordsIndexedBuilder(
+    private MemoryLogRecordsCompactedBuilder(
             long baseLogOffset,
             int schemaId,
             int writeLimit,
@@ -82,9 +83,9 @@ public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
         this.sizeInBytes = RECORD_BATCH_HEADER_SIZE;
     }
 
-    public static MemoryLogRecordsIndexedBuilder builder(
+    public static MemoryLogRecordsCompactedBuilder builder(
             int schemaId, int writeLimit, MemorySegment segment) throws IOException {
-        return new MemoryLogRecordsIndexedBuilder(
+        return new MemoryLogRecordsCompactedBuilder(
                 BUILDER_DEFAULT_OFFSET,
                 schemaId,
                 writeLimit,
@@ -92,20 +93,20 @@ public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
                 new MemorySegmentOutputView(segment));
     }
 
-    public static MemoryLogRecordsIndexedBuilder builder(
+    public static MemoryLogRecordsCompactedBuilder builder(
             long baseLogOffset,
             int schemaId,
             int writeLimit,
             byte magic,
             MemorySegmentOutputView outputView)
             throws IOException {
-        return new MemoryLogRecordsIndexedBuilder(
+        return new MemoryLogRecordsCompactedBuilder(
                 baseLogOffset, schemaId, writeLimit, magic, outputView);
     }
 
-    public static MemoryLogRecordsIndexedBuilder builder(
+    public static MemoryLogRecordsCompactedBuilder builder(
             int schemaId, MemorySegmentOutputView outputView) throws IOException {
-        return new MemoryLogRecordsIndexedBuilder(
+        return new MemoryLogRecordsCompactedBuilder(
                 BUILDER_DEFAULT_OFFSET,
                 schemaId,
                 Integer.MAX_VALUE,
@@ -118,7 +119,7 @@ public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
      * appended, then this returns true.
      */
     public boolean hasRoomFor(InternalRow row) {
-        return sizeInBytes + IndexedLogRecord.sizeOf((IndexedRow) row) <= writeLimit;
+        return sizeInBytes + CompactedLogRecord.sizeOf((CompactedRow) row) <= writeLimit;
     }
 
     public void append(RowKind rowKind, InternalRow row) throws Exception {
@@ -131,7 +132,7 @@ public class MemoryLogRecordsIndexedBuilder implements AutoCloseable {
                     "Tried to append a record, but MemoryLogRecordsBuilder is closed for record appends");
         }
 
-        int recordByteSizes = IndexedLogRecord.writeTo(outputView, rowKind, (IndexedRow) row);
+        int recordByteSizes = CompactedLogRecord.writeTo(outputView, rowKind, (CompactedRow) row);
         currentRecordNumber++;
         sizeInBytes += recordByteSizes;
     }

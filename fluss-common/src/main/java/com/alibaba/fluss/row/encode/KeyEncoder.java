@@ -18,6 +18,7 @@ package com.alibaba.fluss.row.encode;
 
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.compacted.CompactedKeyWriter;
+import com.alibaba.fluss.row.compacted.CompactedRow;
 import com.alibaba.fluss.types.DataType;
 import com.alibaba.fluss.types.RowType;
 
@@ -77,6 +78,14 @@ public class KeyEncoder {
     }
 
     public byte[] encode(InternalRow row) {
+        // if the row is compacted, just return the bytes.
+        if (row instanceof CompactedRow) {
+            CompactedRow compactedRow = (CompactedRow) row;
+            byte[] bytes = new byte[compactedRow.getSizeInBytes()];
+            compactedRow.copyTo(bytes, 0);
+            return bytes;
+        }
+
         compactedEncoder.reset();
         // iterate all the fields of the row, and encode each field
         for (int i = 0; i < fieldGetters.length; i++) {

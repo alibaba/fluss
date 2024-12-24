@@ -48,6 +48,7 @@ import com.alibaba.fluss.server.kv.snapshot.KvFileHandleAndLocalPath;
 import com.alibaba.fluss.server.kv.snapshot.KvSnapshotDataUploader;
 import com.alibaba.fluss.server.kv.snapshot.RocksIncrementalSnapshot;
 import com.alibaba.fluss.server.kv.wal.ArrowWalBuilder;
+import com.alibaba.fluss.server.kv.wal.CompactedWalBuilder;
 import com.alibaba.fluss.server.kv.wal.IndexWalBuilder;
 import com.alibaba.fluss.server.kv.wal.WalBuilder;
 import com.alibaba.fluss.server.log.LogAppendInfo;
@@ -379,6 +380,16 @@ public final class KvTablet {
                                 Integer.MAX_VALUE,
                                 rowType),
                         new ManagedPagedOutputView(memorySegmentPool));
+            case COMPACTED:
+                if (kvFormat == KvFormat.INDEXED) {
+                    // convert from index row to compacted row is time cost, and gain
+                    // less benefits, currently we won't support index row as kv format and
+                    // compacted as cdc log format.
+                    // so in here we throw exception directly
+                    throw new IllegalArgumentException(
+                            "Primary Key Table with INDEXED kv format doesn't support COMPACTED cdc log format.");
+                }
+                return new CompactedWalBuilder(schemaId);
             default:
                 throw new IllegalArgumentException("Unsupported log format: " + logFormat);
         }

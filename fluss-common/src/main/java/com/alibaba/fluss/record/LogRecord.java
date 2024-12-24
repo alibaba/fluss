@@ -54,4 +54,11 @@ public interface LogRecord {
      * @return the log record's row
      */
     InternalRow getRow();
+
+    /**
+     * Get the log record's size in bytes.
+     *
+     * @return the log record's size in bytes
+     */
+    int getSizeInBytes();
 }

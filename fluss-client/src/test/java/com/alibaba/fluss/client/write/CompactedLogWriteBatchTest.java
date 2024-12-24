@@ -19,15 +19,15 @@ package com.alibaba.fluss.client.write;
 import com.alibaba.fluss.memory.MemorySegment;
 import com.alibaba.fluss.memory.MemorySegmentOutputView;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.record.CompactedLogRecord;
 import com.alibaba.fluss.record.DefaultLogRecordBatch;
-import com.alibaba.fluss.record.IndexedLogRecord;
 import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordReadContext;
-import com.alibaba.fluss.record.MemoryLogRecordsIndexedBuilder;
+import com.alibaba.fluss.record.MemoryLogRecordsCompactedBuilder;
 import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.record.bytesview.BytesView;
 import com.alibaba.fluss.record.bytesview.MemorySegmentBytesView;
-import com.alibaba.fluss.row.indexed.IndexedRow;
+import com.alibaba.fluss.row.compacted.CompactedRow;
 import com.alibaba.fluss.utils.CloseableIterator;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,32 +37,31 @@ import static com.alibaba.fluss.record.TestData.DATA1_PHYSICAL_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_INFO;
-import static com.alibaba.fluss.testutils.DataTestUtils.row;
+import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Test for {@link IndexedLogWriteBatch}. */
-public class IndexedLogWriteBatchTest {
-    private IndexedRow row;
+/** Test for {@link CompactedLogWriteBatch}. */
+public class CompactedLogWriteBatchTest {
+    private CompactedRow row;
     private int estimatedSizeInBytes;
 
     @BeforeEach
     void setup() {
-        row = row(DATA1_ROW_TYPE, new Object[] {1, "a"});
-        estimatedSizeInBytes = IndexedLogRecord.sizeOf(row);
+        row = compactedRow(DATA1_ROW_TYPE, new Object[] {1, "a"});
+        estimatedSizeInBytes = CompactedLogRecord.sizeOf(row);
     }
 
     @Test
     void testTryAppendWithWriteLimit() throws Exception {
         int bucketId = 0;
         int writeLimit = 100;
-        IndexedLogWriteBatch logProducerBatch =
+        CompactedLogWriteBatch logProducerBatch =
                 createLogWriteBatch(
                         new TableBucket(DATA1_TABLE_ID, bucketId),
                         0L,
                         writeLimit,
                         MemorySegment.allocateHeapMemory(writeLimit));
-
         for (int i = 0;
                 i
                         < (writeLimit - DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE)
@@ -81,7 +80,7 @@ public class IndexedLogWriteBatchTest {
     @Test
     void testToBytes() throws Exception {
         int bucketId = 0;
-        IndexedLogWriteBatch logProducerBatch =
+        CompactedLogWriteBatch logProducerBatch =
                 createLogWriteBatch(new TableBucket(DATA1_TABLE_ID, bucketId), 0L);
         boolean appendResult = logProducerBatch.tryAppend(createWriteRecord(), newWriteCallback());
         assertThat(appendResult).isTrue();
@@ -96,24 +95,9 @@ public class IndexedLogWriteBatchTest {
     }
 
     @Test
-    void testCompleteTwice() throws Exception {
-        int bucketId = 0;
-        IndexedLogWriteBatch logWriteBatch =
-                createLogWriteBatch(new TableBucket(DATA1_TABLE_ID, bucketId), 0L);
-        boolean appendResult = logWriteBatch.tryAppend(createWriteRecord(), newWriteCallback());
-        assertThat(appendResult).isTrue();
-
-        assertThat(logWriteBatch.complete()).isTrue();
-        assertThatThrownBy(logWriteBatch::complete)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(
-                        "A SUCCEEDED batch must not attempt another state change to SUCCEEDED");
-    }
-
-    @Test
     void testFailedTwice() throws Exception {
         int bucketId = 0;
-        IndexedLogWriteBatch logWriteBatch =
+        CompactedLogWriteBatch logWriteBatch =
                 createLogWriteBatch(new TableBucket(DATA1_TABLE_ID, bucketId), 0L);
         boolean appendResult = logWriteBatch.tryAppend(createWriteRecord(), newWriteCallback());
         assertThat(appendResult).isTrue();
@@ -128,7 +112,7 @@ public class IndexedLogWriteBatchTest {
     @Test
     void testClose() throws Exception {
         int bucketId = 0;
-        IndexedLogWriteBatch logProducerBatch =
+        CompactedLogWriteBatch logProducerBatch =
                 createLogWriteBatch(new TableBucket(DATA1_TABLE_ID, bucketId), 0L);
         boolean appendResult = logProducerBatch.tryAppend(createWriteRecord(), newWriteCallback());
         assertThat(appendResult).isTrue();
@@ -140,23 +124,38 @@ public class IndexedLogWriteBatchTest {
         assertThat(appendResult).isFalse();
     }
 
+    @Test
+    void testCompleteTwice() throws Exception {
+        int bucketId = 0;
+        CompactedLogWriteBatch logWriteBatch =
+                createLogWriteBatch(new TableBucket(DATA1_TABLE_ID, bucketId), 0L);
+        boolean appendResult = logWriteBatch.tryAppend(createWriteRecord(), newWriteCallback());
+        assertThat(appendResult).isTrue();
+
+        assertThat(logWriteBatch.complete()).isTrue();
+        assertThatThrownBy(logWriteBatch::complete)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(
+                        "A SUCCEEDED batch must not attempt another state change to SUCCEEDED");
+    }
+
     private WriteRecord createWriteRecord() {
         return new WriteRecord(DATA1_PHYSICAL_TABLE_PATH, WriteKind.APPEND, row, null);
     }
 
-    private IndexedLogWriteBatch createLogWriteBatch(TableBucket tb, long baseLogOffset)
+    private CompactedLogWriteBatch createLogWriteBatch(TableBucket tb, long baseLogOffset)
             throws Exception {
         return createLogWriteBatch(
                 tb, baseLogOffset, Integer.MAX_VALUE, MemorySegment.allocateHeapMemory(1000));
     }
 
-    private IndexedLogWriteBatch createLogWriteBatch(
+    private CompactedLogWriteBatch createLogWriteBatch(
             TableBucket tb, long baseLogOffset, int writeLimit, MemorySegment memorySegment)
             throws Exception {
-        return new IndexedLogWriteBatch(
+        return new CompactedLogWriteBatch(
                 tb,
                 DATA1_PHYSICAL_TABLE_PATH,
-                MemoryLogRecordsIndexedBuilder.builder(
+                MemoryLogRecordsCompactedBuilder.builder(
                         baseLogOffset,
                         DATA1_TABLE_INFO.getSchemaId(),
                         writeLimit,
@@ -169,7 +168,7 @@ public class IndexedLogWriteBatchTest {
         assertThat(recordBatch.baseLogOffset()).isEqualTo(0L);
         assertThat(recordBatch.schemaId()).isEqualTo((short) DATA1_TABLE_INFO.getSchemaId());
         try (LogRecordReadContext readContext =
-                        LogRecordReadContext.createIndexedReadContext(
+                        LogRecordReadContext.createCompactedReadContext(
                                 DATA1_ROW_TYPE, DATA1_TABLE_INFO.getSchemaId());
                 CloseableIterator<LogRecord> iterator = recordBatch.records(readContext)) {
             assertThat(iterator.hasNext()).isTrue();

@@ -18,7 +18,6 @@ package com.alibaba.fluss.record;
 
 import com.alibaba.fluss.memory.MemorySegment;
 import com.alibaba.fluss.row.BinaryString;
-import com.alibaba.fluss.row.TestInternalRowGenerator;
 import com.alibaba.fluss.row.indexed.IndexedRow;
 import com.alibaba.fluss.row.indexed.IndexedRowWriter;
 import com.alibaba.fluss.types.DataType;
@@ -27,10 +26,12 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
+import static com.alibaba.fluss.row.TestInternalRowGenerator.createAllRowType;
+import static com.alibaba.fluss.row.TestInternalRowGenerator.genIndexedRowForAllType;
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Test for {@link DefaultLogRecord}. */
-class DefaultLogRecordTest extends LogTestBase {
+/** Test for {@link IndexedLogRecord}. */
+class IndexedLogRecordTest extends LogTestBase {
 
     @Test
     void testBase() throws IOException {
@@ -43,34 +44,33 @@ class DefaultLogRecordTest extends LogTestBase {
         writer.writeString(BinaryString.fromString("abc"));
         row.pointTo(writer.segment(), 0, writer.position());
 
-        DefaultLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
+        IndexedLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
         // Test read from.
-        DefaultLogRecord defaultLogRecord =
-                DefaultLogRecord.readFrom(
+        IndexedLogRecord indexedLogRecord =
+                IndexedLogRecord.readFrom(
                         MemorySegment.wrap(outputView.getCopyOfBuffer()),
                         0,
                         1000,
                         10001,
                         fieldTypes);
 
-        assertThat(defaultLogRecord.getSizeInBytes()).isEqualTo(17);
-        assertThat(defaultLogRecord.logOffset()).isEqualTo(1000);
-        assertThat(defaultLogRecord.timestamp()).isEqualTo(10001);
-        assertThat(defaultLogRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
-        assertThat(defaultLogRecord.getRow()).isEqualTo(row);
+        assertThat(indexedLogRecord.getSizeInBytes()).isEqualTo(17);
+        assertThat(indexedLogRecord.logOffset()).isEqualTo(1000);
+        assertThat(indexedLogRecord.timestamp()).isEqualTo(10001);
+        assertThat(indexedLogRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+        assertThat(indexedLogRecord.getRow()).isEqualTo(row);
     }
 
     @Test
     void testWriteToAndReadFromWithRandomData() throws IOException {
         // Test write to.
-        IndexedRow row = TestInternalRowGenerator.genIndexedRowForAllType();
-        DefaultLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
-        DataType[] allColTypes =
-                TestInternalRowGenerator.createAllRowType().getChildren().toArray(new DataType[0]);
+        IndexedRow row = genIndexedRowForAllType();
+        IndexedLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
+        DataType[] allColTypes = createAllRowType().getChildren().toArray(new DataType[0]);
 
         // Test read from.
         LogRecord defaultLogRecord =
-                DefaultLogRecord.readFrom(
+                IndexedLogRecord.readFrom(
                         MemorySegment.wrap(outputView.getCopyOfBuffer()),
                         0,
                         1000,

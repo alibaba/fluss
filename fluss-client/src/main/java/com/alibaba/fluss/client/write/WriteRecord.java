@@ -20,11 +20,16 @@ import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.record.CompactedLogRecord;
 import com.alibaba.fluss.record.DefaultKvRecord;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
-import com.alibaba.fluss.record.DefaultLogRecord;
 import com.alibaba.fluss.record.DefaultLogRecordBatch;
+import com.alibaba.fluss.record.IndexedLogRecord;
 import com.alibaba.fluss.row.InternalRow;
+import com.alibaba.fluss.row.MemoryAwareGetters;
+import com.alibaba.fluss.row.compacted.CompactedRow;
+import com.alibaba.fluss.row.indexed.IndexedRow;
+import com.alibaba.fluss.utils.Preconditions;
 
 import javax.annotation.Nullable;
 
@@ -72,14 +77,7 @@ public final class WriteRecord {
         this.bucketKey = bucketKey;
         this.row = row;
         this.targetColumns = targetColumns;
-        this.estimatedSizeInBytes =
-                key != null
-                        ? DefaultKvRecord.sizeOf(key, row)
-                                + DefaultKvRecordBatch.RECORD_BATCH_HEADER_SIZE
-                        // TODO: row maybe not IndexedRow, which can't be estimated size
-                        //   and the size maybe not accurate when the format is arrow.
-                        : DefaultLogRecord.sizeOf(row)
-                                + DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE;
+        this.estimatedSizeInBytes = estimatedSizeInBytes();
     }
 
     public PhysicalTablePath getPhysicalTablePath() {
@@ -114,5 +112,24 @@ public final class WriteRecord {
      */
     public int getEstimatedSizeInBytes() {
         return estimatedSizeInBytes;
+    }
+
+    private int estimatedSizeInBytes() {
+        // TODO: the size maybe not accurate when the format is arrow.
+        if (key != null) {
+            return DefaultKvRecord.sizeOf(key, row) + DefaultKvRecordBatch.RECORD_BATCH_HEADER_SIZE;
+        }
+
+        Preconditions.checkArgument(row != null, "row is null");
+        if (row instanceof IndexedRow) {
+            return IndexedLogRecord.sizeOf((IndexedRow) row)
+                    + DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE;
+        } else if (row instanceof CompactedRow) {
+            return CompactedLogRecord.sizeOf((CompactedRow) row)
+                    + DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE;
+        } else {
+            return ((MemoryAwareGetters) row).getSizeInBytes()
+                    + DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE;
+        }
     }
 }
