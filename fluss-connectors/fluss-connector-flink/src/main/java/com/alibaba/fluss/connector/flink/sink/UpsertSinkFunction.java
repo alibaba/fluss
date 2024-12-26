@@ -19,6 +19,7 @@ package com.alibaba.fluss.connector.flink.sink;
 import com.alibaba.fluss.client.table.writer.UpsertWrite;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.connector.flink.options.DeleteStrategy;
 import com.alibaba.fluss.connector.flink.utils.FlinkRowToFlussRowConverter;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
@@ -42,8 +43,9 @@ class UpsertSinkFunction extends FlinkSinkFunction {
             TablePath tablePath,
             Configuration flussConfig,
             RowType tableRowType,
-            @Nullable int[] targetColumnIndexes) {
-        super(tablePath, flussConfig, tableRowType, targetColumnIndexes);
+            @Nullable int[] targetColumnIndexes,
+            DeleteStrategy deleteStrategy) {
+        super(tablePath, flussConfig, tableRowType, targetColumnIndexes, deleteStrategy);
     }
 
     @Override

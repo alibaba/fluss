@@ -21,6 +21,7 @@ import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.metrics.FlinkMetricRegistry;
+import com.alibaba.fluss.connector.flink.options.DeleteStrategy;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 import com.alibaba.fluss.connector.flink.utils.FlinkRowToFlussRowConverter;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -74,20 +75,27 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
     private transient Counter numRecordsOutCounter;
     private transient Counter numRecordsOutErrorsCounter;
     private volatile Throwable asyncWriterException;
+    private final DeleteStrategy deleteStrategy;
 
-    public FlinkSinkFunction(TablePath tablePath, Configuration flussConfig, RowType tableRowType) {
-        this(tablePath, flussConfig, tableRowType, null);
+    public FlinkSinkFunction(
+            TablePath tablePath,
+            Configuration flussConfig,
+            RowType tableRowType,
+            DeleteStrategy deleteStrategy) {
+        this(tablePath, flussConfig, tableRowType, null, deleteStrategy);
     }
 
     public FlinkSinkFunction(
             TablePath tablePath,
             Configuration flussConfig,
             RowType tableRowType,
-            @Nullable int[] targetColumns) {
+            @Nullable int[] targetColumns,
+            DeleteStrategy deleteStrategy) {
         this.tablePath = tablePath;
         this.flussConfig = flussConfig;
         this.targetColumnIndexes = targetColumns;
         this.tableRowType = tableRowType;
+        this.deleteStrategy = deleteStrategy;
     }
 
     @Override
@@ -117,6 +125,12 @@ abstract class FlinkSinkFunction extends RichSinkFunction<RowData>
     @Override
     public void invoke(RowData value, SinkFunction.Context context) throws IOException {
         checkAsyncException();
+        if (DeleteStrategy.IGNORE_DELETE.equals(deleteStrategy)
+                && (value.getRowKind() == RowKind.UPDATE_BEFORE
+                        || value.getRowKind() == RowKind.DELETE)) {
+            return;
+        }
+
         InternalRow internalRow = dataConverter.toInternalRow(value);
         CompletableFuture<Void> writeFuture = writeRow(value.getRowKind(), internalRow);
         writeFuture.exceptionally(

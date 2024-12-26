@@ -18,6 +18,7 @@ package com.alibaba.fluss.connector.flink.sink;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.connector.flink.options.DeleteStrategy;
 import com.alibaba.fluss.connector.flink.source.testutils.FlinkTestBase;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -67,7 +68,9 @@ public class FlinkSinkFunctionTest extends FlinkTestBase {
                         Arrays.asList(
                                 new RowType.RowField("id", DataTypes.INT().getLogicalType()),
                                 new RowType.RowField("name", DataTypes.STRING().getLogicalType())));
-        FlinkSinkFunction flinkSinkFunction = new AppendSinkFunction(tablePath, flussConf, rowType);
+        FlinkSinkFunction flinkSinkFunction =
+                new AppendSinkFunction(
+                        tablePath, flussConf, rowType, DeleteStrategy.CHANGELOG_STANDARD);
         InterceptingOperatorMetricGroup interceptingOperatorMetricGroup =
                 new InterceptingOperatorMetricGroup();
         MockStreamingRuntimeContext mockStreamingRuntimeContext =
