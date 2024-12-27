@@ -21,6 +21,8 @@ import com.alibaba.fluss.client.table.lake.LakeTableSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.KvSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.PartitionSnapshotInfo;
 import com.alibaba.fluss.client.utils.ClientRpcMessageUtils;
+import com.alibaba.fluss.exception.ApiException;
+import com.alibaba.fluss.exception.InvalidTimestampException;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
@@ -57,6 +59,9 @@ import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
 import com.alibaba.fluss.rpc.protocol.ApiError;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
@@ -68,6 +73,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.alibaba.fluss.client.admin.ListOffsetsResult.UNKNOWN_OFFSET;
 import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeListOffsetsRequest;
 
 /**
@@ -77,6 +83,7 @@ import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeListOffse
  */
 public class FlussAdmin implements Admin {
 
+    private static final Logger log = LoggerFactory.getLogger(FlussAdmin.class);
     private final AdminGateway gateway;
     private final MetadataUpdater metadataUpdater;
     private final RpcClient client;
@@ -323,11 +330,21 @@ public class FlussAdmin implements Admin {
                                         for (PbListOffsetsRespForBucket resp :
                                                 r.getBucketsRespsList()) {
                                             if (resp.hasErrorCode()) {
-                                                bucketToOffsetMap
-                                                        .get(resp.getBucketId())
-                                                        .completeExceptionally(
-                                                                ApiError.fromErrorMessage(resp)
-                                                                        .exception());
+                                                ApiException exception =
+                                                        ApiError.fromErrorMessage(resp).exception();
+                                                if (exception
+                                                        instanceof InvalidTimestampException) {
+                                                    log.warn(
+                                                            "Invalid timestamp: "
+                                                                    + exception.getMessage());
+                                                    bucketToOffsetMap
+                                                            .get(resp.getBucketId())
+                                                            .complete(UNKNOWN_OFFSET);
+                                                } else {
+                                                    bucketToOffsetMap
+                                                            .get(resp.getBucketId())
+                                                            .completeExceptionally(exception);
+                                                }
                                             } else {
                                                 bucketToOffsetMap
                                                         .get(resp.getBucketId())

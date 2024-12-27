@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
  */
 @PublicEvolving
 public class ListOffsetsResult {
+    public static final long UNKNOWN_OFFSET = -1L;
     private final Map<Integer, CompletableFuture<Long>> futures;
 
     public ListOffsetsResult(Map<Integer, CompletableFuture<Long>> futures) {
