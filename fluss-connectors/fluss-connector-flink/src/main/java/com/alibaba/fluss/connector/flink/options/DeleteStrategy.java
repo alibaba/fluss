@@ -31,7 +31,7 @@ public enum DeleteStrategy implements Serializable {
     IGNORE_DELETE,
 
     /**
-     * Operate normally based on PK + rowkind, suitable for scenarios that do not involve localized
+     * Operate normally based on PK + rowkind, suitable for scenarios that do not involve partial
      * updates. The Flink framework operates according to the Flink SQL Changelog working
      * principles, not ignoring delete operations, and executes update operations by first deleting
      * data then inserting, to ensure data accuracy.

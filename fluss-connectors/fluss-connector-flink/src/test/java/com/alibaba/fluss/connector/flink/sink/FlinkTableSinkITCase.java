@@ -38,7 +38,6 @@ import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
-import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 import org.apache.flink.util.CloseableIterator;
@@ -382,21 +381,19 @@ class FlinkTableSinkITCase {
 
     @Test
     void testIgnoreDelete() throws Exception {
-        String cdcSourceData =
-                TestValuesTableFactory.registerData(
-                        Arrays.asList(
+        org.apache.flink.table.api.Table cdcSourceData =
+                tEnv.fromChangelogStream(
+                        env.fromData(
                                 Row.ofKind(RowKind.INSERT, 1, 3501L, "Tim"),
                                 Row.ofKind(RowKind.DELETE, 1, 3501L, "Tim"),
                                 Row.ofKind(RowKind.INSERT, 2, 3502L, "Fabian"),
                                 Row.ofKind(RowKind.UPDATE_BEFORE, 2, 3502L, "Fabian"),
                                 Row.ofKind(RowKind.UPDATE_AFTER, 3, 3503L, "coco")));
+        tEnv.createTemporaryView("cdcSourceData", cdcSourceData);
+
         tEnv.executeSql(
-                "create temporary table source_test (a int not null, b bigint, c string) with('connector'='values', 'bounded' = 'true', 'data-id'='"
-                        + cdcSourceData
-                        + "')");
-        tEnv.executeSql(
-                "create table sink_test (a int not null, b bigint, c string) with('bucket.num' = '3', 'sink.delete-strategy'='IGNORE_DELETE')");
-        tEnv.executeSql("INSERT INTO sink_test SELECT * FROM source_test").await();
+                "create table sink_test (a int not null, b bigint, c string) with('bucket.num' = '3', 'sink.delete-strategy'='ignore_delete')");
+        tEnv.executeSql("INSERT INTO sink_test SELECT * FROM cdcSourceData").await();
 
         CloseableIterator<Row> rowIter = tEnv.executeSql("select * from sink_test").collect();
         List<String> expectedRows =
