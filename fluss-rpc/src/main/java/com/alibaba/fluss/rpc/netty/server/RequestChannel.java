@@ -16,13 +16,17 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.rpc.messages.FetchLogRequest;
+import com.alibaba.fluss.rpc.protocol.ApiKeys;
+import com.alibaba.fluss.utils.types.Tuple2;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.concurrent.ThreadSafe;
 
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /** A blocking queue channel that can receive requests and send responses. */
@@ -32,19 +36,21 @@ public final class RequestChannel {
 
     private final BlockingQueue<RpcRequest> requestQueue;
 
+    /**
+     * This queue is used to handle replica synchronization requests ({@link FetchLogRequest} from
+     * follower) between different machines in the Fluss cluster. The reason for using a separate
+     * queue is to prevent client read/write requests from affecting replica synchronization, which
+     * could otherwise impact the stability of the cluster.
+     */
+    private final BlockingQueue<RpcRequest> replicaSyncQueue;
+
+    private boolean pollFromReplicaSyncQueue;
+
     public RequestChannel(int queueCapacity) {
-        this.requestQueue =
-                new PriorityBlockingQueue<>(
-                        queueCapacity,
-                        (req1, req2) -> {
-                            // less value will be popped first
-                            int res = Integer.compare(req2.getPriority(), req1.getPriority());
-                            // if priority is same, we want to keep FIFO
-                            if (res == 0 && req1 != req2) {
-                                res = (req1.getRequestId() < req2.getRequestId() ? -1 : 1);
-                            }
-                            return res;
-                        });
+        int eachQueueCapacity = queueCapacity / 2;
+        this.requestQueue = new ArrayBlockingQueue<>(eachQueueCapacity);
+        this.replicaSyncQueue = new ArrayBlockingQueue<>(eachQueueCapacity);
+        this.pollFromReplicaSyncQueue = true;
     }
 
     /**
@@ -52,7 +58,12 @@ public final class RequestChannel {
      * request.
      */
     public void putRequest(RpcRequest request) throws Exception {
-        requestQueue.put(request);
+        if (request.getApiKey() == ApiKeys.FETCH_LOG.id
+                && ((FetchLogRequest) request.getMessage()).getFollowerServerId() >= 0) {
+            replicaSyncQueue.put(request);
+        } else {
+            requestQueue.put(request);
+        }
     }
 
     /**
@@ -70,16 +81,36 @@ public final class RequestChannel {
      *     element is available.
      */
     public RpcRequest pollRequest(long timeoutMs) {
+        long startTime = System.nanoTime();
+        long remainingTime = timeoutMs;
+        Tuple2<BlockingQueue<RpcRequest>, BlockingQueue<RpcRequest>> queuePair =
+                pollFromReplicaSyncQueue
+                        ? Tuple2.of(replicaSyncQueue, requestQueue)
+                        : Tuple2.of(requestQueue, replicaSyncQueue);
+        pollFromReplicaSyncQueue = !pollFromReplicaSyncQueue;
         try {
-            return requestQueue.poll(timeoutMs, TimeUnit.MILLISECONDS);
+            while (remainingTime > 0) {
+                RpcRequest request = queuePair.f0.poll(1, TimeUnit.MILLISECONDS);
+                if (request != null) {
+                    return request;
+                }
+
+                request = queuePair.f1.poll(1, TimeUnit.MILLISECONDS);
+                if (request != null) {
+                    return request;
+                }
+
+                remainingTime = timeoutMs - (System.nanoTime() - startTime);
+            }
         } catch (InterruptedException e) {
             LOG.warn("Interrupted while polling requests from channel queue.", e);
             return null;
         }
+        return null;
     }
 
     /** Get the number of requests in the queue. */
-    int requestsCount() {
-        return requestQueue.size();
+    public int requestsCount() {
+        return requestQueue.size() + replicaSyncQueue.size();
     }
 }

@@ -34,13 +34,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class RequestChannelTest {
 
     @Test
-    void testRequestPriority() throws Exception {
+    void testDifferentRequestQueue() throws Exception {
         RequestChannel channel = new RequestChannel(100);
 
-        // 1. request with same priority score. Use FIFO.
+        // 1. push normal requests. Use FIFO.
         List<RpcRequest> rpcRequests = new ArrayList<>();
-        // push rpc requests
-        for (int i = 0; i < 100; i++) {
+        // push rpc requests. For normal requests, currently, the queue size is 50, capacity/2.
+        for (int i = 0; i < 50; i++) {
             RpcRequest rpcRequest =
                     new RpcRequest(
                             ApiKeys.GET_TABLE.id,
@@ -53,36 +53,49 @@ public class RequestChannelTest {
             channel.putRequest(rpcRequest);
             rpcRequests.add(rpcRequest);
         }
+        assertThat(channel.requestsCount()).isEqualTo(50);
+        // pop rpc requests
+        for (int i = 0; i < 50; i++) {
+            RpcRequest gotRequest = channel.pollRequest(100);
+            assertThat(gotRequest).isEqualTo(rpcRequests.get(i));
+        }
+
+        rpcRequests.clear();
+        // 2. push normal requests and replicaSync requests together. The same type of requests
+        // should be popped out in FIFO. Normal requests and replicaSync requests will be processed
+        // one by one.
+        for (int i = 0; i < 100; i++) {
+            RpcRequest rpcRequest;
+            if (i % 2 == 0) {
+                rpcRequest =
+                        new RpcRequest(
+                                ApiKeys.FETCH_LOG.id,
+                                (short) 0,
+                                100,
+                                null,
+                                new FetchLogRequest().setMaxBytes(100).setFollowerServerId(2),
+                                new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
+                                null);
+            } else {
+                rpcRequest =
+                        new RpcRequest(
+                                ApiKeys.GET_TABLE.id,
+                                (short) 0,
+                                3,
+                                null,
+                                new GetTableRequest(),
+                                new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
+                                null);
+            }
+            channel.putRequest(rpcRequest);
+            rpcRequests.add(rpcRequest);
+        }
+
+        assertThat(channel.requestsCount()).isEqualTo(100);
         // pop rpc requests
         for (int i = 0; i < 100; i++) {
             RpcRequest gotRequest = channel.pollRequest(100);
             assertThat(gotRequest).isEqualTo(rpcRequests.get(i));
         }
-
-        // 2. request with different priority score. Should be ordered by priority score.
-        RpcRequest rpcRequest1 =
-                new RpcRequest(
-                        ApiKeys.GET_TABLE.id,
-                        (short) 0,
-                        3,
-                        null,
-                        new GetTableRequest(),
-                        new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
-                        null);
-        RpcRequest rpcRequest2 =
-                new RpcRequest(
-                        ApiKeys.FETCH_LOG.id,
-                        (short) 0,
-                        100,
-                        null,
-                        new FetchLogRequest().setMaxBytes(100).setFollowerServerId(2),
-                        new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
-                        null);
-        channel.putRequest(rpcRequest1);
-        channel.putRequest(rpcRequest2);
-        RpcRequest rpcRequest = channel.pollRequest(100);
-        assertThat(rpcRequest).isEqualTo(rpcRequest2);
-        rpcRequest = channel.pollRequest(100);
-        assertThat(rpcRequest).isEqualTo(rpcRequest1);
     }
 }
