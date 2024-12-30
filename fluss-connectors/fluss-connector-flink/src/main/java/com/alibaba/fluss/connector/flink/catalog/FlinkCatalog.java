@@ -163,7 +163,11 @@ public class FlinkCatalog implements Catalog {
             String databaseName, CatalogDatabase database, boolean ignoreIfExists)
             throws DatabaseAlreadyExistException, CatalogException {
         try {
-            admin.createDatabase(databaseName, ignoreIfExists).get();
+            admin.createDatabase(
+                            databaseName,
+                            FlinkConversions.toFlussDatabase(database),
+                            ignoreIfExists)
+                    .get();
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
             if (CatalogExceptionUtils.isDatabaseAlreadyExist(t)) {

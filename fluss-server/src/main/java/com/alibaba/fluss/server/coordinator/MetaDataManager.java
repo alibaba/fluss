@@ -25,11 +25,14 @@ import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
+import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
+import com.alibaba.fluss.server.zk.data.DatabaseRegistration;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.server.zk.data.TableRegistration;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
@@ -57,7 +60,8 @@ public class MetaDataManager {
         this.zookeeperClient = zookeeperClient;
     }
 
-    public void createDatabase(String databaseName, boolean ignoreIfExists)
+    public void createDatabase(
+            String databaseName, DatabaseDescriptor databaseDescriptor, boolean ignoreIfExists)
             throws DatabaseAlreadyExistException {
         if (databaseExists(databaseName)) {
             if (ignoreIfExists) {
@@ -67,9 +71,39 @@ public class MetaDataManager {
                     "Database " + databaseName + " already exists.");
         }
 
+        DatabaseRegistration databaseRegistration = DatabaseRegistration.of(databaseDescriptor);
+
         uncheck(
-                () -> zookeeperClient.registerDatabase(databaseName),
+                () -> zookeeperClient.registerDatabase(databaseName, databaseRegistration),
                 "Fail to create database: " + databaseName);
+    }
+
+    public DatabaseInfo getDatabase(String databaseName) throws DatabaseNotExistException {
+        if (!databaseExists(databaseName)) {
+            throw new DatabaseNotExistException("Database " + databaseName + " does not exist.");
+        }
+
+        Optional<DatabaseRegistration> optionalTable;
+        try {
+            optionalTable = zookeeperClient.getDatabase(databaseName);
+        } catch (Exception e) {
+            throw new FlussRuntimeException(
+                    String.format("Fail to get database '%s'.", databaseName), e);
+        }
+
+        DatabaseRegistration databaseReg = null;
+        if (optionalTable.isPresent()) {
+            databaseReg = optionalTable.get();
+        } else {
+            // the database node before 0.6 is empty.
+            databaseReg = DatabaseRegistration.of(DatabaseDescriptor.builder().build());
+        }
+
+        return new DatabaseInfo(
+                databaseName,
+                databaseReg.toDatabaseDescriptor(),
+                databaseReg.createTime,
+                databaseReg.modifyTime);
     }
 
     public boolean databaseExists(String databaseName) {
@@ -230,7 +264,9 @@ public class MetaDataManager {
                 tablePath,
                 tableReg.tableId,
                 tableReg.toTableDescriptor(schemaInfo.getSchema()),
-                schemaInfo.getSchemaId());
+                schemaInfo.getSchemaId(),
+                tableReg.createTime,
+                tableReg.modifyTime);
     }
 
     public SchemaInfo getLatestSchema(TablePath tablePath) throws SchemaNotExistException {

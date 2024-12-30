@@ -44,9 +44,10 @@ public class TableRegistrationJsonSerde
     static final String BUCKET_COUNT_NAME = "bucket_count";
     static final String PROPERTIES_NAME = "properties";
     static final String CUSTOM_PROPERTIES_NAME = "custom_properties";
-
+    static final String CREATE_TIME = "create_time";
+    static final String MODIFY_TIME = "modify_time";
     private static final String VERSION_KEY = "version";
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     @Override
     public void serialize(TableRegistration tableReg, JsonGenerator generator) throws IOException {
@@ -97,11 +98,21 @@ public class TableRegistrationJsonSerde
         }
         generator.writeEndObject();
 
+        // serialize createdTime
+        generator.writeNumberField(CREATE_TIME, tableReg.createTime);
+
+        // serialize modifiedTime
+        generator.writeNumberField(MODIFY_TIME, tableReg.createTime);
+
         generator.writeEndObject();
     }
 
     @Override
     public TableRegistration deserialize(JsonNode node) {
+        return deserialize(node, node.get(VERSION_KEY).asInt());
+    }
+
+    public TableRegistration deserialize(JsonNode node, int version) {
         long tableId = node.get(TABLE_ID_NAME).asLong();
 
         JsonNode commentNode = node.get(COMMENT_NAME);
@@ -136,8 +147,22 @@ public class TableRegistrationJsonSerde
         Map<String, String> customProperties =
                 deserializeProperties(node.get(CUSTOM_PROPERTIES_NAME));
 
+        long createdTime = -1;
+        long modifiedTime = -1;
+        if (version >= 2) {
+            createdTime = node.get(CREATE_TIME).asLong();
+            modifiedTime = node.get(MODIFY_TIME).asLong();
+        }
+
         return new TableRegistration(
-                tableId, comment, partitionKeys, distribution, properties, customProperties);
+                tableId,
+                comment,
+                partitionKeys,
+                distribution,
+                properties,
+                customProperties,
+                createdTime,
+                modifiedTime);
     }
 
     private Map<String, String> deserializeProperties(JsonNode node) {

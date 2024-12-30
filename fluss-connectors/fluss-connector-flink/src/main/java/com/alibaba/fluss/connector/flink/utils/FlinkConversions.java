@@ -23,6 +23,7 @@ import com.alibaba.fluss.config.MemorySize;
 import com.alibaba.fluss.config.Password;
 import com.alibaba.fluss.connector.flink.FlinkConnectorOptions;
 import com.alibaba.fluss.connector.flink.catalog.FlinkCatalogFactory;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -32,6 +33,7 @@ import com.alibaba.fluss.utils.StringUtils;
 import com.alibaba.fluss.utils.TimeUtils;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.table.catalog.CatalogDatabase;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
@@ -239,6 +241,15 @@ public class FlinkConversions {
                 .comment(comment)
                 .properties(properties)
                 .customProperties(customProperties)
+                .build();
+    }
+
+    /** Convert Flink's table to Fluss's database. */
+    public static DatabaseDescriptor toFlussDatabase(CatalogDatabase catalogDatabase) {
+        return DatabaseDescriptor.builder()
+                .comment(catalogDatabase.getComment())
+                // todo: flink databse catalog will support option later.
+                .properties(Collections.emptyMap())
                 .build();
     }
 

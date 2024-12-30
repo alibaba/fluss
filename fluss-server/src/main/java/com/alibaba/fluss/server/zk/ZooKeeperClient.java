@@ -24,6 +24,7 @@ import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.CoordinatorAddress;
+import com.alibaba.fluss.server.zk.data.DatabaseRegistration;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.server.zk.data.PartitionAssignment;
@@ -259,10 +260,27 @@ public class ZooKeeperClient implements AutoCloseable {
     // --------------------------------------------------------------------------------------------
 
     /** Register a database to zk. */
+    @Deprecated
     public void registerDatabase(String database) throws Exception {
         String path = DatabaseZNode.path(database);
         zkClient.create().creatingParentsIfNeeded().withMode(CreateMode.PERSISTENT).forPath(path);
         LOG.info("Registered database {}", database);
+    }
+
+    public void registerDatabase(String database, DatabaseRegistration databaseRegistration)
+            throws Exception {
+        String path = DatabaseZNode.path(database);
+        zkClient.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT)
+                .forPath(path, DatabaseZNode.encode(databaseRegistration));
+        LOG.info("Registered database {}", database);
+    }
+
+    /** Get the database in ZK. */
+    public Optional<DatabaseRegistration> getDatabase(String database) throws Exception {
+        Optional<byte[]> bytes = getOrEmpty(DatabaseZNode.path(database));
+        return bytes.map(DatabaseZNode::decode);
     }
 
     public void deleteDatabase(String database) throws Exception {

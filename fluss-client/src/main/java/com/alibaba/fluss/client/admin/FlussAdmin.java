@@ -22,6 +22,8 @@ import com.alibaba.fluss.client.table.snapshot.KvSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.PartitionSnapshotInfo;
 import com.alibaba.fluss.client.utils.ClientRpcMessageUtils;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
+import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
@@ -41,6 +43,7 @@ import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
 import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
 import com.alibaba.fluss.rpc.messages.DropDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.DropTableRequest;
+import com.alibaba.fluss.rpc.messages.GetDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.GetLakeTableSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.GetPartitionSnapshotRequest;
@@ -120,16 +123,39 @@ public class FlussAdmin implements Admin {
 
     @Override
     public CompletableFuture<Void> createDatabase(String databaseName, boolean ignoreIfExists) {
+        return createDatabase(databaseName, DatabaseDescriptor.builder().build(), ignoreIfExists);
+    }
+
+    @Override
+    public CompletableFuture<Void> createDatabase(
+            String databaseName, DatabaseDescriptor databaseDescriptor, boolean ignoreIfExists) {
         TablePath.validateDatabaseName(databaseName);
         CreateDatabaseRequest request = new CreateDatabaseRequest();
-        request.setDatabaseName(databaseName).setIgnoreIfExists(ignoreIfExists);
+        request.setDatabaseJson(databaseDescriptor.toJsonBytes())
+                .setDatabaseName(databaseName)
+                .setIgnoreIfExists(ignoreIfExists);
         return gateway.createDatabase(request).thenApply(r -> null);
+    }
+
+    @Override
+    public CompletableFuture<DatabaseInfo> getDatabase(String databaseName) {
+        GetDatabaseRequest request = new GetDatabaseRequest();
+        request.setDatabaseName(databaseName);
+        return gateway.getDatabase(request)
+                .thenApply(
+                        r ->
+                                new DatabaseInfo(
+                                        databaseName,
+                                        DatabaseDescriptor.fromJsonBytes(r.getDatabaseJson()),
+                                        r.getCreateTime(),
+                                        r.getModifyTime()));
     }
 
     @Override
     public CompletableFuture<Void> deleteDatabase(
             String databaseName, boolean ignoreIfNotExists, boolean cascade) {
         DropDatabaseRequest request = new DropDatabaseRequest();
+
         request.setIgnoreIfNotExists(ignoreIfNotExists)
                 .setCascade(cascade)
                 .setDatabaseName(databaseName);
@@ -176,7 +202,9 @@ public class FlussAdmin implements Admin {
                                         tablePath,
                                         r.getTableId(),
                                         TableDescriptor.fromJsonBytes(r.getTableJson()),
-                                        r.getSchemaId()));
+                                        r.getSchemaId(),
+                                        r.getCreateTime(),
+                                        r.getModifyTime()));
     }
 
     @Override
