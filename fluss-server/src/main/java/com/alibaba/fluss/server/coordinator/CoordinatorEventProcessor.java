@@ -141,6 +141,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
     public CoordinatorEventProcessor(
             ZooKeeperClient zooKeeperClient,
+            RemoteStorageHandler remoteStorageHandler,
             ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
             CompletedSnapshotStoreManager completedSnapshotStoreManager,
@@ -148,6 +149,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
             CoordinatorMetricGroup coordinatorMetricGroup) {
         this(
                 zooKeeperClient,
+                remoteStorageHandler,
                 serverMetadataCache,
                 coordinatorChannelManager,
                 new CoordinatorContext(),
@@ -158,6 +160,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
     public CoordinatorEventProcessor(
             ZooKeeperClient zooKeeperClient,
+            RemoteStorageHandler remoteStorageHandler,
             ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
             CoordinatorContext coordinatorContext,
@@ -186,7 +189,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
                         metaDataManager,
                         coordinatorContext,
                         replicaStateMachine,
-                        tableBucketStateMachine);
+                        tableBucketStateMachine,
+                        remoteStorageHandler);
         this.tableChangeWatcher = new TableChangeWatcher(zooKeeperClient, coordinatorEventManager);
         this.tabletServerChangeWatcher =
                 new TabletServerChangeWatcher(zooKeeperClient, coordinatorEventManager);
