@@ -17,6 +17,7 @@
 package com.alibaba.fluss.connector.flink;
 
 import com.alibaba.fluss.config.FlussConfigUtils;
+import com.alibaba.fluss.connector.flink.options.DeleteStrategy;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 
 import org.apache.flink.configuration.ConfigOption;
@@ -97,6 +98,15 @@ public class FlinkConnectorOptions {
                             "The interval in milliseconds for the Fluss source to discover "
                                     + "the new partitions for partitioned table while scanning."
                                     + " A non-positive value disables the partition discovery.");
+
+    public static final ConfigOption<DeleteStrategy> SINK_DELETE_STRATEGY =
+            ConfigOptions.key("sink.delete-strategy")
+                    .enumType(DeleteStrategy.class)
+                    .defaultValue(DeleteStrategy.CHANGELOG_STANDARD)
+                    .withDescription(
+                            "This field is used to decide what to do when data of type -D/-U is received. "
+                                    + "`IGNORE_DELETE` means ignoring the `-D` and `-U` type message. "
+                                    + "`CHANGELOG_STANDARD` means neither `-U` nor `-D` is ignored, they both cause the corresponding row in fluss to be deleted");
 
     // --------------------------------------------------------------------------------------------
     // table storage specific options

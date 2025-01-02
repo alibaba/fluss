@@ -39,6 +39,7 @@ import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.flink.types.Row;
+import org.apache.flink.types.RowKind;
 import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -376,6 +377,28 @@ class FlinkTableSinkITCase {
                         + "+- TableSourceScan(table=[[testcatalog, defaultdb, source_insert_all]], fields=[a, b, c])\n";
         assertThat(tEnv.explainSql("insert into sink_insert_all select * from source_insert_all"))
                 .isEqualTo(expectPlan);
+    }
+
+    @Test
+    void testIgnoreDelete() throws Exception {
+        org.apache.flink.table.api.Table cdcSourceData =
+                tEnv.fromChangelogStream(
+                        env.fromData(
+                                Row.ofKind(RowKind.INSERT, 1, 3501L, "Tim"),
+                                Row.ofKind(RowKind.DELETE, 1, 3501L, "Tim"),
+                                Row.ofKind(RowKind.INSERT, 2, 3502L, "Fabian"),
+                                Row.ofKind(RowKind.UPDATE_BEFORE, 2, 3502L, "Fabian"),
+                                Row.ofKind(RowKind.UPDATE_AFTER, 3, 3503L, "coco")));
+        tEnv.createTemporaryView("cdcSourceData", cdcSourceData);
+
+        tEnv.executeSql(
+                "create table sink_test (a int not null, b bigint, c string) with('bucket.num' = '3', 'sink.delete-strategy'='ignore_delete')");
+        tEnv.executeSql("INSERT INTO sink_test SELECT * FROM cdcSourceData").await();
+
+        CloseableIterator<Row> rowIter = tEnv.executeSql("select * from sink_test").collect();
+        List<String> expectedRows =
+                Arrays.asList("+I[1, 3501, Tim]", "+I[2, 3502, Fabian]", "+I[3, 3503, coco]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, true);
     }
 
     @ParameterizedTest

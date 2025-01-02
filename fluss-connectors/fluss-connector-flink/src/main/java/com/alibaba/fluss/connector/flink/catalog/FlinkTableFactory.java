@@ -130,6 +130,7 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
     public DynamicTableSink createDynamicTableSink(Context context) {
         FactoryUtil.TableFactoryHelper helper = FactoryUtil.createTableFactoryHelper(this, context);
         helper.validate();
+        ReadableConfig tableOptions = helper.getOptions();
 
         boolean isStreamingMode =
                 context.getConfiguration().get(ExecutionOptions.RUNTIME_MODE)
@@ -139,10 +140,11 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
 
         return new FlinkTableSink(
                 toFlussTablePath(context.getObjectIdentifier()),
-                toFlussClientConfig(helper.getOptions(), context.getConfiguration()),
+                toFlussClientConfig(tableOptions, context.getConfiguration()),
                 rowType,
                 context.getPrimaryKeyIndexes(),
-                isStreamingMode);
+                isStreamingMode,
+                tableOptions.get(FlinkConnectorOptions.SINK_DELETE_STRATEGY));
     }
 
     @Override
@@ -166,6 +168,7 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                                 FlinkConnectorOptions.SCAN_STARTUP_TIMESTAMP,
                                 FlinkConnectorOptions.SCAN_PARTITION_DISCOVERY_INTERVAL,
                                 FlinkConnectorOptions.LOOKUP_ASYNC,
+                                FlinkConnectorOptions.SINK_DELETE_STRATEGY,
                                 LookupOptions.MAX_RETRIES,
                                 LookupOptions.CACHE_TYPE,
                                 LookupOptions.PARTIAL_CACHE_EXPIRE_AFTER_ACCESS,
