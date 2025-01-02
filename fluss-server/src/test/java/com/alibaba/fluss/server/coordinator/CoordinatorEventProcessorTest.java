@@ -17,6 +17,7 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FencedLeaderEpochException;
 import com.alibaba.fluss.exception.InvalidCoordinatorException;
@@ -62,6 +63,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
@@ -115,6 +117,8 @@ class CoordinatorEventProcessorTest {
     private CompletedSnapshotStoreManager completedSnapshotStoreManager;
     private AutoPartitionManager autoPartitionManager;
 
+    private RemoteStorageHandler remoteStorageHandler;
+
     @BeforeAll
     static void baseBeforeAll() throws Exception {
         zookeeperClient =
@@ -130,16 +134,20 @@ class CoordinatorEventProcessorTest {
     }
 
     @BeforeEach
-    void beforeEach() {
+    void beforeEach() throws IOException {
         serverMetadataCache = new ServerMetadataCacheImpl();
         // set a test channel manager for the context
         testCoordinatorChannelManager = new TestCoordinatorChannelManager();
         completedSnapshotStoreManager = new CompletedSnapshotStoreManager(1, 1, zookeeperClient);
         autoPartitionManager =
                 new AutoPartitionManager(serverMetadataCache, zookeeperClient, new Configuration());
+        Configuration conf = new Configuration();
+        conf.setString(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
+        remoteStorageHandler = new RemoteStorageHandler(conf);
         eventProcessor =
                 new CoordinatorEventProcessor(
                         zookeeperClient,
+                        remoteStorageHandler,
                         serverMetadataCache,
                         testCoordinatorChannelManager,
                         completedSnapshotStoreManager,
@@ -199,6 +207,7 @@ class CoordinatorEventProcessorTest {
         eventProcessor =
                 new CoordinatorEventProcessor(
                         zookeeperClient,
+                        remoteStorageHandler,
                         serverMetadataCache,
                         testCoordinatorChannelManager,
                         completedSnapshotStoreManager,
@@ -389,6 +398,7 @@ class CoordinatorEventProcessorTest {
         eventProcessor =
                 new CoordinatorEventProcessor(
                         zookeeperClient,
+                        remoteStorageHandler,
                         serverMetadataCache,
                         testCoordinatorChannelManager,
                         completedSnapshotStoreManager,
@@ -437,6 +447,7 @@ class CoordinatorEventProcessorTest {
         eventProcessor =
                 new CoordinatorEventProcessor(
                         zookeeperClient,
+                        remoteStorageHandler,
                         serverMetadataCache,
                         testCoordinatorChannelManager,
                         completedSnapshotStoreManager,
@@ -623,6 +634,7 @@ class CoordinatorEventProcessorTest {
         eventProcessor =
                 new CoordinatorEventProcessor(
                         zookeeperClient,
+                        remoteStorageHandler,
                         serverMetadataCache,
                         testCoordinatorChannelManager,
                         completedSnapshotStoreManager,

@@ -17,6 +17,8 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
 import com.alibaba.fluss.server.coordinator.event.CoordinatorEvent;
@@ -41,6 +43,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -50,6 +53,7 @@ import java.util.Set;
 
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.OnlineBucket;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OnlineReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.ReplicaDeletionSuccessful;
@@ -69,6 +73,8 @@ class TableManagerTest {
     private TestingEventManager testingEventManager;
     private TestCoordinatorChannelManager testCoordinatorChannelManager;
 
+    private RemoteStorageHandler remoteStorageHandler;
+
     @BeforeAll
     static void baseBeforeAll() {
         zookeeperClient =
@@ -78,7 +84,7 @@ class TableManagerTest {
     }
 
     @BeforeEach
-    void beforeEach() {
+    void beforeEach() throws IOException {
         initTableManager();
     }
 
@@ -89,10 +95,13 @@ class TableManagerTest {
         }
     }
 
-    private void initTableManager() {
+    private void initTableManager() throws IOException {
         testingEventManager = new TestingEventManager();
         coordinatorContext = new CoordinatorContext();
         testCoordinatorChannelManager = new TestCoordinatorChannelManager();
+        Configuration conf = new Configuration();
+        conf.setString(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
+        remoteStorageHandler = new RemoteStorageHandler(conf);
         CoordinatorRequestBatch coordinatorRequestBatch =
                 new CoordinatorRequestBatch(testCoordinatorChannelManager, testingEventManager);
         ReplicaStateMachine replicaStateMachine =
@@ -106,7 +115,8 @@ class TableManagerTest {
                         metaDataManager,
                         coordinatorContext,
                         replicaStateMachine,
-                        tableBucketStateMachine);
+                        tableBucketStateMachine,
+                        remoteStorageHandler);
         tableManager.startup();
 
         coordinatorContext.setLiveTabletServers(
@@ -140,7 +150,10 @@ class TableManagerTest {
         TableAssignment assignment = createAssignment();
         zookeeperClient.registerTableAssignment(tableId, assignment);
 
-        tableManager.onCreateNewTable(DATA1_TABLE_PATH, tableId, assignment);
+        tableManager.onCreateNewTable(DATA1_TABLE_PATH_PK, tableId, assignment);
+
+        // mock table kv root dir.
+        remoteStorageHandler.createTableKvDir(DATA1_TABLE_PATH_PK, tableId);
 
         // now, delete the created table
         coordinatorContext.queueTableDeletion(Collections.singleton(tableId));
@@ -159,6 +172,9 @@ class TableManagerTest {
         assertThat(zookeeperClient.getTableAssignment(tableId)).isEmpty();
         // the table will also be removed from coordinator context
         assertThat(coordinatorContext.getAllReplicasForTable(tableId)).isEmpty();
+
+        // the table's remote kv root dir should be removed.
+        assertThat(remoteStorageHandler.isTableKvDirExists(DATA1_TABLE_PATH_PK, tableId)).isFalse();
     }
 
     @Test

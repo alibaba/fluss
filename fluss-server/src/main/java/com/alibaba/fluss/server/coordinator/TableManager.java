@@ -41,6 +41,7 @@ public class TableManager {
     private static final Logger LOG = LoggerFactory.getLogger(TableManager.class);
 
     private final MetaDataManager metaDataManager;
+    private final RemoteStorageHandler remoteStorageHandler;
     private final CoordinatorContext coordinatorContext;
     private final ReplicaStateMachine replicaStateMachine;
     private final TableBucketStateMachine tableBucketStateMachine;
@@ -49,8 +50,10 @@ public class TableManager {
             MetaDataManager metaDataManager,
             CoordinatorContext coordinatorContext,
             ReplicaStateMachine replicaStateMachine,
-            TableBucketStateMachine tableBucketStateMachine) {
+            TableBucketStateMachine tableBucketStateMachine,
+            RemoteStorageHandler remoteStorageHandler) {
         this.metaDataManager = metaDataManager;
+        this.remoteStorageHandler = remoteStorageHandler;
         this.coordinatorContext = coordinatorContext;
         this.replicaStateMachine = replicaStateMachine;
         this.tableBucketStateMachine = tableBucketStateMachine;
@@ -244,6 +247,8 @@ public class TableManager {
         replicaStateMachine.handleStateChanges(replicas, ReplicaState.NonExistentReplica);
         try {
             metaDataManager.completeDeleteTable(tableId);
+            TablePath tablePath = coordinatorContext.getTablePathById(tableId);
+            remoteStorageHandler.deleteTable(tablePath, tableId);
         } catch (Exception e) {
             LOG.error("Fail to complete table deletion for table {}.", tableId, e);
         }
