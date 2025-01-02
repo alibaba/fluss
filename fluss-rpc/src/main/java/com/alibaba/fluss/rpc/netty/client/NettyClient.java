@@ -20,6 +20,7 @@ import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.exception.TimeoutException;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
@@ -41,6 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.fluss.utils.Preconditions.checkArgument;
@@ -69,6 +72,9 @@ public final class NettyClient implements RpcClient {
     /** Metric groups for client. */
     private final ClientMetricGroup clientMetricGroup;
 
+    private final long requestTimeoutMs;
+    private final ScheduledExecutorService timeoutThreadPool;
+
     private volatile boolean isClosed = false;
 
     public NettyClient(Configuration conf, ClientMetricGroup clientMetricGroup) {
@@ -89,7 +95,15 @@ public final class NettyClient implements RpcClient {
                         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
                         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMs)
                         .handler(new ClientChannelInitializer(connectionMaxIdle));
+
         this.clientMetricGroup = clientMetricGroup;
+        this.requestTimeoutMs = conf.get(ConfigOptions.CLIENT_REQUEST_TIMEOUT).toMillis();
+        this.timeoutThreadPool = Executors.newScheduledThreadPool(1);
+        timeoutThreadPool.scheduleWithFixedDelay(
+                this::handleTimeoutRequest,
+                requestTimeoutMs,
+                requestTimeoutMs,
+                TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -114,11 +128,15 @@ public final class NettyClient implements RpcClient {
      */
     @Override
     public CompletableFuture<Void> disconnect(String serverUid) {
+        return disconnect(serverUid, null);
+    }
+
+    private CompletableFuture<Void> disconnect(String serverUid, Throwable throwable) {
         LOG.debug("Disconnecting from server {}.", serverUid);
         checkArgument(!isClosed, "Netty client is closed.");
         ServerConnection connection = connections.remove(serverUid);
         if (connection != null) {
-            return connection.close();
+            return throwable == null ? connection.close() : connection.close(throwable);
         }
         return FutureUtils.completedVoidFuture();
     }
@@ -160,9 +178,22 @@ public final class NettyClient implements RpcClient {
             shutdownFutures.add(NettyUtils.shutdownGroup(eventGroup));
             CompletableFuture.allOf(shutdownFutures.toArray(new CompletableFuture<?>[0]))
                     .get(10, TimeUnit.SECONDS);
+            timeoutThreadPool.shutdown();
             LOG.info("Netty client was shutdown successfully.");
         } catch (Exception e) {
             LOG.warn("Netty client shutdown failed: ", e);
+        }
+    }
+
+    private void handleTimeoutRequest() {
+        for (Map.Entry<String, ServerConnection> conn : connections.entrySet()) {
+            if (conn.getValue().hasExpiredRequest(System.currentTimeMillis())) {
+                LOG.info("Disconnecting from node {} due to request timeout.", conn.getKey());
+                disconnect(
+                        conn.getKey(),
+                        new TimeoutException(
+                                String.format("Request from client %s timeout.", conn.getKey())));
+            }
         }
     }
 
@@ -173,7 +204,8 @@ public final class NettyClient implements RpcClient {
                 ignored -> {
                     LOG.debug("Creating connection to server {}.", node);
                     ServerConnection connection =
-                            new ServerConnection(bootstrap, node, clientMetricGroup);
+                            new ServerConnection(
+                                    bootstrap, node, clientMetricGroup, requestTimeoutMs);
                     connection.whenClose(ignore -> connections.remove(serverId, connection));
                     return connection;
                 });
