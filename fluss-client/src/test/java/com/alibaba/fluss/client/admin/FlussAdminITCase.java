@@ -34,6 +34,8 @@ import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.fs.FsPathAndFileName;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
+import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
@@ -107,17 +109,40 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
     }
 
     @Test
+    void testGetDatabase() throws Exception {
+        long timestampBeforeCreate = System.currentTimeMillis();
+        admin.createDatabase(
+                "test_db_2",
+                DatabaseDescriptor.builder()
+                        .comment("test comment")
+                        .property("key1", "value1")
+                        .build(),
+                false);
+        DatabaseInfo databaseInfo = admin.getDatabase("test_db_2").get();
+        long timestampAfterCreate = System.currentTimeMillis();
+        assertThat(databaseInfo.getDatabaseName()).isEqualTo("test_db_2");
+        assertThat(databaseInfo.getDatabaseDescriptor().getComment().get())
+                .isEqualTo("test comment");
+        assertThat(databaseInfo.getDatabaseDescriptor().getProperties())
+                .containsEntry("key1", "value1");
+        assertThat(databaseInfo.getCreateTime())
+                .isBetween(timestampBeforeCreate, timestampAfterCreate);
+    }
+
+    @Test
     void testGetTableAndSchema() throws Exception {
         SchemaInfo schemaInfo = admin.getTableSchema(DEFAULT_TABLE_PATH).get();
         assertThat(schemaInfo.getSchema()).isEqualTo(DEFAULT_SCHEMA);
         assertThat(schemaInfo.getSchemaId()).isEqualTo(1);
         SchemaInfo schemaInfo2 = admin.getTableSchema(DEFAULT_TABLE_PATH, 1).get();
-        assertThat(schemaInfo2).isEqualTo(schemaInfo);
 
         // get default table.
+        long timestampAfterCreate = System.currentTimeMillis();
         TableInfo tableInfo = admin.getTable(DEFAULT_TABLE_PATH).get();
         assertThat(tableInfo.getSchemaId()).isEqualTo(schemaInfo.getSchemaId());
         assertThat(tableInfo.getTableDescriptor()).isEqualTo(DEFAULT_TABLE_DESCRIPTOR);
+        assertThat(schemaInfo2).isEqualTo(schemaInfo);
+        assertThat(tableInfo.getCreateTime()).isLessThan(timestampAfterCreate);
 
         // unknown table
         assertThatThrownBy(() -> admin.getTable(TablePath.of("test_db", "unknown_table")).get())
@@ -127,6 +152,18 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                         () -> admin.getTableSchema(TablePath.of("test_db", "unknown_table")).get())
                 .cause()
                 .isInstanceOf(SchemaNotExistException.class);
+
+        // create and get a new table
+        long timestampBeforeCreate = System.currentTimeMillis();
+        TablePath tablePath = TablePath.of("test_db", "table_2");
+        admin.createTable(tablePath, DEFAULT_TABLE_DESCRIPTOR, false);
+        tableInfo = admin.getTable(tablePath).get();
+        timestampAfterCreate = System.currentTimeMillis();
+        assertThat(tableInfo.getSchemaId()).isEqualTo(schemaInfo.getSchemaId());
+        assertThat(tableInfo.getTableDescriptor()).isEqualTo(DEFAULT_TABLE_DESCRIPTOR);
+        assertThat(schemaInfo2).isEqualTo(schemaInfo);
+        assertThat(tableInfo.getCreateTime())
+                .isBetween(timestampBeforeCreate, timestampAfterCreate);
     }
 
     @Test

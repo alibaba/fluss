@@ -29,6 +29,8 @@ import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
 import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
+import com.alibaba.fluss.rpc.messages.GetDatabaseRequest;
+import com.alibaba.fluss.rpc.messages.GetDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenRequest;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotRequest;
@@ -200,6 +202,11 @@ public class TestTabletServerGateway implements TabletServerGateway {
 
     @Override
     public CompletableFuture<ListDatabasesResponse> listDatabases(ListDatabasesRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<GetDatabaseResponse> getDatabase(GetDatabaseRequest request) {
         throw new UnsupportedOperationException();
     }
 

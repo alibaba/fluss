@@ -42,6 +42,8 @@ public class TableRegistration {
     public final @Nullable TableDescriptor.TableDistribution tableDistribution;
     public final Map<String, String> properties;
     public final Map<String, String> customProperties;
+    public final long createTime;
+    public final long modifyTime;
 
     public TableRegistration(
             long tableId,
@@ -49,13 +51,17 @@ public class TableRegistration {
             List<String> partitionKeys,
             @Nullable TableDescriptor.TableDistribution tableDistribution,
             Map<String, String> properties,
-            Map<String, String> customProperties) {
+            Map<String, String> customProperties,
+            long createTime,
+            long modifyTime) {
         this.tableId = tableId;
         this.comment = comment;
         this.partitionKeys = partitionKeys;
         this.tableDistribution = tableDistribution;
         this.properties = properties;
         this.customProperties = customProperties;
+        this.createTime = createTime;
+        this.modifyTime = modifyTime;
     }
 
     public TableDescriptor toTableDescriptor(Schema schema) {
@@ -81,19 +87,33 @@ public class TableRegistration {
                 tableDescriptor.getPartitionKeys(),
                 tableDescriptor.getTableDistribution().orElse(null),
                 tableDescriptor.getProperties(),
-                tableDescriptor.getCustomProperties());
+                tableDescriptor.getCustomProperties(),
+                System.currentTimeMillis(),
+                System.currentTimeMillis());
+    }
+
+    public static TableRegistration of(
+            long tableId, TableDescriptor tableDescriptor, long createdTime) {
+        return new TableRegistration(
+                tableId,
+                tableDescriptor.getComment().orElse(null),
+                tableDescriptor.getPartitionKeys(),
+                tableDescriptor.getTableDistribution().orElse(null),
+                tableDescriptor.getProperties(),
+                tableDescriptor.getCustomProperties(),
+                createdTime,
+                System.currentTimeMillis());
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
         TableRegistration that = (TableRegistration) o;
         return tableId == that.tableId
+                && createTime == that.createTime
+                && modifyTime == that.modifyTime
                 && Objects.equals(comment, that.comment)
                 && Objects.equals(partitionKeys, that.partitionKeys)
                 && Objects.equals(tableDistribution, that.tableDistribution)
@@ -104,7 +124,14 @@ public class TableRegistration {
     @Override
     public int hashCode() {
         return Objects.hash(
-                tableId, comment, partitionKeys, tableDistribution, properties, customProperties);
+                tableId,
+                comment,
+                partitionKeys,
+                tableDistribution,
+                properties,
+                customProperties,
+                createTime,
+                modifyTime);
     }
 
     @Override
@@ -123,6 +150,10 @@ public class TableRegistration {
                 + properties
                 + ", customProperties="
                 + customProperties
+                + ", createdTime="
+                + createTime
+                + ", modifiedTime="
+                + modifyTime
                 + '}';
     }
 }

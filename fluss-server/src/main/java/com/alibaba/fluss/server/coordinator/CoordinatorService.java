@@ -22,6 +22,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.fs.FileSystem;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
@@ -110,7 +111,15 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         } catch (InvalidDatabaseException e) {
             return FutureUtils.failedFuture(e);
         }
-        metadataManager.createDatabase(request.getDatabaseName(), request.isIgnoreIfExists());
+
+        DatabaseDescriptor databaseDescriptor = null;
+        if (request.getDatabaseJson() != null) {
+            databaseDescriptor = DatabaseDescriptor.fromJsonBytes(request.getDatabaseJson());
+        } else {
+            databaseDescriptor = DatabaseDescriptor.builder().build();
+        }
+        metadataManager.createDatabase(
+                request.getDatabaseName(), databaseDescriptor, request.isIgnoreIfExists());
         return CompletableFuture.completedFuture(response);
     }
 

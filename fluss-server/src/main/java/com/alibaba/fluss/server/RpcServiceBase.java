@@ -31,6 +31,7 @@ import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
+import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -45,6 +46,8 @@ import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
 import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
 import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
+import com.alibaba.fluss.rpc.messages.GetDatabaseRequest;
+import com.alibaba.fluss.rpc.messages.GetDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenRequest;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotRequest;
@@ -178,6 +181,16 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     }
 
     @Override
+    public CompletableFuture<GetDatabaseResponse> getDatabase(GetDatabaseRequest request) {
+        GetDatabaseResponse response = new GetDatabaseResponse();
+        DatabaseInfo databaseInfo = metadataManager.getDatabase(request.getDatabaseName());
+        response.setDatabaseJson(databaseInfo.getDatabaseDescriptor().toJsonBytes())
+                .setCreateTime(databaseInfo.getCreateTime())
+                .setModifyTime(databaseInfo.getModifyTime());
+        return CompletableFuture.completedFuture(response);
+    }
+
+    @Override
     public CompletableFuture<DatabaseExistsResponse> databaseExists(DatabaseExistsRequest request) {
         DatabaseExistsResponse response = new DatabaseExistsResponse();
         boolean exists = metadataManager.databaseExists(request.getDatabaseName());
@@ -201,6 +214,8 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         response.setTableJson(tableInfo.getTableDescriptor().toJsonBytes());
         response.setSchemaId(tableInfo.getSchemaId());
         response.setTableId(tableInfo.getTableId());
+        response.setCreateTime(tableInfo.getCreateTime());
+        response.setModifyTime(tableInfo.getModifyTime());
         return CompletableFuture.completedFuture(response);
     }
 
