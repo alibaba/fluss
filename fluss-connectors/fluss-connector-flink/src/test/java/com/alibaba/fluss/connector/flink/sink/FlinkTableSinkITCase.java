@@ -33,6 +33,7 @@ import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
@@ -354,6 +355,39 @@ class FlinkTableSinkITCase {
         tEnv.executeSql("INSERT INTO sink_test(a, c) SELECT f0, f2 FROM changeLog").await();
         expectedRows = Arrays.asList("-U[1, null, c1]", "+U[1, null, c11]", "-D[1, null, c11]");
         assertResultsIgnoreOrder(rowIter, expectedRows, true);
+    }
+
+    @Test
+    void testFirstRowMergeEngine() throws Exception {
+        tEnv.executeSql(
+                "create table first_row_source (a int not null primary key not enforced,"
+                        + " b string) with('table.merge-engine' = 'first_row')");
+        tEnv.executeSql("create table first_row_sink (a int, b string)");
+
+        // insert from first_row_source to first_row_sink
+        JobClient insertJobClient =
+                tEnv.executeSql("insert into first_row_sink select * from first_row_source")
+                        .getJobClient()
+                        .get();
+
+        // insert once
+        tEnv.executeSql(
+                        "insert into first_row_source(a, b) VALUES (1, 'v1'), (2, 'v2'), (1, 'v11'), (3, 'v3')")
+                .await();
+
+        CloseableIterator<Row> rowIter =
+                tEnv.executeSql("select * from first_row_source").collect();
+
+        List<String> expectedRows = Arrays.asList("+I[1, v1]", "+I[2, v2]", "+I[3, v3]");
+
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        // insert again
+        tEnv.executeSql("insert into first_row_source(a, b) VALUES (3, 'v33'), ('4', 'v44')")
+                .await();
+        expectedRows = Collections.singletonList("+I[4, v44]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, true);
+        insertJobClient.cancel().get();
     }
 
     @Test

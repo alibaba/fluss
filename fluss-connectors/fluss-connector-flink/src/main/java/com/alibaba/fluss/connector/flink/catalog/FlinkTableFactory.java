@@ -123,7 +123,11 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 tableOptions.get(
                         key(ConfigOptions.TABLE_DATALAKE_ENABLED.key())
                                 .booleanType()
-                                .defaultValue(false)));
+                                .defaultValue(false)),
+                tableOptions.get(
+                        key(ConfigOptions.TABLE_MERGE_ENGINE.key())
+                                .enumType(ConfigOptions.MergeEngine.class)
+                                .noDefaultValue()));
     }
 
     @Override
