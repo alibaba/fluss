@@ -260,7 +260,6 @@ public final class KvTablet {
                         ValueDecoder valueDecoder =
                                 new ValueDecoder(readContext.getRowDecoder(schemaId));
 
-                        int appendedRecordCount = 0;
                         for (KvRecord kvRecord : kvRecords.records(readContext)) {
                             byte[] keyBytes = BytesUtils.toArray(kvRecord.getKey());
                             KvPreWriteBuffer.Key key = KvPreWriteBuffer.Key.of(keyBytes);
@@ -278,13 +277,11 @@ public final class KvTablet {
                                     // if newRow is null, it means the row should be deleted
                                     if (newRow == null) {
                                         walBuilder.append(RowKind.DELETE, oldRow);
-                                        appendedRecordCount += 1;
                                         kvPreWriteBuffer.delete(key, logOffset++);
                                     } else {
                                         // otherwise, it's a partial update, should produce -U,+U
                                         walBuilder.append(RowKind.UPDATE_BEFORE, oldRow);
                                         walBuilder.append(RowKind.UPDATE_AFTER, newRow);
-                                        appendedRecordCount += 2;
                                         kvPreWriteBuffer.put(
                                                 key,
                                                 ValueEncoder.encodeValue(schemaId, newRow),
@@ -302,7 +299,6 @@ public final class KvTablet {
                                             updateRow(oldRow, kvRecord.getRow(), partialUpdater);
                                     walBuilder.append(RowKind.UPDATE_BEFORE, oldRow);
                                     walBuilder.append(RowKind.UPDATE_AFTER, newRow);
-                                    appendedRecordCount += 2;
                                     // logOffset is for -U, logOffset + 1 is for +U, we need to use
                                     // the log offset for +U
                                     kvPreWriteBuffer.put(
@@ -316,7 +312,6 @@ public final class KvTablet {
                                     //  of the input row are set to null.
                                     BinaryRow newRow = kvRecord.getRow();
                                     walBuilder.append(RowKind.INSERT, newRow);
-                                    appendedRecordCount += 1;
                                     kvPreWriteBuffer.put(
                                             key,
                                             ValueEncoder.encodeValue(schemaId, newRow),
@@ -324,22 +319,7 @@ public final class KvTablet {
                                 }
                             }
                         }
-
-                        // if appendedRecordCount is 0, it means there is no record to append, we
-                        // should not append.
-                        if (appendedRecordCount > 0) {
-                            // now, we can build the full log.
-                            return logTablet.appendAsLeader(walBuilder.build());
-                        } else {
-                            return new LogAppendInfo(
-                                    logEndOffsetOfPrevBatch - 1,
-                                    logEndOffsetOfPrevBatch - 1,
-                                    0L,
-                                    0L,
-                                    0,
-                                    0,
-                                    false);
-                        }
+                        return logTablet.appendAsLeader(walBuilder.build());
                     } catch (Throwable t) {
                         // While encounter error here, the CDC logs may fail writing to disk,
                         // and the client probably will resend the batch. If we do not remove the
