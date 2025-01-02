@@ -18,6 +18,7 @@ package com.alibaba.fluss.server.kv;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.FsPath;
@@ -41,6 +42,7 @@ import com.alibaba.fluss.utils.types.Tuple2;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.io.File;
@@ -141,12 +143,14 @@ public final class KvManager extends TabletManagerBase {
      * @param tableBucket the table bucket
      * @param logTablet the cdc log tablet of the kv tablet
      * @param kvFormat the kv format
+     * @param mergeEngine the merge engine
      */
     public KvTablet getOrCreateKv(
             PhysicalTablePath tablePath,
             TableBucket tableBucket,
             LogTablet logTablet,
-            KvFormat kvFormat)
+            KvFormat kvFormat,
+            @Nullable MergeEngine mergeEngine)
             throws Exception {
         return inLock(
                 tabletCreationOrDeletionLock,
@@ -164,7 +168,8 @@ public final class KvManager extends TabletManagerBase {
                                     conf,
                                     arrowBufferAllocator,
                                     memorySegmentPool,
-                                    kvFormat);
+                                    kvFormat,
+                                    mergeEngine);
                     currentKvs.put(tableBucket, tablet);
 
                     LOG.info(
@@ -265,7 +270,8 @@ public final class KvManager extends TabletManagerBase {
                         conf,
                         arrowBufferAllocator,
                         memorySegmentPool,
-                        tableDescriptor.getKvFormat());
+                        tableDescriptor.getKvFormat(),
+                        tableDescriptor.getMergeEngine());
         if (this.currentKvs.containsKey(tableBucket)) {
             throw new IllegalStateException(
                     String.format(

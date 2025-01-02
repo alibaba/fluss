@@ -22,6 +22,7 @@ import com.alibaba.fluss.config.ConfigOption;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.ConfigurationUtils;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.json.JsonSerdeUtils;
@@ -133,6 +134,11 @@ public final class TableDescriptor implements Serializable {
             throw new IllegalArgumentException(
                     "For Primary Key Table, if kv format is compacted, log format must be arrow.");
         }
+
+        if (!hasPrimaryKey() && getMergeEngine() != null) {
+            throw new IllegalArgumentException(
+                    "Merge engine is only supported in primary key table.");
+        }
     }
 
     /** Creates a builder for building table descriptor. */
@@ -242,6 +248,10 @@ public final class TableDescriptor implements Serializable {
     /** Whether the data lake is enabled. */
     public boolean isDataLakeEnabled() {
         return configuration().get(ConfigOptions.TABLE_DATALAKE_ENABLED);
+    }
+
+    public @Nullable MergeEngine getMergeEngine() {
+        return MergeEngine.create(configuration());
     }
 
     public TableDescriptor copy(Map<String, String> newProperties) {

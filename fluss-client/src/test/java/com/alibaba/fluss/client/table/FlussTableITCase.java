@@ -20,6 +20,7 @@ import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.admin.ClientToServerITCaseBase;
 import com.alibaba.fluss.client.scanner.ScanRecord;
+import com.alibaba.fluss.client.scanner.log.LogScan;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
 import com.alibaba.fluss.client.scanner.log.ScanRecords;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
@@ -29,6 +30,7 @@ import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.Schema;
@@ -68,6 +70,8 @@ import static com.alibaba.fluss.record.TestData.DATA1_TABLE_INFO;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_INFO_PK;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH_PK;
+import static com.alibaba.fluss.record.TestData.DATA3_SCHEMA_PK;
+import static com.alibaba.fluss.record.TestData.DATA3_TABLE_PATH_PK;
 import static com.alibaba.fluss.testutils.DataTestUtils.assertRowValueEquals;
 import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static com.alibaba.fluss.testutils.DataTestUtils.keyRow;
@@ -816,5 +820,73 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(
                         "Projected field index 2 is out of bound for schema ROW<`a` INT, `b` STRING>");
+    }
+
+    @Test
+    void testMergeEngineWithVersion() throws Exception {
+        // Create table.
+        TableDescriptor tableDescriptor =
+                TableDescriptor.builder()
+                        .schema(DATA3_SCHEMA_PK)
+                        .property(ConfigOptions.TABLE_MERGE_ENGINE, MergeEngine.Type.VERSION)
+                        .property(ConfigOptions.TABLE_MERGE_ENGINE_VERSION_COLUMN, "b")
+                        .build();
+        RowType rowType = DATA3_SCHEMA_PK.toRowType();
+        createTable(DATA3_TABLE_PATH_PK, tableDescriptor, false);
+
+        int rows = 3;
+        try (Table table = conn.getTable(DATA3_TABLE_PATH_PK)) {
+            // put rows.
+            UpsertWriter upsertWriter = table.getUpsertWriter();
+            List<InternalRow> expectedRows = new ArrayList<>(rows);
+            // init rows.
+            for (int row = 0; row < rows; row++) {
+                upsertWriter.upsert(compactedRow(rowType, new Object[] {row, 1000L}));
+                expectedRows.add(compactedRow(rowType, new Object[] {row, 1000L}));
+            }
+            // update row if id=0 and version < 1000L, will not update
+            upsertWriter.upsert(compactedRow(rowType, new Object[] {0, 999L}));
+
+            // update if version> 1000L
+            upsertWriter.upsert(compactedRow(rowType, new Object[] {1, 1001L}));
+            rows = rows + 2;
+
+            upsertWriter.flush();
+
+            // check scan change log
+            LogScanner logScanner = table.getLogScanner(new LogScan());
+            logScanner.subscribeFromBeginning(0);
+
+            List<ScanRecord> actualLogRecords = new ArrayList<>(0);
+            while (actualLogRecords.size() < rows) {
+                ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
+                scanRecords.forEach(actualLogRecords::add);
+            }
+
+            assertThat(actualLogRecords).hasSize(rows);
+            for (int i = 0; i < 3; i++) {
+                ScanRecord scanRecord = actualLogRecords.get(i);
+                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                assertThatRow(scanRecord.getRow())
+                        .withSchema(rowType)
+                        .isEqualTo(expectedRows.get(i));
+            }
+
+            // update_before for id =1
+            List<ScanRecord> updateActualLogRecords = new ArrayList<>(actualLogRecords);
+
+            ScanRecord beforeRecord = updateActualLogRecords.get(3);
+            assertThat(beforeRecord.getRowKind()).isEqualTo(RowKind.UPDATE_BEFORE);
+            assertThat(beforeRecord.getRow().getFieldCount()).isEqualTo(2);
+            assertThat(beforeRecord.getRow().getInt(0)).isEqualTo(1);
+            assertThat(beforeRecord.getRow().getLong(1)).isEqualTo(1000);
+
+            // update_after for id =1
+            ScanRecord afterRecord = updateActualLogRecords.get(4);
+            assertThat(afterRecord.getRowKind()).isEqualTo(RowKind.UPDATE_AFTER);
+            assertThat(afterRecord.getRow().getFieldCount()).isEqualTo(2);
+            assertThat(afterRecord.getRow().getInt(0)).isEqualTo(1);
+            assertThat(afterRecord.getRow().getLong(1)).isEqualTo(1001);
+        }
     }
 }

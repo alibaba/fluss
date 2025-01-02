@@ -18,6 +18,7 @@ package com.alibaba.fluss.connector.flink.catalog;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.connector.flink.FlinkConnectorOptions;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeTableFactory;
 import com.alibaba.fluss.connector.flink.sink.FlinkTableSink;
@@ -142,7 +143,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 toFlussClientConfig(helper.getOptions(), context.getConfiguration()),
                 rowType,
                 context.getPrimaryKeyIndexes(),
-                isStreamingMode);
+                isStreamingMode,
+                MergeEngine.create(helper.getOptions().toMap()));
     }
 
     @Override

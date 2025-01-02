@@ -115,6 +115,18 @@ public class ConfigOptions {
                             "The interval of auto partition check. "
                                     + "The default value is 10 minutes.");
 
+    public static final ConfigOption<MergeEngine.Type> TABLE_MERGE_ENGINE =
+            key("table.merge-engine")
+                    .enumType(MergeEngine.Type.class)
+                    .noDefaultValue()
+                    .withDescription("The merge engine for the primary key table.");
+
+    public static final ConfigOption<String> TABLE_MERGE_ENGINE_VERSION_COLUMN =
+            key("table.merge-engine.version.column")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription("The merge engine version column for the primary key table.");
+
     // ------------------------------------------------------------------------
     //  ConfigOptions for Coordinator Server
     // ------------------------------------------------------------------------

@@ -17,6 +17,7 @@
 package com.alibaba.fluss.connector.flink.sink;
 
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils.FieldEqual;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils.ValueConversion;
@@ -67,17 +68,21 @@ public class FlinkTableSink
     private boolean appliedUpdates = false;
     @Nullable private GenericRow deleteRow;
 
+    private final MergeEngine mergeEngine;
+
     public FlinkTableSink(
             TablePath tablePath,
             Configuration flussConfig,
             RowType tableRowType,
             int[] primaryKeyIndexes,
-            boolean streaming) {
+            boolean streaming,
+            MergeEngine mergeEngine) {
         this.tablePath = tablePath;
         this.flussConfig = flussConfig;
         this.tableRowType = tableRowType;
         this.primaryKeyIndexes = primaryKeyIndexes;
         this.streaming = streaming;
+        this.mergeEngine = mergeEngine;
     }
 
     @Override
@@ -165,7 +170,12 @@ public class FlinkTableSink
     public DynamicTableSink copy() {
         FlinkTableSink sink =
                 new FlinkTableSink(
-                        tablePath, flussConfig, tableRowType, primaryKeyIndexes, streaming);
+                        tablePath,
+                        flussConfig,
+                        tableRowType,
+                        primaryKeyIndexes,
+                        streaming,
+                        mergeEngine);
         sink.appliedUpdates = appliedUpdates;
         sink.deleteRow = deleteRow;
         return sink;

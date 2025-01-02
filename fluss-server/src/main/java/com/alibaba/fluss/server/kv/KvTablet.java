@@ -19,6 +19,7 @@ package com.alibaba.fluss.server.kv;
 import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.MergeEngine;
 import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.memory.ManagedPagedOutputView;
 import com.alibaba.fluss.memory.MemorySegmentPool;
@@ -31,13 +32,14 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.KvRecord;
 import com.alibaba.fluss.record.KvRecordBatch;
 import com.alibaba.fluss.record.KvRecordReadContext;
-import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.row.BinaryRow;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.arrow.ArrowWriterPool;
 import com.alibaba.fluss.row.arrow.ArrowWriterProvider;
 import com.alibaba.fluss.row.encode.ValueDecoder;
-import com.alibaba.fluss.row.encode.ValueEncoder;
+import com.alibaba.fluss.server.kv.mergeengine.MergeEngineWrapper;
+import com.alibaba.fluss.server.kv.mergeengine.NoMergeEngineWrapper;
+import com.alibaba.fluss.server.kv.mergeengine.VersionMergeEngineWrapper;
 import com.alibaba.fluss.server.kv.partialupdate.PartialUpdater;
 import com.alibaba.fluss.server.kv.partialupdate.PartialUpdaterCache;
 import com.alibaba.fluss.server.kv.prewrite.KvPreWriteBuffer;
@@ -56,7 +58,6 @@ import com.alibaba.fluss.server.utils.FatalErrorHandler;
 import com.alibaba.fluss.shaded.arrow.org.apache.arrow.memory.BufferAllocator;
 import com.alibaba.fluss.types.DataType;
 import com.alibaba.fluss.types.RowType;
-import com.alibaba.fluss.utils.BytesUtils;
 import com.alibaba.fluss.utils.FileUtils;
 import com.alibaba.fluss.utils.FlussPaths;
 import com.alibaba.fluss.utils.types.Tuple2;
@@ -102,6 +103,7 @@ public final class KvTablet {
     private final ReadWriteLock kvLock = new ReentrantReadWriteLock();
     private final LogFormat logFormat;
     private final KvFormat kvFormat;
+    private final @Nullable MergeEngine mergeEngine;
 
     /**
      * The kv data in pre-write buffer whose log offset is less than the flushedLogOffset has been
@@ -122,7 +124,8 @@ public final class KvTablet {
             LogFormat logFormat,
             BufferAllocator arrowBufferAllocator,
             MemorySegmentPool memorySegmentPool,
-            KvFormat kvFormat) {
+            KvFormat kvFormat,
+            @Nullable MergeEngine mergeEngine) {
         this.physicalPath = physicalPath;
         this.tableBucket = tableBucket;
         this.logTablet = logTablet;
@@ -136,6 +139,7 @@ public final class KvTablet {
         // TODO: [FLUSS-58674883] share cache in server level when PartialUpdater is thread-safe
         this.partialUpdaterCache = new PartialUpdaterCache();
         this.kvFormat = kvFormat;
+        this.mergeEngine = mergeEngine;
     }
 
     public static KvTablet create(
@@ -144,7 +148,8 @@ public final class KvTablet {
             Configuration conf,
             BufferAllocator arrowBufferAllocator,
             MemorySegmentPool memorySegmentPool,
-            KvFormat kvFormat)
+            KvFormat kvFormat,
+            @Nullable MergeEngine mergeEngine)
             throws IOException {
         Tuple2<PhysicalTablePath, TableBucket> tablePathAndBucket =
                 FlussPaths.parseTabletDir(kvTabletDir);
@@ -156,7 +161,8 @@ public final class KvTablet {
                 conf,
                 arrowBufferAllocator,
                 memorySegmentPool,
-                kvFormat);
+                kvFormat,
+                mergeEngine);
     }
 
     public static KvTablet create(
@@ -167,7 +173,8 @@ public final class KvTablet {
             Configuration conf,
             BufferAllocator arrowBufferAllocator,
             MemorySegmentPool memorySegmentPool,
-            KvFormat kvFormat)
+            KvFormat kvFormat,
+            @Nullable MergeEngine mergeEngine)
             throws IOException {
         RocksDBKv kv = buildRocksDBKv(conf, kvTabletDir);
         return new KvTablet(
@@ -180,7 +187,8 @@ public final class KvTablet {
                 logTablet.getLogFormat(),
                 arrowBufferAllocator,
                 memorySegmentPool,
-                kvFormat);
+                kvFormat,
+                mergeEngine);
     }
 
     private static RocksDBKv buildRocksDBKv(Configuration configuration, File kvDir)
@@ -261,70 +269,21 @@ public final class KvTablet {
                                 new ValueDecoder(readContext.getRowDecoder(schemaId));
 
                         int appendedRecordCount = 0;
-                        for (KvRecord kvRecord : kvRecords.records(readContext)) {
-                            byte[] keyBytes = BytesUtils.toArray(kvRecord.getKey());
-                            KvPreWriteBuffer.Key key = KvPreWriteBuffer.Key.of(keyBytes);
-                            if (kvRecord.getRow() == null) {
-                                // kv tablet
-                                byte[] oldValue = getFromBufferOrKv(key);
-                                if (oldValue == null) {
-                                    // there might be large amount of such deletion, so we don't log
-                                    LOG.debug(
-                                            "The specific key can't be found in kv tablet although the kv record is for deletion, "
-                                                    + "ignore it directly as it doesn't exist in the kv tablet yet.");
-                                } else {
-                                    BinaryRow oldRow = valueDecoder.decodeValue(oldValue).row;
-                                    BinaryRow newRow = deleteRow(oldRow, partialUpdater);
-                                    // if newRow is null, it means the row should be deleted
-                                    if (newRow == null) {
-                                        walBuilder.append(RowKind.DELETE, oldRow);
-                                        appendedRecordCount += 1;
-                                        kvPreWriteBuffer.delete(key, logOffset++);
-                                    } else {
-                                        // otherwise, it's a partial update, should produce -U,+U
-                                        walBuilder.append(RowKind.UPDATE_BEFORE, oldRow);
-                                        walBuilder.append(RowKind.UPDATE_AFTER, newRow);
-                                        appendedRecordCount += 2;
-                                        kvPreWriteBuffer.put(
-                                                key,
-                                                ValueEncoder.encodeValue(schemaId, newRow),
-                                                logOffset + 1);
-                                        logOffset += 2;
-                                    }
-                                }
-                            } else {
-                                // upsert operation
-                                byte[] oldValue = getFromBufferOrKv(key);
-                                // it's update
-                                if (oldValue != null) {
-                                    BinaryRow oldRow = valueDecoder.decodeValue(oldValue).row;
-                                    BinaryRow newRow =
-                                            updateRow(oldRow, kvRecord.getRow(), partialUpdater);
-                                    walBuilder.append(RowKind.UPDATE_BEFORE, oldRow);
-                                    walBuilder.append(RowKind.UPDATE_AFTER, newRow);
-                                    appendedRecordCount += 2;
-                                    // logOffset is for -U, logOffset + 1 is for +U, we need to use
-                                    // the log offset for +U
-                                    kvPreWriteBuffer.put(
-                                            key,
-                                            ValueEncoder.encodeValue(schemaId, newRow),
-                                            logOffset + 1);
-                                    logOffset += 2;
-                                } else {
-                                    // it's insert
-                                    // TODO: we should add guarantees that all non-specified columns
-                                    //  of the input row are set to null.
-                                    BinaryRow newRow = kvRecord.getRow();
-                                    walBuilder.append(RowKind.INSERT, newRow);
-                                    appendedRecordCount += 1;
-                                    kvPreWriteBuffer.put(
-                                            key,
-                                            ValueEncoder.encodeValue(schemaId, newRow),
-                                            logOffset++);
-                                }
-                            }
-                        }
 
+                        MergeEngineWrapper mergeEngineWrapper =
+                                getMergeEngineWrapper(
+                                        partialUpdater,
+                                        valueDecoder,
+                                        walBuilder,
+                                        kvPreWriteBuffer,
+                                        schema,
+                                        schemaId,
+                                        appendedRecordCount,
+                                        logOffset);
+                        for (KvRecord kvRecord : kvRecords.records(readContext)) {
+                            mergeEngineWrapper.writeRecord(kvRecord);
+                        }
+                        appendedRecordCount = mergeEngineWrapper.getAppendedRecordCount();
                         // if appendedRecordCount is 0, it means there is no record to append, we
                         // should not append.
                         if (appendedRecordCount > 0) {
@@ -354,6 +313,43 @@ public final class KvTablet {
                         walBuilder.deallocate();
                     }
                 });
+    }
+
+    private MergeEngineWrapper getMergeEngineWrapper(
+            PartialUpdater partialUpdater,
+            ValueDecoder valueDecoder,
+            WalBuilder walBuilder,
+            KvPreWriteBuffer kvPreWriteBuffer,
+            Schema schema,
+            short schemaId,
+            int appendedRecordCount,
+            long logOffset) {
+        if (mergeEngine != null) {
+            switch (mergeEngine.getType()) {
+                case VERSION:
+                    return new VersionMergeEngineWrapper(
+                            partialUpdater,
+                            valueDecoder,
+                            walBuilder,
+                            kvPreWriteBuffer,
+                            rocksDBKv,
+                            schema,
+                            schemaId,
+                            appendedRecordCount,
+                            logOffset,
+                            mergeEngine);
+            }
+        }
+        return new NoMergeEngineWrapper(
+                partialUpdater,
+                valueDecoder,
+                walBuilder,
+                kvPreWriteBuffer,
+                rocksDBKv,
+                schema,
+                schemaId,
+                appendedRecordCount,
+                logOffset);
     }
 
     private WalBuilder createWalBuilder(int schemaId, RowType rowType) throws Exception {

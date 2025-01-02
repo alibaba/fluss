@@ -33,6 +33,7 @@ import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
@@ -710,6 +711,82 @@ class FlinkTableSinkITCase {
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining(
                         "Currently, Fluss table only supports UPDATE statement with conditions on primary key.");
+    }
+
+    @Test
+    void testVersionMergeEngineWithTypeBigint() throws Exception {
+        tEnv.executeSql(
+                "create table merge_engine_with_version (a int not null primary key not enforced,"
+                        + " b string, ts bigint) with('table.merge-engine' = 'version','table.merge-engine.version.column' = 'ts')");
+        tEnv.executeSql(
+                "create table log_sink (a int not null primary key not enforced, b string, ts bigint)");
+
+        JobClient insertJobClient =
+                tEnv.executeSql("insert into log_sink select * from merge_engine_with_version")
+                        .getJobClient()
+                        .get();
+
+        // insert once
+        tEnv.executeSql(
+                        "insert into merge_engine_with_version (a, b, ts) VALUES (1, 'v1', 1000), (2, 'v2', 1000), (1, 'v11', 999), (3, 'v3', 1000)")
+                .await();
+
+        CloseableIterator<Row> rowIter = tEnv.executeSql("select * from log_sink").collect();
+
+        // id=1 not update
+        List<String> expectedRows =
+                Arrays.asList("+I[1, v1, 1000]", "+I[2, v2, 1000]", "+I[3, v3, 1000]");
+
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        // insert again, update id=3
+        tEnv.executeSql(
+                        "insert into merge_engine_with_version (a, b, ts) VALUES (3, 'v33', 1001), (4, 'v44', 1000)")
+                .await();
+        expectedRows = Arrays.asList("-U[3, v3, 1000]", "+U[3, v33, 1001]", "+I[4, v44, 1000]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        // test update a=4
+        tBatchEnv
+                .executeSql("UPDATE merge_engine_with_version SET b = 'v45', ts=1001 WHERE a = 4")
+                .await();
+        expectedRows = Arrays.asList("-U[4, v44, 1000]", "+U[4, v45, 1001]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        // test delete a=4
+        tBatchEnv.executeSql("delete from merge_engine_with_version WHERE a = 4").await();
+        expectedRows = Arrays.asList("-D[4, v45, 1001]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        insertJobClient.cancel().get();
+    }
+
+    @Test
+    void testVersionMergeEngineWithTypeTimestamp() throws Exception {
+        tEnv.executeSql(
+                "create table merge_engine_with_version (a int not null primary key not enforced,"
+                        + " b string, ts TIMESTAMP(3)) with('table.merge-engine' = 'version','table.merge-engine.version.column' = 'ts')");
+
+        // insert once
+        tEnv.executeSql(
+                        "INSERT INTO merge_engine_with_version (a, b, ts) VALUES "
+                                + "(1, 'v1', TIMESTAMP '2024-12-27 12:00:00.123'), "
+                                + "(2, 'v2', TIMESTAMP '2024-12-27 12:00:00.123'), "
+                                + "(1, 'v11', TIMESTAMP '2024-12-27 11:59:59.123'), "
+                                + "(3, 'v3', TIMESTAMP '2024-12-27 12:00:00.123');")
+                .await();
+
+        CloseableIterator<Row> rowIter =
+                tEnv.executeSql("select * from merge_engine_with_version").collect();
+
+        // id=1 not update
+        List<String> expectedRows =
+                Arrays.asList(
+                        "+I[1, v1, 2024-12-27T12:00:00.123]",
+                        "+I[2, v2, 2024-12-27T12:00:00.123]",
+                        "+I[3, v3, 2024-12-27T12:00:00.123]");
+
+        assertResultsIgnoreOrder(rowIter, expectedRows, true);
     }
 
     private InsertAndExpectValues rowsToInsertInto(Collection<String> partitions) {

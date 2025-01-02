@@ -124,7 +124,8 @@ class KvTabletTest {
                         conf,
                         new RootAllocator(Long.MAX_VALUE),
                         new TestingMemorySegmentPool(10 * 1024),
-                        KvFormat.COMPACTED);
+                        KvFormat.COMPACTED,
+                        null);
         executor = Executors.newFixedThreadPool(2);
     }
 
