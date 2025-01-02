@@ -62,7 +62,26 @@ public class BucketOffsetsRetrieverImpl implements BucketOffsetsRetriever {
     @Override
     public Map<Integer, Long> offsetsFromTimestamp(
             @Nullable String partitionName, Collection<Integer> buckets, long timestamp) {
-        return listOffsets(partitionName, buckets, new OffsetSpec.TimestampSpec(timestamp));
+
+        // First get the current end offsets of the buckets. This is going to be used in case we
+        // cannot find a suitable offsets based on the timestamp, i.e. the message meeting the
+        // requirement of the timestamp have not been produced to fluss yet. In this case, we just
+        // use the latest offset. We need to get the latest offsets before querying offsets by time
+        // to ensure that no message is going to be missed.
+        Map<Integer, Long> endOffsets = latestOffsets(partitionName, buckets);
+        Map<Integer, Long> offsetsOfTimestamp =
+                listOffsets(partitionName, buckets, new OffsetSpec.TimestampSpec(timestamp));
+
+        Map<Integer, Long> initialOffsets = new HashMap<>();
+        for (Integer bucket : buckets) {
+            if (offsetsOfTimestamp.containsKey(bucket) && offsetsOfTimestamp.get(bucket) > 0) {
+                initialOffsets.put(bucket, offsetsOfTimestamp.get(bucket));
+            } else {
+                initialOffsets.put(bucket, endOffsets.get(bucket));
+            }
+        }
+
+        return initialOffsets;
     }
 
     private Map<Integer, Long> listOffsets(

@@ -166,7 +166,7 @@ class FlinkTableSourceITCase extends FlinkTestBase {
 
     @Test
     void testNonPkTableRead() throws Exception {
-        tEnv.executeSql("create table non_pk_table_test (a int, b varchar)");
+        tEnv.executeSql("create table f (a int, b varchar)");
         TablePath tablePath = TablePath.of(DEFAULT_DB, "non_pk_table_test");
 
         List<InternalRow> rows =
@@ -629,6 +629,49 @@ class FlinkTableSourceITCase extends FlinkTestBase {
         // write data to the new partitions
         expectedRowValues = writeRowsToPartition(tablePath, rowType, newPartitions);
         assertResultsIgnoreOrder(rowIter, expectedRowValues, true);
+    }
+
+    @Test
+    void testReadTimestampOutOfBounds() throws Exception {
+
+        tEnv.executeSql("create table timestamp_table (a int, b varchar) ");
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "timestamp_table");
+
+        // write first bath records
+        List<InternalRow> rows =
+                Arrays.asList(
+                        row(DATA1_ROW_TYPE, new Object[] {1, "v1"}),
+                        row(DATA1_ROW_TYPE, new Object[] {2, "v2"}),
+                        row(DATA1_ROW_TYPE, new Object[] {3, "v3"}));
+
+        writeRows(tablePath, rows, true);
+        Thread.sleep(100);
+        // startup time between write first and second batch records.
+        long startupTimestamp = System.currentTimeMillis();
+
+        try (org.apache.flink.util.CloseableIterator<Row> rowIter =
+                tEnv.executeSql(
+                                String.format(
+                                        "select * from timestamp_table /*+ OPTIONS('scan.startup.mode' = 'timestamp', 'scan.startup.timestamp' = '%s') */ ",
+                                        startupTimestamp))
+                        .collect()) {
+            Thread.sleep(100);
+            // write second batch record.
+            rows =
+                    Arrays.asList(
+                            row(DATA1_ROW_TYPE, new Object[] {4, "v4"}),
+                            row(DATA1_ROW_TYPE, new Object[] {5, "v5"}),
+                            row(DATA1_ROW_TYPE, new Object[] {6, "v6"}));
+            writeRows(tablePath, rows, true);
+            List<String> expected = Arrays.asList("+I[4, v4]", "+I[5, v5]", "+I[6, v6]");
+            int expectRecords = expected.size();
+            List<String> actual = new ArrayList<>(expectRecords);
+            for (int i = 0; i < expectRecords; i++) {
+                String row = rowIter.next().toString();
+                actual.add(row);
+            }
+            assertThat(actual).containsExactlyElementsOf(expected);
+        }
     }
 
     // -------------------------------------------------------------------------------------
