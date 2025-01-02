@@ -83,13 +83,20 @@ final class ServerConnection {
     @GuardedBy("lock")
     private ServerApiVersions serverApiVersions;
 
-    ServerConnection(Bootstrap bootstrap, ServerNode node, ClientMetricGroup clientMetricGroup) {
+    private final long requestTimeoutMs;
+
+    ServerConnection(
+            Bootstrap bootstrap,
+            ServerNode node,
+            ClientMetricGroup clientMetricGroup,
+            long requestTimeoutMs) {
         this.node = node;
         this.state = ConnectionState.CONNECTING;
         bootstrap
                 .connect(node.host(), node.port())
                 .addListener((ChannelFutureListener) this::establishConnection);
         this.connectionMetricGroup = clientMetricGroup.createConnectionMetricGroup(node.uid());
+        this.requestTimeoutMs = requestTimeoutMs;
     }
 
     public ServerNode getServerNode() {
@@ -117,7 +124,7 @@ final class ServerConnection {
         return close(new ClosedChannelException());
     }
 
-    private CompletableFuture<Void> close(Throwable cause) {
+    public CompletableFuture<Void> close(Throwable cause) {
         synchronized (lock) {
             if (state.isDisconnected()) {
                 // the connection has been closed/closing.
@@ -362,6 +369,15 @@ final class ServerConnection {
         }
     }
 
+    public Boolean hasExpiredRequest(long now) {
+        for (InflightRequest request : inflightRequests.values()) {
+            if (request.timeElapsedSinceSendMs(now) > requestTimeoutMs) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------------------------------
     // Internal Classes
     // ------------------------------------------------------------------------------------------
@@ -421,6 +437,7 @@ final class ServerConnection {
         final ApiMessage request;
         final long requestStartTime;
         final CompletableFuture<ApiMessage> responseFuture;
+        final long sendTimeMs;
 
         InflightRequest(
                 short apiKey,
@@ -434,10 +451,15 @@ final class ServerConnection {
             this.request = request;
             this.responseFuture = responseFuture;
             this.requestStartTime = System.currentTimeMillis();
+            this.sendTimeMs = System.currentTimeMillis();
         }
 
         ByteBuf toByteBuf(ByteBufAllocator allocator) {
             return MessageCodec.encodeRequest(allocator, apiKey, apiVersion, requestId, request);
+        }
+
+        public long timeElapsedSinceSendMs(long currentTimeMs) {
+            return Math.max(0, currentTimeMs - sendTimeMs);
         }
     }
 }

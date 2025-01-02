@@ -20,10 +20,12 @@ import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.exception.TimeoutException;
 import com.alibaba.fluss.metrics.util.NOPMetricsGroup;
 import com.alibaba.fluss.rpc.TestingGatewayService;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.messages.ApiVersionsRequest;
+import com.alibaba.fluss.rpc.messages.ApiVersionsResponse;
 import com.alibaba.fluss.rpc.messages.GetTableRequest;
 import com.alibaba.fluss.rpc.messages.LookupRequest;
 import com.alibaba.fluss.rpc.messages.PbLookupReqForBucket;
@@ -42,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -164,12 +167,75 @@ final class NettyClientTest {
                 .isEqualTo(serverNode);
     }
 
+    @Test
+    void testTimeout() throws Exception {
+        // rebuild the netty server with timeout service
+        nettyServer.close();
+        nettyClient.close();
+        buildNettyServer(
+                1,
+                new TestingGatewayService() {
+                    @Override
+                    public CompletableFuture<ApiVersionsResponse> apiVersions(
+                            ApiVersionsRequest request) {
+                        try {
+                            Thread.sleep(5 * 100);
+                        } catch (InterruptedException e) {
+                        }
+                        return super.apiVersions(request);
+                    }
+                });
+
+        // restart a nettry client with timeout
+        Map<String, String> confMap = conf.toMap();
+        confMap.put("client.request-timeout", "100ms");
+        nettyClient =
+                new NettyClient(
+                        Configuration.fromMap(confMap), TestingClientMetricGroup.newInstance());
+        int numRequests = 10;
+        List<CompletableFuture<ApiMessage>> futures = new ArrayList<>();
+        for (int i = 0; i < numRequests; i++) {
+            ApiVersionsRequest request =
+                    new ApiVersionsRequest()
+                            .setClientSoftwareName("testing_client" + i)
+                            .setClientSoftwareVersion("1.0");
+            futures.add(nettyClient.sendRequest(serverNode, ApiKeys.API_VERSIONS, request));
+        }
+        List<CompletableFuture<ApiMessage>> finalFutures = futures;
+        assertThatThrownBy(() -> FutureUtils.waitForAll(finalFutures).get())
+                .cause()
+                .isExactlyInstanceOf(TimeoutException.class)
+                .hasMessageContaining("Request from client cs-1 timeout.");
+        // connection will be closed.
+        assertThat(nettyClient.connections().size()).isEqualTo(0);
+        nettyClient.close();
+
+        // restart a nettry client with longer timeout
+        confMap.put("client.request-timeout", "1s");
+        nettyClient = new NettyClient(conf, TestingClientMetricGroup.newInstance());
+        futures = new ArrayList<>();
+        for (int i = 0; i < numRequests; i++) {
+            ApiVersionsRequest request =
+                    new ApiVersionsRequest()
+                            .setClientSoftwareName("testing_client" + i)
+                            .setClientSoftwareVersion("1.0");
+            futures.add(nettyClient.sendRequest(serverNode, ApiKeys.API_VERSIONS, request));
+        }
+        FutureUtils.waitForAll(futures).get();
+        assertThat(nettyClient.connections().size()).isEqualTo(1);
+    }
+
     private void buildNettyServer(int serverId) throws Exception {
+        buildNettyServer(serverId, new TestingGatewayService());
+    }
+
+    private void buildNettyServer(int serverId, TestingGatewayService gatewayService)
+            throws Exception {
         try (NetUtils.Port availablePort = getAvailablePort()) {
             serverNode =
                     new ServerNode(
                             serverId, "localhost", availablePort.getPort(), ServerType.COORDINATOR);
-            service = new TestingGatewayService();
+            service = gatewayService;
             nettyServer =
                     new NettyServer(
                             conf,
