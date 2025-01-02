@@ -268,6 +268,26 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
         }
     }
 
+    @Test
+    void testNoSubscribedBucket() throws Exception {
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "test-no-subscribe-bucket-table");
+        Schema schema =
+                Schema.newBuilder()
+                        .column("id", DataTypes.INT())
+                        .column("name", DataTypes.STRING())
+                        .build();
+        final TableDescriptor tableDescriptor =
+                TableDescriptor.builder().schema(schema).distributedBy(1).build();
+        createTable(tablePath, tableDescriptor);
+
+        try (FlinkSourceSplitReader splitReader =
+                createSplitReader(tablePath, schema.toRowType())) {
+            // fetch shouldn't throw exception
+            RecordsWithSplitIds<RecordAndPos> records = splitReader.fetch();
+            assertThat(records.nextSplit()).isNull();
+        }
+    }
+
     // ------------------
 
     private void assignSplitsAndFetchUntilRetrieveRecords(

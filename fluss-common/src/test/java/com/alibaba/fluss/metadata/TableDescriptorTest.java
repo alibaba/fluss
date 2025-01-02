@@ -18,6 +18,7 @@ package com.alibaba.fluss.metadata;
 
 import com.alibaba.fluss.config.ConfigBuilder;
 import com.alibaba.fluss.config.ConfigOption;
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.types.DataTypes;
 
 import org.junit.jupiter.api.Test;
@@ -307,5 +308,17 @@ class TableDescriptorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(
                         "Bucket key [f0, f3] shouldn't include any column in partition keys [f0].");
+    }
+
+    @Test
+    void testAutoPartitionForNonPartitionedTableShouldThrowException() {
+        assertThatThrownBy(
+                        () ->
+                                TableDescriptor.builder()
+                                        .schema(SCHEMA_1)
+                                        .property(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED, true)
+                                        .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Auto partition is only supported when table is partitioned.");
     }
 }

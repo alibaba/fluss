@@ -127,6 +127,11 @@ public final class TableDescriptor implements Serializable {
                         .allMatch(e -> e.getKey() != null && e.getValue() != null),
                 "options cannot have null keys or values.");
 
+        if (getAutoPartitionStrategy().isAutoPartitionEnabled() && !isPartitioned()) {
+            throw new IllegalArgumentException(
+                    "Auto partition is only supported when table is partitioned.");
+        }
+
         if (hasPrimaryKey()
                 && getKvFormat() == KvFormat.COMPACTED
                 && getLogFormat() != LogFormat.ARROW) {
