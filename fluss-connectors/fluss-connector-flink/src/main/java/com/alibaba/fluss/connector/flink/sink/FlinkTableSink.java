@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.connector.flink.sink;
 
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils.FieldEqual;
@@ -63,6 +64,7 @@ public class FlinkTableSink
     private final RowType tableRowType;
     private final int[] primaryKeyIndexes;
     private final boolean streaming;
+    @Nullable private final ConfigOptions.MergeEngine mergeEngine;
 
     private boolean appliedUpdates = false;
     @Nullable private GenericRow deleteRow;
@@ -72,12 +74,14 @@ public class FlinkTableSink
             Configuration flussConfig,
             RowType tableRowType,
             int[] primaryKeyIndexes,
-            boolean streaming) {
+            boolean streaming,
+            @Nullable ConfigOptions.MergeEngine mergeEngine) {
         this.tablePath = tablePath;
         this.flussConfig = flussConfig;
         this.tableRowType = tableRowType;
         this.primaryKeyIndexes = primaryKeyIndexes;
         this.streaming = streaming;
+        this.mergeEngine = mergeEngine;
     }
 
     @Override
@@ -112,12 +116,20 @@ public class FlinkTableSink
                 // is 0, when no column specified, it's not partial update
                 // see FLINK-36000
                 && context.getTargetColumns().get().length != 0) {
-            // check partial update
-            if (primaryKeyIndexes.length == 0
-                    && context.getTargetColumns().get().length != tableRowType.getFieldCount()) {
-                throw new ValidationException(
-                        "Fluss table sink does not support partial updates for table without primary key. Please make sure the "
-                                + "number of specified columns in INSERT INTO matches columns of the Fluss table.");
+
+            // is partial update, check whether partial update is supported or not
+            if (context.getTargetColumns().get().length != tableRowType.getFieldCount()) {
+                if (primaryKeyIndexes.length == 0) {
+                    throw new ValidationException(
+                            "Fluss table sink does not support partial updates for table without primary key. Please make sure the "
+                                    + "number of specified columns in INSERT INTO matches columns of the Fluss table.");
+                } else if (mergeEngine == ConfigOptions.MergeEngine.FIRST_ROW) {
+                    throw new ValidationException(
+                            String.format(
+                                    "Table %s uses the '%s' merge engine which does not support partial updates. Please make sure the "
+                                            + "number of specified columns in INSERT INTO matches columns of the Fluss table.",
+                                    tablePath, ConfigOptions.MergeEngine.FIRST_ROW));
+                }
             }
             int[][] targetColumns = context.getTargetColumns().get();
             targetColumnIndexes = new int[targetColumns.length];
@@ -165,7 +177,12 @@ public class FlinkTableSink
     public DynamicTableSink copy() {
         FlinkTableSink sink =
                 new FlinkTableSink(
-                        tablePath, flussConfig, tableRowType, primaryKeyIndexes, streaming);
+                        tablePath,
+                        flussConfig,
+                        tableRowType,
+                        primaryKeyIndexes,
+                        streaming,
+                        mergeEngine);
         sink.appliedUpdates = appliedUpdates;
         sink.deleteRow = deleteRow;
         return sink;
@@ -280,6 +297,13 @@ public class FlinkTableSink
                     String.format(
                             "Table %s is a Log Table. Log Table doesn't support DELETE and UPDATE statements.",
                             tablePath));
+        }
+
+        if (mergeEngine == ConfigOptions.MergeEngine.FIRST_ROW) {
+            throw new UnsupportedOperationException(
+                    String.format(
+                            "Table %s uses the '%s' merge engine which does not support DELETE or UPDATE statements.",
+                            tablePath, ConfigOptions.MergeEngine.FIRST_ROW));
         }
     }
 

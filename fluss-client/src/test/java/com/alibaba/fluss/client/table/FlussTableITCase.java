@@ -20,6 +20,7 @@ import com.alibaba.fluss.client.Connection;
 import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.admin.ClientToServerITCaseBase;
 import com.alibaba.fluss.client.scanner.ScanRecord;
+import com.alibaba.fluss.client.scanner.log.LogScan;
 import com.alibaba.fluss.client.scanner.log.LogScanner;
 import com.alibaba.fluss.client.scanner.log.ScanRecords;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
@@ -816,5 +817,60 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(
                         "Projected field index 2 is out of bound for schema ROW<`a` INT, `b` STRING>");
+    }
+
+    @Test
+    void testFirstRowMergeEngine() throws Exception {
+        TableDescriptor tableDescriptor =
+                TableDescriptor.builder()
+                        .schema(DATA1_SCHEMA_PK)
+                        .property(
+                                ConfigOptions.TABLE_MERGE_ENGINE,
+                                ConfigOptions.MergeEngine.FIRST_ROW)
+                        .build();
+        RowType rowType = DATA1_SCHEMA_PK.toRowType();
+        createTable(DATA1_TABLE_PATH_PK, tableDescriptor, false);
+        int rows = 5;
+        int duplicateNum = 3;
+        try (Table table = conn.getTable(DATA1_TABLE_PATH_PK)) {
+            // first, put rows
+            UpsertWriter upsertWriter = table.getUpsertWriter();
+            List<InternalRow> expectedRows = new ArrayList<>(rows);
+            for (int row = 0; row < rows; row++) {
+                for (int num = 0; num < duplicateNum; num++) {
+                    upsertWriter.upsert(compactedRow(rowType, new Object[] {row, "value_" + num}));
+                }
+                expectedRows.add(compactedRow(rowType, new Object[] {row, "value_0"}));
+            }
+            upsertWriter.flush();
+
+            // now, get rows by lookup
+            for (int row = 0; row < rows; row++) {
+                InternalRow gotRow =
+                        table.lookup(keyRow(DATA1_SCHEMA_PK, new Object[] {row, "dumpy"}))
+                                .get()
+                                .getRow();
+                assertThatRow(gotRow).withSchema(rowType).isEqualTo(expectedRows.get(row));
+            }
+
+            // check scan change log
+            LogScanner logScanner = table.getLogScanner(new LogScan());
+            logScanner.subscribeFromBeginning(0);
+
+            List<ScanRecord> actualLogRecords = new ArrayList<>(0);
+            while (actualLogRecords.size() < rows) {
+                ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
+                scanRecords.forEach(actualLogRecords::add);
+            }
+
+            assertThat(actualLogRecords).hasSize(rows);
+            for (int i = 0; i < actualLogRecords.size(); i++) {
+                ScanRecord scanRecord = actualLogRecords.get(i);
+                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                assertThatRow(scanRecord.getRow())
+                        .withSchema(rowType)
+                        .isEqualTo(expectedRows.get(i));
+            }
+        }
     }
 }

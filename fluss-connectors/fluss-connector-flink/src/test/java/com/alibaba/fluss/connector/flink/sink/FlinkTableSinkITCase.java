@@ -33,9 +33,11 @@ import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.config.ExecutionConfigOptions;
 import org.apache.flink.types.Row;
@@ -354,6 +356,38 @@ class FlinkTableSinkITCase {
         tEnv.executeSql("INSERT INTO sink_test(a, c) SELECT f0, f2 FROM changeLog").await();
         expectedRows = Arrays.asList("-U[1, null, c1]", "+U[1, null, c11]", "-D[1, null, c11]");
         assertResultsIgnoreOrder(rowIter, expectedRows, true);
+    }
+
+    @Test
+    void testFirstRowMergeEngine() throws Exception {
+        tEnv.executeSql(
+                "create table first_row_source (a int not null primary key not enforced,"
+                        + " b string) with('table.merge-engine' = 'first_row')");
+        tEnv.executeSql("create table log_sink (a int, b string)");
+
+        // insert the primary table with first_row merge engine into the a log table to verify that
+        // the first_row merge engine only generates append-only stream
+        JobClient insertJobClient =
+                tEnv.executeSql("insert into log_sink select * from first_row_source")
+                        .getJobClient()
+                        .get();
+
+        // insert once
+        tEnv.executeSql(
+                        "insert into first_row_source(a, b) VALUES (1, 'v1'), (2, 'v2'), (1, 'v11'), (3, 'v3')")
+                .await();
+
+        CloseableIterator<Row> rowIter = tEnv.executeSql("select * from log_sink").collect();
+
+        List<String> expectedRows = Arrays.asList("+I[1, v1]", "+I[2, v2]", "+I[3, v3]");
+
+        assertResultsIgnoreOrder(rowIter, expectedRows, false);
+
+        // insert again
+        tEnv.executeSql("insert into first_row_source(a, b) VALUES (3, 'v33'), (4, 'v44')").await();
+        expectedRows = Collections.singletonList("+I[4, v44]");
+        assertResultsIgnoreOrder(rowIter, expectedRows, true);
+        insertJobClient.cancel().get();
     }
 
     @Test
@@ -710,6 +744,47 @@ class FlinkTableSinkITCase {
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining(
                         "Currently, Fluss table only supports UPDATE statement with conditions on primary key.");
+    }
+
+    @Test
+    void testUnsupportedStmtOnFirstRowMergeEngine() {
+        String t1 = "firstRowMergeEngineTable";
+        TablePath tablePath = TablePath.of(DEFAULT_DB, t1);
+        tBatchEnv.executeSql(
+                String.format(
+                        "create table %s ("
+                                + " a int not null,"
+                                + " b bigint null, "
+                                + " c string null, "
+                                + " primary key (a) not enforced"
+                                + ") with ('table.merge-engine' = 'first_row')",
+                        t1));
+        assertThatThrownBy(() -> tBatchEnv.executeSql("DELETE FROM " + t1 + " WHERE a = 1").await())
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessage(
+                        "Table %s uses the 'first_row' merge engine which does not support DELETE or UPDATE statements.",
+                        tablePath);
+
+        assertThatThrownBy(
+                        () ->
+                                tBatchEnv
+                                        .executeSql("UPDATE " + t1 + " SET b = 4004 WHERE a = 1")
+                                        .await())
+                .isInstanceOf(UnsupportedOperationException.class)
+                .hasMessage(
+                        "Table %s uses the 'first_row' merge engine which does not support DELETE or UPDATE statements.",
+                        tablePath);
+
+        assertThatThrownBy(
+                        () ->
+                                tBatchEnv
+                                        .executeSql("INSERT INTO " + t1 + "(a, c) VALUES(1, 'c1')")
+                                        .await())
+                .isInstanceOf(ValidationException.class)
+                .hasMessage(
+                        "Table %s uses the 'first_row' merge engine which does not support partial updates."
+                                + " Please make sure the number of specified columns in INSERT INTO matches columns of the Fluss table.",
+                        tablePath);
     }
 
     private InsertAndExpectValues rowsToInsertInto(Collection<String> partitions) {

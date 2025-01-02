@@ -57,6 +57,11 @@ import static org.apache.flink.configuration.ConfigOptions.key;
 /** Factory to create table source and table sink for Fluss. */
 public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTableSinkFactory {
 
+    private static final ConfigOption<ConfigOptions.MergeEngine> MERGE_ENGINE_OPTION =
+            key(ConfigOptions.TABLE_MERGE_ENGINE.key())
+                    .enumType(ConfigOptions.MergeEngine.class)
+                    .noDefaultValue();
+
     private volatile LakeTableFactory lakeTableFactory;
 
     @Override
@@ -123,7 +128,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 tableOptions.get(
                         key(ConfigOptions.TABLE_DATALAKE_ENABLED.key())
                                 .booleanType()
-                                .defaultValue(false)));
+                                .defaultValue(false)),
+                tableOptions.get(MERGE_ENGINE_OPTION));
     }
 
     @Override
@@ -142,7 +148,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 toFlussClientConfig(helper.getOptions(), context.getConfiguration()),
                 rowType,
                 context.getPrimaryKeyIndexes(),
-                isStreamingMode);
+                isStreamingMode,
+                helper.getOptions().get(MERGE_ENGINE_OPTION));
     }
 
     @Override
