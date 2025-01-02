@@ -117,6 +117,16 @@ message DropTableRequest {
 message DropTableResponse {
 }
 
+// rename table request and response
+message RenameTableRequest {
+  required PbTablePath from_table_path = 1;
+  required PbTablePath to_table_path = 2;
+  required bool ignore_if_not_exists = 3;
+}
+
+message RenameTableResponse {
+}
+
 // table exists request and response
 message TableExistsRequest {
   required PbTablePath table_path = 1;

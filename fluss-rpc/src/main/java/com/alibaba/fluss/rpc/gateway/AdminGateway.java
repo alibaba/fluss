@@ -24,6 +24,8 @@ import com.alibaba.fluss.rpc.messages.DropDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.DropDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.DropTableRequest;
 import com.alibaba.fluss.rpc.messages.DropTableResponse;
+import com.alibaba.fluss.rpc.messages.RenameTableRequest;
+import com.alibaba.fluss.rpc.messages.RenameTableResponse;
 import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.RPC;
 
@@ -63,5 +65,13 @@ public interface AdminGateway extends AdminReadOnlyGateway {
     @RPC(api = ApiKeys.DROP_TABLE)
     CompletableFuture<DropTableResponse> dropTable(DropTableRequest request);
 
-    // todo: rename table & alter table
+    /**
+     * Rename a table.
+     *
+     * @param request Rename table request
+     */
+    @RPC(api = ApiKeys.RENAME_TABLE)
+    CompletableFuture<RenameTableResponse> renameTable(RenameTableRequest request);
+
+    // todo: alter table
 }

@@ -353,6 +353,16 @@ public class ZooKeeperClient implements AutoCloseable {
         LOG.info("Deleted table {}.", tablePath);
     }
 
+    public void renameTable(TablePath fromTablePath, TablePath toTablePath) throws Exception {
+        byte[] tableBytes = zkClient.getData().forPath(TableZNode.path(fromTablePath));
+        zkClient.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT)
+                .forPath(TableZNode.path(toTablePath), tableBytes);
+        deleteTable(fromTablePath);
+        LOG.info("Renamed table {} to {}.", fromTablePath, toTablePath);
+    }
+
     public boolean tableExist(TablePath tablePath) throws Exception {
         String path = TableZNode.path(tablePath);
         Stat stat = zkClient.checkExists().forPath(path);

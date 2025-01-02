@@ -60,6 +60,8 @@ import com.alibaba.fluss.rpc.messages.ListTablesRequest;
 import com.alibaba.fluss.rpc.messages.ListTablesResponse;
 import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
+import com.alibaba.fluss.rpc.messages.RenameTableRequest;
+import com.alibaba.fluss.rpc.messages.RenameTableResponse;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
 import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
@@ -119,6 +121,11 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
 
     @Override
     public CompletableFuture<DropTableResponse> dropTable(DropTableRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<RenameTableResponse> renameTable(RenameTableRequest request) {
         throw new UnsupportedOperationException();
     }
 
