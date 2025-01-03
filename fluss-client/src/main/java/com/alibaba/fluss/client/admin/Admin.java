@@ -20,6 +20,7 @@ import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.client.table.lake.LakeTableSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.KvSnapshotInfo;
 import com.alibaba.fluss.client.table.snapshot.PartitionSnapshotInfo;
+import com.alibaba.fluss.cluster.Cluster;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
@@ -39,8 +40,11 @@ import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 
+import javax.annotation.Nullable;
+
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -51,6 +55,19 @@ import java.util.concurrent.CompletableFuture;
  */
 @PublicEvolving
 public interface Admin extends AutoCloseable {
+
+    /**
+     * Get the current cluster information. asynchronously.
+     *
+     * @param tablePaths table paths to be included in the metadata.
+     * @param tablePartitions table partitions to be included in the metadata.
+     * @param tablePartitionIds table partition ids to be included in the metadata.
+     */
+    CompletableFuture<Cluster> getCluster(
+            @Nullable Set<TablePath> tablePaths,
+            @Nullable Collection<PhysicalTablePath> tablePartitions,
+            @Nullable Collection<Long> tablePartitionIds);
+
     /**
      * Get the latest table schema of the given table asynchronously.
      *
