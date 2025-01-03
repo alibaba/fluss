@@ -37,11 +37,11 @@ cd fluss-quickstart-flink
 
 <!-- TODO: keep docker-compose manifest in sync at 
  - /docs/quickstart-flink.md 
- - /docs/maintenance/monitor-metrics.md, 
+ - /docs/maintenance/observability/quickstart.md, 
  but MIND differences in the manifests -->
 ```yaml
 services:
-  #begin Flink cluster
+  #begin Fluss cluster
   coordinator-server:
     image: fluss/fluss:0.5.0
     command: coordinatorServer
@@ -135,6 +135,7 @@ to check whether all containers are running properly.
 You can also visit http://localhost:8083/ to see if Flink is running normally.
 
 :::note 
+- If you want to additionally use an observability stack, follow one of the provided quickstart guides [here](../maintenance/observability/quickstart.md) and then continue with this guide.
 - If you want to run with your own Flink environment, remember to download the [fluss-connector-flink](/downloads), [flink-connector-faker](https://github.com/knaufk/flink-faker/releases), [paimon-flink](https://paimon.apache.org/docs/0.8/flink/quick-start/) connector jars and then put them to `FLINK_HOME/lib/`.
 - All the following commands involving `docker compose` should be executed in the created working directory that contains the `docker-compose.yml` file.
 :::
@@ -493,6 +494,4 @@ docker compose down -v
 to stop all containers.
 
 ## Learn more
-Now that you're up an running with Fluss and Flink, check out 
-- the [Apache Flink Engine](engine-flink/getting-started.md) docs to learn more features with Flink
-- [this guide](/docs/maintenance/monitor-metrics/#observability-prometheus--grafana) to learn how to set up an observability stack for Fluss and Flink.
+Now that you're up an running with Fluss and Flink, check out the [Apache Flink Engine](engine-flink/getting-started.md) docs to learn more features with Flink.
