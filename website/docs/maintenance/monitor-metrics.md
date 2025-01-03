@@ -299,7 +299,7 @@ Some metrics might not be exposed when using other JVM implementations (e.g. IBM
   </thead>
   <tbody>
     <tr>
-      <th rowspan="6"><strong>tabletserver</strong></th>
+      <th rowspan="10"><strong>tabletserver</strong></th>
       <td style={{textAlign: 'center', verticalAlign: 'middle' }} rowspan="6">-</td>
       <td>replicationBytesInPerSecond</td>
       <td>The bytes of data write into follower replica for data sync.</td>
@@ -326,9 +326,29 @@ Some metrics might not be exposed when using other JVM implementations (e.g. IBM
       <td>Gauge</td>
     </tr>
     <tr>
-      <td>delayedOperationsSize</td>
-      <td>The delayed operations size in this TabletServer.</td>
+      <td>delayedWriteCount</td>
+      <td>The delayed write count in this TabletServer.</td>
       <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>delayedFetchCount</td>
+      <td>The delayed fetch log operation count in this TabletServer.</td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>delayedWriteExpiresPerSecond</td>
+      <td>The delayed write operation expire count per second in this TabletServer.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>delayedFetchFromFollowerExpiresPerSecond</td>
+      <td>The delayed fetch log operation from follower expire count per second in this TabletServer.</td>
+      <td>Meter</td>
+    </tr>
+    <tr>
+      <td>delayedFetchFromClientExpiresPerSecond</td>
+      <td>The delayed fetch log operation from client expire count per second in this TabletServer.</td>
+      <td>Meter</td>
     </tr>
   </tbody>
 </table>
