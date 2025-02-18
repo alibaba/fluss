@@ -130,7 +130,7 @@ final class RequestProcessor implements Runnable {
         }
     }
 
-    private void sendResponse(
+    public void sendResponse(
             RpcRequest request, long requestDequeTimeMs, ApiMessage responseMessage) {
         long requestCompletedTimeMs = System.currentTimeMillis();
         // TODO: use a memory managed allocator

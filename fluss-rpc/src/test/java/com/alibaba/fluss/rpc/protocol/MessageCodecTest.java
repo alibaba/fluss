@@ -18,6 +18,7 @@ package com.alibaba.fluss.rpc.protocol;
 
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.record.send.Send;
+import com.alibaba.fluss.rpc.authenticate.PlainTextAuthenticationPlugin;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.messages.ApiVersionsRequest;
 import com.alibaba.fluss.rpc.messages.ApiVersionsResponse;
@@ -61,7 +62,8 @@ class MessageCodecTest {
                 new NettyServerHandler(
                         new RequestChannel[] {requestChannel},
                         new ApiManager(ServerType.TABLET_SERVER),
-                        "CLIENT");
+                        "CLIENT",
+                        new PlainTextAuthenticationPlugin.PlainTextServerAuthenticator());
         this.ctx = mockChannelHandlerContext();
     }
 

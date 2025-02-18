@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
@@ -23,6 +24,8 @@ import com.alibaba.fluss.metrics.groups.MetricGroup;
 import com.alibaba.fluss.rpc.RpcGateway;
 import com.alibaba.fluss.rpc.RpcGatewayService;
 import com.alibaba.fluss.rpc.RpcServer;
+import com.alibaba.fluss.rpc.authenticate.AuthenticatorLoader;
+import com.alibaba.fluss.rpc.authenticate.ServerAuthenticator;
 import com.alibaba.fluss.rpc.netty.NettyMetrics;
 import com.alibaba.fluss.rpc.netty.NettyUtils;
 import com.alibaba.fluss.rpc.protocol.ApiManager;
@@ -42,10 +45,12 @@ import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownGroup;
@@ -121,8 +126,18 @@ public final class NettyServer implements RpcServer {
         // setup worker thread pool
         workerPool.start();
 
+        Map<String, Supplier<ServerAuthenticator>> authenticatorSuppliers =
+                AuthenticatorLoader.loadServerAuthenticatorSuppliers(conf, endpoints);
+
         List<CompletableFuture<Void>> startEndpointFutures =
-                endpoints.stream().map(this::startEndpoint).collect(Collectors.toList());
+                endpoints.stream()
+                        .map(
+                                endpoint ->
+                                        startEndpoint(
+                                                endpoint,
+                                                authenticatorSuppliers.get(
+                                                        endpoint.getListenerName())))
+                        .collect(Collectors.toList());
         try {
             completeAll(startEndpointFutures).get();
         } catch (InterruptedException | ExecutionException ex) {
@@ -144,7 +159,8 @@ public final class NettyServer implements RpcServer {
         return bindAddresses;
     }
 
-    private CompletableFuture<Void> startEndpoint(Endpoint endpoint) {
+    private CompletableFuture<Void> startEndpoint(
+            Endpoint endpoint, Supplier<ServerAuthenticator> authenticatorSupplier) {
         CompletableFuture<Void> startEndpointFuture = new CompletableFuture<>();
         CompletableFuture.runAsync(
                 () -> {
@@ -161,10 +177,11 @@ public final class NettyServer implements RpcServer {
                     // child channel pipeline for accepted connections
                     bootstrap.childHandler(
                             new ServerChannelInitializer(
-                                    new NettyServerHandler(
-                                            workerPool.getRequestChannels(),
-                                            apiManager,
-                                            endpoint.getListenerName()),
+                                    workerPool.getRequestChannels(),
+                                    apiManager,
+                                    endpoint.getListenerName(),
+                                    // todo: add logs.
+                                    authenticatorSupplier,
                                     conf.get(ConfigOptions.NETTY_CONNECTION_MAX_IDLE_TIME)
                                             .getSeconds()));
 
@@ -236,5 +253,10 @@ public final class NettyServer implements RpcServer {
                 selectorShutdownFuture,
                 channelShutdownFuture,
                 workerShutdownFuture);
+    }
+
+    @VisibleForTesting
+    public ApiManager getApiManager() {
+        return apiManager;
     }
 }

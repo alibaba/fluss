@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.rpc.authenticate.FlussPrincipal;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.protocol.ApiMethod;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -38,6 +39,7 @@ public final class RpcRequest {
     private final ApiMessage message;
     private final ByteBuf buffer;
     private final String listenerName;
+    private final FlussPrincipal principal;
     private final ChannelHandlerContext channelContext;
 
     // the time when the request is received by server
@@ -51,6 +53,7 @@ public final class RpcRequest {
             ApiMessage message,
             ByteBuf buffer,
             String listenerName,
+            FlussPrincipal principal,
             ChannelHandlerContext channelContext) {
         this.apiKey = apiKey;
         this.apiVersion = apiVersion;
@@ -59,6 +62,7 @@ public final class RpcRequest {
         this.message = message;
         this.buffer = checkNotNull(buffer);
         this.listenerName = listenerName;
+        this.principal = principal;
         this.channelContext = channelContext;
         this.startTimeMs = System.currentTimeMillis();
     }
@@ -72,6 +76,7 @@ public final class RpcRequest {
         this.message = null;
         this.buffer = null;
         this.listenerName = null;
+        this.principal = null;
         this.channelContext = null;
         this.startTimeMs = System.currentTimeMillis();
     }

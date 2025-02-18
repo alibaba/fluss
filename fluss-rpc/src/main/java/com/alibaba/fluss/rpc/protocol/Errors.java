@@ -17,6 +17,7 @@
 package com.alibaba.fluss.rpc.protocol;
 
 import com.alibaba.fluss.exception.ApiException;
+import com.alibaba.fluss.exception.AuthenticationException;
 import com.alibaba.fluss.exception.CorruptMessageException;
 import com.alibaba.fluss.exception.CorruptRecordException;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
@@ -182,7 +183,8 @@ public enum Errors {
     PARTITION_ALREADY_EXISTS(
             42, "The partition already exists.", PartitionAlreadyExistsException::new),
     PARTITION_SPEC_INVALID_EXCEPTION(
-            43, "The partition spec is invalid.", InvalidPartitionException::new);
+            43, "The partition spec is invalid.", InvalidPartitionException::new),
+    AUTHENTICATE_EXCEPTION(44, "The authentication failed.", AuthenticationException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 

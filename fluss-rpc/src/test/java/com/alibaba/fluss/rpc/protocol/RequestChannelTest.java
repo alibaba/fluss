@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.rpc.protocol;
 
+import com.alibaba.fluss.rpc.authenticate.FlussPrincipal;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
@@ -50,6 +51,7 @@ public class RequestChannelTest {
                             new GetTableInfoRequest(),
                             new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                             "CLIENT",
+                            FlussPrincipal.ANONYMOUS,
                             null);
             channel.putRequest(rpcRequest);
             rpcRequests.add(rpcRequest);
@@ -70,6 +72,7 @@ public class RequestChannelTest {
                         new GetTableInfoRequest(),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                         "CLIENT",
+                        FlussPrincipal.ANONYMOUS,
                         null);
         RpcRequest rpcRequest2 =
                 new RpcRequest(
@@ -80,6 +83,7 @@ public class RequestChannelTest {
                         new FetchLogRequest().setMaxBytes(100).setFollowerServerId(2),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                         "CLIENT",
+                        FlussPrincipal.ANONYMOUS,
                         null);
         channel.putRequest(rpcRequest1);
         channel.putRequest(rpcRequest2);

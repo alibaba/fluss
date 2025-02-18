@@ -21,6 +21,8 @@ import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.rpc.RpcClient;
+import com.alibaba.fluss.rpc.authenticate.AuthenticatorLoader;
+import com.alibaba.fluss.rpc.authenticate.ClientAuthenticator;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import com.alibaba.fluss.rpc.netty.NettyMetrics;
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 
@@ -70,6 +73,8 @@ public final class NettyClient implements RpcClient {
     /** Metric groups for client. */
     private final ClientMetricGroup clientMetricGroup;
 
+    private final Supplier<ClientAuthenticator> authenticatorSupplier;
+
     private volatile boolean isClosed = false;
 
     public NettyClient(Configuration conf, ClientMetricGroup clientMetricGroup) {
@@ -94,6 +99,7 @@ public final class NettyClient implements RpcClient {
                         .option(ChannelOption.SO_KEEPALIVE, true)
                         .handler(new ClientChannelInitializer(connectionMaxIdle));
         this.clientMetricGroup = clientMetricGroup;
+        this.authenticatorSupplier = AuthenticatorLoader.loadClientAuthenticatorSupplier(conf);
         NettyMetrics.registerNettyMetrics(clientMetricGroup, pooledAllocator);
     }
 
@@ -178,7 +184,11 @@ public final class NettyClient implements RpcClient {
                 ignored -> {
                     LOG.debug("Creating connection to server {}.", node);
                     ServerConnection connection =
-                            new ServerConnection(bootstrap, node, clientMetricGroup);
+                            new ServerConnection(
+                                    bootstrap,
+                                    node,
+                                    clientMetricGroup,
+                                    authenticatorSupplier.get());
                     connection.whenClose(ignore -> connections.remove(serverId, connection));
                     return connection;
                 });
