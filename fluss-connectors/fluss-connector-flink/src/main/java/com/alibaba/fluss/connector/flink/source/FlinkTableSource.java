@@ -28,6 +28,10 @@ import com.alibaba.fluss.connector.flink.utils.PushdownUtils;
 import com.alibaba.fluss.connector.flink.utils.PushdownUtils.ValueConversion;
 import com.alibaba.fluss.metadata.MergeEngineType;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.predicate.PartitionPredicateVisitor;
+import com.alibaba.fluss.predicate.Predicate;
+import com.alibaba.fluss.predicate.PredicateBuilder;
+import com.alibaba.fluss.predicate.PredicateVisitor;
 import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -61,6 +65,7 @@ import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.LookupFunction;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.VarCharType;
 
 import javax.annotation.Nullable;
 
@@ -72,6 +77,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
@@ -122,6 +129,8 @@ public class FlinkTableSource
     protected boolean selectRowCount = false;
 
     private long limit = -1;
+
+    @Nullable protected Predicate predicate;
 
     public FlinkTableSource(
             TablePath tablePath,
@@ -261,7 +270,8 @@ public class FlinkTableSource
                         projectedFields,
                         offsetsInitializer,
                         scanPartitionDiscoveryIntervalMs,
-                        streaming);
+                        streaming,
+                        predicate);
 
         if (!streaming) {
             // return a bounded source provide to make planner happy,
@@ -376,40 +386,81 @@ public class FlinkTableSource
 
     @Override
     public Result applyFilters(List<ResolvedExpression> filters) {
-        // only apply pk equal filters when all the condition satisfied:
+
+        List<ResolvedExpression> acceptedFilters = new ArrayList<>();
+        List<ResolvedExpression> remainingFilters = new ArrayList<>();
+
+        // primary pushdown
         // (1) batch execution mode,
         // (2) default (full) startup mode,
         // (3) the table is a pk table,
         // (4) all filters are pk field equal expression
-        if (streaming
-                || startupOptions.startupMode != FlinkConnectorOptions.ScanStartupMode.FULL
-                || !hasPrimaryKey()
-                || filters.size() != primaryKeyIndexes.length) {
-            return Result.of(Collections.emptyList(), filters);
+        if (!streaming
+                && startupOptions.startupMode == FlinkConnectorOptions.ScanStartupMode.FULL
+                && hasPrimaryKey()
+                && filters.size() == primaryKeyIndexes.length) {
+
+            Map<Integer, LogicalType> primaryKeyTypes = getPrimaryKeyTypes();
+            List<PushdownUtils.FieldEqual> fieldEquals =
+                    PushdownUtils.extractFieldEquals(
+                            filters,
+                            primaryKeyTypes,
+                            acceptedFilters,
+                            remainingFilters,
+                            ValueConversion.FLINK_INTERNAL_VALUE);
+            int[] keyRowProjection = getKeyRowProjection();
+            HashSet<Integer> visitedPkFields = new HashSet<>();
+            GenericRowData lookupRow = new GenericRowData(primaryKeyIndexes.length);
+            for (PushdownUtils.FieldEqual fieldEqual : fieldEquals) {
+                lookupRow.setField(keyRowProjection[fieldEqual.fieldIndex], fieldEqual.equalValue);
+                visitedPkFields.add(fieldEqual.fieldIndex);
+            }
+            // if not all primary key fields are in condition, we skip to pushdown
+            if (!visitedPkFields.equals(primaryKeyTypes.keySet())) {
+                return Result.of(Collections.emptyList(), filters);
+            }
+            singleRowFilter = lookupRow;
+            return Result.of(acceptedFilters, remainingFilters);
+        } else if (isPartitioned()) {
+            // apply partition filter pushdown
+            List<Predicate> converted = new ArrayList<>();
+
+            List<String> fieldNames = tableOutputType.getFieldNames();
+            List<String> partitionKeys =
+                    Arrays.stream(partitionKeyIndexes)
+                            .mapToObj(fieldNames::get)
+                            .collect(Collectors.toList());
+
+            PredicateVisitor<Boolean> partitionPredicateVisitor =
+                    new PartitionPredicateVisitor(partitionKeys);
+            LogicalType[] partitionKeyTypes =
+                    partitionKeys.stream()
+                            .map(key -> VarCharType.STRING_TYPE)
+                            .toArray(LogicalType[]::new);
+            for (ResolvedExpression filter : filters) {
+
+                Optional<Predicate> predicateOptional =
+                        PredicateConverter.convert(
+                                org.apache.flink.table.types.logical.RowType.of(
+                                        partitionKeyTypes, partitionKeys.toArray(new String[0])),
+                                filter);
+
+                if (!predicateOptional.isPresent()) {
+                    remainingFilters.add(filter);
+                } else {
+                    Predicate p = predicateOptional.get();
+                    if (!p.visit(partitionPredicateVisitor)) {
+                        remainingFilters.add(filter);
+                    } else {
+                        acceptedFilters.add(filter);
+                    }
+                    converted.add(p);
+                }
+            }
+            predicate = converted.isEmpty() ? null : PredicateBuilder.and(converted);
+            return Result.of(acceptedFilters, remainingFilters);
         }
 
-        List<ResolvedExpression> acceptedFilters = new ArrayList<>();
-        List<ResolvedExpression> remainingFilters = new ArrayList<>();
-        Map<Integer, LogicalType> primaryKeyTypes = getPrimaryKeyTypes();
-        List<PushdownUtils.FieldEqual> fieldEquals =
-                PushdownUtils.extractFieldEquals(
-                        filters,
-                        primaryKeyTypes,
-                        acceptedFilters,
-                        remainingFilters,
-                        ValueConversion.FLINK_INTERNAL_VALUE);
-        int[] keyRowProjection = getKeyRowProjection();
-        HashSet<Integer> visitedPkFields = new HashSet<>();
-        GenericRowData lookupRow = new GenericRowData(primaryKeyIndexes.length);
-        for (PushdownUtils.FieldEqual fieldEqual : fieldEquals) {
-            lookupRow.setField(keyRowProjection[fieldEqual.fieldIndex], fieldEqual.equalValue);
-            visitedPkFields.add(fieldEqual.fieldIndex);
-        }
-        // if not all primary key fields are in condition, we skip to pushdown
-        if (!visitedPkFields.equals(primaryKeyTypes.keySet())) {
-            return Result.of(Collections.emptyList(), filters);
-        }
-        singleRowFilter = lookupRow;
         return Result.of(acceptedFilters, remainingFilters);
     }
 

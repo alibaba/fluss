@@ -38,6 +38,10 @@ import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.predicate.Predicate;
+import com.alibaba.fluss.row.BinaryString;
+import com.alibaba.fluss.row.GenericRow;
+import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.utils.ExceptionUtils;
 
 import org.apache.flink.annotation.VisibleForTesting;
@@ -124,6 +128,8 @@ public class FlinkSourceEnumerator
 
     private boolean lakeEnabled = false;
 
+    private Predicate predicate;
+
     public FlinkSourceEnumerator(
             TablePath tablePath,
             Configuration flussConf,
@@ -132,7 +138,8 @@ public class FlinkSourceEnumerator
             SplitEnumeratorContext<SourceSplitBase> context,
             OffsetsInitializer startingOffsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
-            boolean streaming) {
+            boolean streaming,
+            Predicate predicate) {
         this(
                 tablePath,
                 flussConf,
@@ -143,7 +150,8 @@ public class FlinkSourceEnumerator
                 Collections.emptyMap(),
                 startingOffsetsInitializer,
                 scanPartitionDiscoveryIntervalMs,
-                streaming);
+                streaming,
+                predicate);
     }
 
     public FlinkSourceEnumerator(
@@ -157,6 +165,32 @@ public class FlinkSourceEnumerator
             OffsetsInitializer startingOffsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
             boolean streaming) {
+        this(
+                tablePath,
+                flussConf,
+                isPartitioned,
+                hasPrimaryKey,
+                context,
+                assignedTableBuckets,
+                assignedPartitions,
+                startingOffsetsInitializer,
+                scanPartitionDiscoveryIntervalMs,
+                streaming,
+                null);
+    }
+
+    public FlinkSourceEnumerator(
+            TablePath tablePath,
+            Configuration flussConf,
+            boolean isPartitioned,
+            boolean hasPrimaryKey,
+            SplitEnumeratorContext<SourceSplitBase> context,
+            Set<TableBucket> assignedTableBuckets,
+            Map<Long, String> assignedPartitions,
+            OffsetsInitializer startingOffsetsInitializer,
+            long scanPartitionDiscoveryIntervalMs,
+            boolean streaming,
+            Predicate predicate) {
         this.tablePath = checkNotNull(tablePath);
         this.flussConf = checkNotNull(flussConf);
         this.hasPrimaryKey = hasPrimaryKey;
@@ -170,6 +204,7 @@ public class FlinkSourceEnumerator
         this.streaming = streaming;
         this.stoppingOffsetsInitializer =
                 streaming ? new NoStoppingOffsetsInitializer() : OffsetsInitializer.latest();
+        this.predicate = predicate;
     }
 
     @Override
@@ -254,14 +289,36 @@ public class FlinkSourceEnumerator
     }
 
     private Set<PartitionInfo> listPartitions() {
+
         try {
             List<PartitionInfo> partitionInfos = flussAdmin.listPartitionInfos(tablePath).get();
-            return new HashSet<>(partitionInfos);
+            if (predicate == null) {
+                return new HashSet<>(partitionInfos);
+            } else {
+                Set<PartitionInfo> filteredPartitionInfos =
+                        partitionInfos.stream()
+                                .filter(
+                                        partitionInfo ->
+                                                predicate.test(
+                                                        convertPartitionInfoToInternalRow(
+                                                                partitionInfo)))
+                                .collect(Collectors.toSet());
+                LOG.info(
+                        "Filtered partitions {} for table {} with predicate: {}",
+                        filteredPartitionInfos,
+                        tablePath,
+                        predicate);
+                return filteredPartitionInfos;
+            }
         } catch (Exception e) {
             throw new FlinkRuntimeException(
                     String.format("Failed to list partitions for %s", tablePath),
                     ExceptionUtils.stripCompletionException(e));
         }
+    }
+
+    private InternalRow convertPartitionInfoToInternalRow(PartitionInfo partitionInfo) {
+        return GenericRow.of(BinaryString.fromString(partitionInfo.getPartitionName()));
     }
 
     /** Init the splits for Fluss. */
