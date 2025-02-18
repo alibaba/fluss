@@ -17,10 +17,14 @@
 package com.alibaba.fluss.rpc.netty.server;
 
 import com.alibaba.fluss.rpc.netty.NettyLogger;
+import com.alibaba.fluss.rpc.protocol.ApiManager;
+import com.alibaba.fluss.security.auth.ServerAuthenticator;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelInitializer;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.socket.SocketChannel;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.timeout.IdleStateHandler;
+
+import java.util.function.Supplier;
 
 import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 
@@ -30,15 +34,26 @@ import static com.alibaba.fluss.utils.Preconditions.checkArgument;
  */
 final class ServerChannelInitializer extends ChannelInitializer<SocketChannel> {
 
-    private final NettyServerHandler sharedServerHandler;
+    private final RequestChannel[] requestChannels;
+    private final ApiManager apiManager;
+    private final String listenerName;
     private final int maxIdleTimeSeconds;
+    private final Supplier<ServerAuthenticator> authenticatorSupplier;
 
     private static final NettyLogger nettyLogger = new NettyLogger();
 
     public ServerChannelInitializer(
-            NettyServerHandler sharedServerHandler, long maxIdleTimeSeconds) {
+            RequestChannel[] requestChannels,
+            ApiManager apiManager,
+            String listenerName,
+            Supplier<ServerAuthenticator> authenticatorSupplier,
+            long maxIdleTimeSeconds) {
         checkArgument(maxIdleTimeSeconds <= Integer.MAX_VALUE, "maxIdleTimeSeconds too large");
-        this.sharedServerHandler = sharedServerHandler;
+
+        this.requestChannels = requestChannels;
+        this.apiManager = apiManager;
+        this.listenerName = listenerName;
+        this.authenticatorSupplier = authenticatorSupplier;
         this.maxIdleTimeSeconds = (int) maxIdleTimeSeconds;
     }
 
@@ -53,6 +68,13 @@ final class ServerChannelInitializer extends ChannelInitializer<SocketChannel> {
                         // initialBytesToStrip=0 to include the frame size field after decoding
                         new LengthFieldBasedFrameDecoder(Integer.MAX_VALUE, 0, 4, 0, 0));
         ch.pipeline().addLast("idle", new IdleStateHandler(0, 0, maxIdleTimeSeconds));
-        ch.pipeline().addLast("handler", sharedServerHandler);
+        ch.pipeline()
+                .addLast(
+                        "handler",
+                        new NettyServerHandler(
+                                requestChannels,
+                                apiManager,
+                                listenerName,
+                                authenticatorSupplier.get()));
     }
 }

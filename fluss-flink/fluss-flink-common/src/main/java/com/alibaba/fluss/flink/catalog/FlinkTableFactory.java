@@ -18,6 +18,7 @@ package com.alibaba.fluss.flink.catalog;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.FlussConfigUtils;
 import com.alibaba.fluss.flink.FlinkConnectorOptions;
 import com.alibaba.fluss.flink.lakehouse.LakeTableFactory;
 import com.alibaba.fluss.flink.sink.FlinkTableSink;
@@ -50,8 +51,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import static com.alibaba.fluss.config.FlussConfigUtils.CLIENT_SECURITY_PREFIX;
 import static com.alibaba.fluss.flink.catalog.FlinkCatalog.LAKE_TABLE_SPLITTER;
 import static com.alibaba.fluss.flink.utils.FlinkConnectorOptionsUtils.getBucketKeyIndexes;
 import static com.alibaba.fluss.flink.utils.FlinkConnectorOptionsUtils.getBucketKeys;
@@ -206,11 +209,14 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 ConfigOptions.BOOTSTRAP_SERVERS.key(),
                 tableOptions.get(FlinkConnectorOptions.BOOTSTRAP_SERVERS));
         // forward all client configs
-        for (ConfigOption<?> option : FlinkConnectorOptions.CLIENT_OPTIONS) {
-            if (tableOptions.get(option) != null) {
-                flussConfig.setString(option.key(), tableOptions.get(option).toString());
-            }
-        }
+        Map<String, String> options = tableOptions.toMap();
+        options.forEach(
+                (key, value) -> {
+                    if (FlussConfigUtils.CLIENT_OPTIONS.containsKey(key)
+                            || key.startsWith(CLIENT_SECURITY_PREFIX)) {
+                        flussConfig.setString(key, value);
+                    }
+                });
 
         // pass flink io tmp dir to fluss client.
         flussConfig.setString(

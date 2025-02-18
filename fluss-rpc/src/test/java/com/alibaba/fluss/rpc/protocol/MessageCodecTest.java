@@ -27,6 +27,7 @@ import com.alibaba.fluss.rpc.netty.client.NettyClientHandler;
 import com.alibaba.fluss.rpc.netty.server.FlussRequest;
 import com.alibaba.fluss.rpc.netty.server.NettyServerHandler;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
+import com.alibaba.fluss.security.auth.PlainTextAuthenticationPlugin;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.Channel;
@@ -61,7 +62,8 @@ class MessageCodecTest {
                 new NettyServerHandler(
                         new RequestChannel[] {requestChannel},
                         new ApiManager(ServerType.TABLET_SERVER),
-                        "CLIENT");
+                        "CLIENT",
+                        new PlainTextAuthenticationPlugin.PlainTextServerAuthenticator());
         this.ctx = mockChannelHandlerContext();
     }
 

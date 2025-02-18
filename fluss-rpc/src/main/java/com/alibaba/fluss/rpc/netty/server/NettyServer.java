@@ -16,7 +16,9 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.cluster.Endpoint;
+import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metrics.groups.MetricGroup;
@@ -39,11 +41,10 @@ import com.alibaba.fluss.utils.concurrent.FutureUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
 import java.net.BindException;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -71,7 +72,6 @@ public final class NettyServer implements RpcServer {
     private final Configuration conf;
     private final Collection<Endpoint> endpoints;
     private final RequestProcessorPool workerPool;
-    private final ApiManager apiManager;
     private final MetricGroup serverMetricGroup;
     private final List<NetworkProtocolPlugin> protocols;
     private final List<Channel> bindChannels;
@@ -90,9 +90,14 @@ public final class NettyServer implements RpcServer {
             RequestsMetrics requestsMetrics) {
         this.conf = checkNotNull(conf, "conf");
         this.serverMetricGroup = checkNotNull(serverMetricGroup, "serverMetricGroup");
-        this.apiManager = new ApiManager(service.providerType());
         this.endpoints = checkNotNull(endpoints, "endpoints");
-        this.protocols = loadProtocols(conf);
+        this.protocols =
+                loadProtocols(
+                        conf,
+                        service.providerType(),
+                        endpoints.stream()
+                                .map(Endpoint::getListenerName)
+                                .collect(Collectors.toList()));
 
         this.workerPool =
                 new RequestProcessorPool(
@@ -131,6 +136,7 @@ public final class NettyServer implements RpcServer {
 
         // load protocol plugins
         Map<String, NetworkProtocolPlugin> protocols = getProtocolsByListenerName();
+
         for (Endpoint endpoint : endpoints) {
             NetworkProtocolPlugin protocol = protocols.get(endpoint.getListenerName());
             startEndpoint(endpoint, protocol);
@@ -151,7 +157,7 @@ public final class NettyServer implements RpcServer {
         return bindEndpoints;
     }
 
-    private void startEndpoint(Endpoint endpoint, @Nullable NetworkProtocolPlugin protocol)
+    private void startEndpoint(Endpoint endpoint, NetworkProtocolPlugin protocol)
             throws IOException {
         ServerBootstrap bootstrap = new ServerBootstrap();
 
@@ -165,24 +171,10 @@ public final class NettyServer implements RpcServer {
 
         // child channel pipeline for accepted connections
         final ChannelHandler channelHandler;
-        final String protocolName;
-        if (protocol == null) {
-            // Fluss protocol
-            protocolName = "FLUSS";
-            channelHandler =
-                    new ServerChannelInitializer(
-                            new NettyServerHandler(
-                                    workerPool.getRequestChannels(),
-                                    apiManager,
-                                    endpoint.getListenerName()),
-                            conf.get(ConfigOptions.NETTY_CONNECTION_MAX_IDLE_TIME).getSeconds());
-        } else {
-            // plugin protocol
-            protocolName = protocol.name();
-            channelHandler =
-                    protocol.createChannelHandler(
-                            workerPool.getRequestChannels(), endpoint.getListenerName());
-        }
+        final String protocolName = protocol.name();
+        channelHandler =
+                protocol.createChannelHandler(
+                        workerPool.getRequestChannels(), endpoint.getListenerName());
         bootstrap.childHandler(channelHandler);
 
         // --------------------------------------------------------------------
@@ -235,13 +227,17 @@ public final class NettyServer implements RpcServer {
         return protocolsByListenerName;
     }
 
-    private static List<NetworkProtocolPlugin> loadProtocols(Configuration conf) {
+    private static List<NetworkProtocolPlugin> loadProtocols(
+            Configuration conf, ServerType serverType, List<String> listeners) {
+        List<NetworkProtocolPlugin> protocolPlugins = new ArrayList<>();
+        // Add the Fluss protocol plugin first to allow its listener names to be overridden by other
+        // protocols if necessary
+        protocolPlugins.add(new FlussProtocolPlugin(conf, serverType, listeners));
         if (conf.get(ConfigOptions.KAFKA_ENABLED)) {
             return Collections.singletonList(
                     loadProtocolPlugin(NetworkProtocolPlugin.KAFKA_PROTOCOL_NAME));
-        } else {
-            return Collections.emptyList();
         }
+        return protocolPlugins;
     }
 
     private static NetworkProtocolPlugin loadProtocolPlugin(String protocolName) {
@@ -302,5 +298,10 @@ public final class NettyServer implements RpcServer {
                 selectorShutdownFuture,
                 channelShutdownFuture,
                 workerShutdownFuture);
+    }
+
+    @VisibleForTesting
+    public ApiManager getApiManager() {
+        return ((FlussProtocolPlugin) protocols.get(0)).getApiManager();
     }
 }

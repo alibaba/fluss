@@ -21,6 +21,7 @@ import com.alibaba.fluss.plugin.Plugin;
 import com.alibaba.fluss.rpc.RpcGatewayService;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
 import com.alibaba.fluss.rpc.netty.server.RequestHandler;
+import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandler;
 
 import java.util.List;
@@ -46,5 +47,6 @@ public interface NetworkProtocolPlugin extends Plugin {
      * Creates a {@link RequestHandler} for processing the incoming requests of the network
      * protocol.
      */
-    RequestHandler<?> createRequestHandler(RpcGatewayService service);
+    RequestHandler<?> createRequestHandler(
+            RpcGatewayService service, RequestsMetrics requestsMetrics);
 }
