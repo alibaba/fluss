@@ -75,10 +75,7 @@ public class ReplicaStateMachine {
 
     private Set<TableBucketReplica> replicaNotInDeletedTable(Set<TableBucketReplica> replicas) {
         return replicas.stream()
-                .filter(
-                        replica ->
-                                !coordinatorContext.isTableQueuedForDeletion(
-                                        replica.getTableBucket().getTableId()))
+                .filter(replica -> !coordinatorContext.isToBeDeleted(replica.getTableBucket()))
                 .collect(Collectors.toSet());
     }
 

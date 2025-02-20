@@ -160,9 +160,10 @@ message MetadataResponse {
 
 // update metadata request and response, only send between server.
 message UpdateMetadataRequest {
-  optional PbServerNode coordinator_server = 1;
-  repeated PbServerNode tablet_servers = 2;
-  repeated PbTableMetadata table_metadata = 3;
+  optional PbClusterServerMetadata cluster_server_metadata = 1;
+  repeated PbTableBucketMetadata bucket_metadata = 2;
+  repeated int64 deleted_table_id = 3;
+  repeated int64 deleted_partition_id = 4;
 }
 
 message UpdateMetadataResponse {
@@ -479,6 +480,11 @@ message PbServerNode {
   required int32 port = 3;
 }
 
+message PbClusterServerMetadata {
+  optional PbServerNode coordinator_server = 1;
+  repeated PbServerNode tablet_servers = 2;
+}
+
 message PbTableMetadata {
   required PbTablePath table_path = 1;
   required int64 table_id = 2;
@@ -487,6 +493,13 @@ message PbTableMetadata {
   repeated PbBucketMetadata bucket_metadata = 5;
   required int64 created_time = 6;
   required int64 modified_time = 7;
+}
+
+message PbTableBucketMetadata {
+  required int64 table_id = 1;
+  // empty if it is a non-partitioned table
+  optional int64 partition_id = 2;
+  repeated PbBucketMetadata bucket_metadata = 3;
 }
 
 message PbPartitionMetadata {

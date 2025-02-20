@@ -23,6 +23,7 @@ import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.BytesViewLogRecords;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
@@ -69,6 +70,8 @@ import com.alibaba.fluss.rpc.messages.PbAdjustIsrReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrReqForTable;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrRespForTable;
+import com.alibaba.fluss.rpc.messages.PbBucketMetadata;
+import com.alibaba.fluss.rpc.messages.PbClusterServerMetadata;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForTable;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
@@ -98,6 +101,7 @@ import com.alibaba.fluss.rpc.messages.PbServerNode;
 import com.alibaba.fluss.rpc.messages.PbStopReplicaReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbStopReplicaRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbTableBucket;
+import com.alibaba.fluss.rpc.messages.PbTableBucketMetadata;
 import com.alibaba.fluss.rpc.messages.PbTablePath;
 import com.alibaba.fluss.rpc.messages.PbValue;
 import com.alibaba.fluss.rpc.messages.PbValueList;
@@ -135,6 +139,7 @@ import javax.annotation.Nullable;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -208,23 +213,64 @@ public class RpcMessageUtils {
     public static UpdateMetadataRequest makeUpdateMetadataRequest(
             Optional<ServerNode> coordinatorServer, Set<ServerNode> aliveTableServers) {
         UpdateMetadataRequest updateMetadataRequest = new UpdateMetadataRequest();
+        PbClusterServerMetadata pbClusterServerMetadata = new PbClusterServerMetadata();
+        coordinatorServer.ifPresent(
+                serverNode ->
+                        pbClusterServerMetadata.setCoordinatorServer(toPbServerNode(serverNode)));
+
         Set<PbServerNode> aliveTableServerNodes = new HashSet<>();
         for (ServerNode serverNode : aliveTableServers) {
-            aliveTableServerNodes.add(
-                    new PbServerNode()
-                            .setNodeId(serverNode.id())
-                            .setHost(serverNode.host())
-                            .setPort(serverNode.port()));
+            aliveTableServerNodes.add(toPbServerNode(serverNode));
         }
-        updateMetadataRequest.addAllTabletServers(aliveTableServerNodes);
-        coordinatorServer.map(
-                node ->
-                        updateMetadataRequest
-                                .setCoordinatorServer()
-                                .setNodeId(node.id())
-                                .setHost(node.host())
-                                .setPort(node.port()));
-        return updateMetadataRequest;
+        pbClusterServerMetadata.addAllTabletServers(aliveTableServerNodes);
+        return updateMetadataRequest.setClusterServerMetadata(pbClusterServerMetadata);
+    }
+
+    public static Collection<PbTableBucketMetadata> makeTableBucketMetadata(
+            Map<TableBucket, Integer> bucketLeaders) {
+        Map<Long, PbTableBucketMetadata> pbTableBucketMetadataMap = new HashMap<>();
+        Map<TablePartition, PbTableBucketMetadata> pbTablePartitionBucketMetadataMap =
+                new HashMap<>();
+        for (Map.Entry<TableBucket, Integer> entry : bucketLeaders.entrySet()) {
+            TableBucket tableBucket = entry.getKey();
+            PbBucketMetadata pbBucketMetadata;
+            Integer leaderId = entry.getValue();
+            if (tableBucket.getPartitionId() == null) {
+                pbBucketMetadata =
+                        pbTableBucketMetadataMap
+                                .computeIfAbsent(
+                                        tableBucket.getTableId(),
+                                        (k) ->
+                                                new PbTableBucketMetadata()
+                                                        .setTableId(tableBucket.getTableId()))
+                                .addBucketMetadata();
+            } else {
+                pbBucketMetadata =
+                        pbTablePartitionBucketMetadataMap
+                                .computeIfAbsent(
+                                        new TablePartition(
+                                                tableBucket.getTableId(),
+                                                tableBucket.getPartitionId()),
+                                        (k) ->
+                                                new PbTableBucketMetadata()
+                                                        .setTableId(tableBucket.getTableId())
+                                                        .setPartitionId(
+                                                                tableBucket.getPartitionId()))
+                                .addBucketMetadata();
+            }
+            pbBucketMetadata.setBucketId(tableBucket.getBucket()).setLeaderId(leaderId);
+        }
+        Set<PbTableBucketMetadata> pbTableBucketMetadataSet =
+                new HashSet<>(pbTableBucketMetadataMap.values());
+        pbTableBucketMetadataSet.addAll(pbTablePartitionBucketMetadataMap.values());
+        return pbTableBucketMetadataSet;
+    }
+
+    private static PbServerNode toPbServerNode(ServerNode serverNode) {
+        return new PbServerNode()
+                .setNodeId(serverNode.id())
+                .setHost(serverNode.host())
+                .setPort(serverNode.port());
     }
 
     public static PbNotifyLeaderAndIsrReqForBucket makeNotifyBucketLeaderAndIsr(

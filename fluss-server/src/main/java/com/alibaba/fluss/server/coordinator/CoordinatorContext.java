@@ -456,7 +456,7 @@ public class CoordinatorContext {
         }
     }
 
-    private boolean isToBeDeleted(TableBucket tableBucket) {
+    public boolean isToBeDeleted(TableBucket tableBucket) {
         if (tableBucket.getPartitionId() == null) {
             return isTableQueuedForDeletion(tableBucket.getTableId());
         } else {
@@ -479,6 +479,12 @@ public class CoordinatorContext {
 
     public Optional<LeaderAndIsr> getBucketLeaderAndIsr(TableBucket tableBucket) {
         return Optional.ofNullable(bucketLeaderAndIsr.get(tableBucket));
+    }
+
+    public Set<TableBucket> bucketsWithLeaders() {
+        return bucketLeaderAndIsr.keySet().stream()
+                .filter(bucket -> !isToBeDeleted(bucket))
+                .collect(Collectors.toSet());
     }
 
     public int getBucketLeaderEpoch(TableBucket tableBucket) {

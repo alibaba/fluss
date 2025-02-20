@@ -96,6 +96,10 @@ class TableBucketStateMachineTest {
                         testCoordinatorChannelManager,
                         event -> {
                             // do nothing
+                        },
+                        coordinatorContext,
+                        (bucketLeader) -> {
+                            // do nothing
                         });
         serverMetadataCache = new ServerMetadataCacheImpl();
         completedSnapshotStoreManager = new CompletedSnapshotStoreManager(1, 1, zookeeperClient);
@@ -239,7 +243,13 @@ class TableBucketStateMachineTest {
         CoordinatorEventManager eventManager =
                 new CoordinatorEventManager(coordinatorEventProcessor);
         coordinatorRequestBatch =
-                new CoordinatorRequestBatch(testCoordinatorChannelManager, eventManager);
+                new CoordinatorRequestBatch(
+                        testCoordinatorChannelManager,
+                        eventManager,
+                        coordinatorContext,
+                        (bucketLeader) -> {
+                            // do nothing
+                        });
         tableBucketStateMachine =
                 new TableBucketStateMachine(
                         coordinatorContext, coordinatorRequestBatch, zookeeperClient);

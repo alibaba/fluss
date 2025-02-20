@@ -325,6 +325,10 @@ public final class FlussClusterExtension
         return coordinatorServerNode;
     }
 
+    public CoordinatorServer getCoordinatorServer() {
+        return coordinatorServer;
+    }
+
     public Set<TabletServer> getTabletServers() {
         return new HashSet<>(tabletServers.values());
     }
@@ -576,7 +580,7 @@ public final class FlussClusterExtension
         return leaderAndIsr.leader();
     }
 
-    private List<AdminReadOnlyGateway> collectAllRpcGateways() {
+    public List<AdminReadOnlyGateway> collectAllRpcGateways() {
         List<AdminReadOnlyGateway> rpcServiceBases = new ArrayList<>();
         rpcServiceBases.add(newCoordinatorClient());
         rpcServiceBases.addAll(

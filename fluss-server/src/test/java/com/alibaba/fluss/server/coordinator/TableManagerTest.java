@@ -94,7 +94,13 @@ class TableManagerTest {
         coordinatorContext = new CoordinatorContext();
         testCoordinatorChannelManager = new TestCoordinatorChannelManager();
         CoordinatorRequestBatch coordinatorRequestBatch =
-                new CoordinatorRequestBatch(testCoordinatorChannelManager, testingEventManager);
+                new CoordinatorRequestBatch(
+                        testCoordinatorChannelManager,
+                        testingEventManager,
+                        coordinatorContext,
+                        (bucketLeader) -> {
+                            // do nothing
+                        });
         ReplicaStateMachine replicaStateMachine =
                 new ReplicaStateMachine(coordinatorContext, coordinatorRequestBatch);
         TableBucketStateMachine tableBucketStateMachine =

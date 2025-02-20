@@ -18,7 +18,6 @@ package com.alibaba.fluss.server.metadata;
 
 import com.alibaba.fluss.cluster.BucketLocation;
 import com.alibaba.fluss.cluster.ServerNode;
-import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
@@ -30,7 +29,6 @@ import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -154,30 +152,5 @@ public class ClusterMetadataInfo {
             bucketMetadata.add(tableBucketMetadata);
         }
         return bucketMetadata;
-    }
-
-    public static ClusterMetadataInfo fromUpdateMetadataRequest(UpdateMetadataRequest request) {
-        Optional<ServerNode> coordinatorServer = Optional.empty();
-        if (request.hasCoordinatorServer()) {
-            PbServerNode pbCoordinatorServer = request.getCoordinatorServer();
-            coordinatorServer =
-                    Optional.of(
-                            new ServerNode(
-                                    pbCoordinatorServer.getNodeId(),
-                                    pbCoordinatorServer.getHost(),
-                                    pbCoordinatorServer.getPort(),
-                                    ServerType.COORDINATOR));
-        }
-
-        Set<ServerNode> aliveTabletServers = new HashSet<>();
-        for (PbServerNode tabletServer : request.getTabletServersList()) {
-            aliveTabletServers.add(
-                    new ServerNode(
-                            tabletServer.getNodeId(),
-                            tabletServer.getHost(),
-                            tabletServer.getPort(),
-                            ServerType.TABLET_SERVER));
-        }
-        return new ClusterMetadataInfo(coordinatorServer, aliveTabletServers);
     }
 }

@@ -100,13 +100,13 @@ public class LogFetcherTest extends ClientToServerITCaseBase {
         // collect fetch will be empty while no available fetch.
         assertThat(logFetcher.collectFetch()).isEmpty();
 
-        // send fetcher to fetch data.
-        logFetcher.sendFetches();
         // The fetcher is async to fetch data, so we need to wait the result write to the
         // logFetchBuffer.
         retry(
                 Duration.ofMinutes(1),
                 () -> {
+                    // send fetcher to fetch data.
+                    logFetcher.sendFetches();
                     assertThat(logFetcher.hasAvailableFetches()).isTrue();
                     assertThat(logFetcher.getCompletedFetchesSize()).isEqualTo(2);
                 });

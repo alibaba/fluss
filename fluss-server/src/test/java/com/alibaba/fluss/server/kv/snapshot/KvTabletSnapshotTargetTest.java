@@ -57,6 +57,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -382,7 +383,7 @@ class KvTabletSnapshotTargetTest {
     private static final class TestRocksIncrementalSnapshot extends RocksIncrementalSnapshot {
 
         private final Set<Long> abortedSnapshots = new HashSet<>();
-        private final Set<Long> completedSnapshots = new HashSet<>();
+        private final Set<Long> completedSnapshots = new CopyOnWriteArraySet<>();
         private final SnapshotFailType snapshotFailType;
 
         public TestRocksIncrementalSnapshot(

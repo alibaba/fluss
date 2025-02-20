@@ -464,24 +464,32 @@ class TableManagerITCase {
 
         // retry to check metadata.
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
-        MetadataResponse metadataResponse =
-                gateway.metadata(newMetadataRequest(Collections.singletonList(tablePath))).get();
-        // should be no tablet server as we only create tablet service.
-        assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
 
-        assertThat(metadataResponse.getTableMetadatasCount()).isEqualTo(1);
-        PbTableMetadata tableMetadata = metadataResponse.getTableMetadataAt(0);
-        assertThat(toTablePath(tableMetadata.getTablePath())).isEqualTo(tablePath);
-        assertThat(TableDescriptor.fromJsonBytes(tableMetadata.getTableJson()))
-                .isEqualTo(tableDescriptor.withReplicationFactor(1));
+        retry(
+                Duration.ofMinutes(1),
+                () -> {
+                    MetadataResponse metadataResponse =
+                            gateway.metadata(
+                                            newMetadataRequest(
+                                                    Collections.singletonList(tablePath)))
+                                    .get();
+                    // should be no tablet server as we only create tablet service.
+                    assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
 
-        // now, check the table buckets metadata
-        assertThat(tableMetadata.getBucketMetadatasCount()).isEqualTo(expectBucketCount);
+                    assertThat(metadataResponse.getTableMetadatasCount()).isEqualTo(1);
+                    PbTableMetadata tableMetadata = metadataResponse.getTableMetadataAt(0);
+                    assertThat(toTablePath(tableMetadata.getTablePath())).isEqualTo(tablePath);
+                    assertThat(TableDescriptor.fromJsonBytes(tableMetadata.getTableJson()))
+                            .isEqualTo(tableDescriptor.withReplicationFactor(1));
+
+                    // now, check the table buckets metadata
+                    assertThat(tableMetadata.getBucketMetadatasCount())
+                            .isEqualTo(expectBucketCount);
+                    checkBucketMetadata(expectBucketCount, tableMetadata.getBucketMetadatasList());
+                });
 
         List<ServerNode> tabletServerNodes = FLUSS_CLUSTER_EXTENSION.getTabletServerNodes();
         ServerNode coordinatorServerNode = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode();
-
-        checkBucketMetadata(expectBucketCount, tableMetadata.getBucketMetadatasList());
 
         // now, assuming we send update metadata request to the server,
         // we should get the same response
@@ -491,7 +499,7 @@ class TableManagerITCase {
                                 new HashSet<>(tabletServerNodes)))
                 .get();
 
-        metadataResponse =
+        MetadataResponse metadataResponse =
                 gateway.metadata(newMetadataRequest(Collections.singletonList(tablePath))).get();
         // check coordinator server
         assertThat(toServerNode(metadataResponse.getCoordinatorServer(), ServerType.COORDINATOR))
@@ -543,19 +551,24 @@ class TableManagerITCase {
                     .setTableName(tb1)
                     .setPartitionName(partition);
         }
-        MetadataResponse metadataResponse = gateway.metadata(metadataRequest).get();
 
-        List<PbPartitionMetadata> partitionMetadata = metadataResponse.getPartitionMetadatasList();
-        assertThat(partitionMetadata.size()).isEqualTo(partitionById.size());
+        retry(
+                Duration.ofMinutes(1),
+                () -> {
+                    MetadataResponse metadataResponse = gateway.metadata(metadataRequest).get();
 
-        for (PbPartitionMetadata partition : partitionMetadata) {
-            assertThat(partition.getPartitionName()).isIn(partitionById.keySet());
-            assertThat(partition.getPartitionId())
-                    .isEqualTo(partitionById.get(partition.getPartitionName()));
-            assertThat(partition.getTableId()).isEqualTo(tableId);
-            checkBucketMetadata(expectBucketCount, partition.getBucketMetadatasList());
-        }
+                    List<PbPartitionMetadata> partitionMetadata =
+                            metadataResponse.getPartitionMetadatasList();
+                    assertThat(partitionMetadata.size()).isEqualTo(partitionById.size());
 
+                    for (PbPartitionMetadata partition : partitionMetadata) {
+                        assertThat(partition.getPartitionName()).isIn(partitionById.keySet());
+                        assertThat(partition.getPartitionId())
+                                .isEqualTo(partitionById.get(partition.getPartitionName()));
+                        assertThat(partition.getTableId()).isEqualTo(tableId);
+                        checkBucketMetadata(expectBucketCount, partition.getBucketMetadatasList());
+                    }
+                });
         assertThatThrownBy(
                         () -> {
                             MetadataRequest partitionMetadataRequest = new MetadataRequest();

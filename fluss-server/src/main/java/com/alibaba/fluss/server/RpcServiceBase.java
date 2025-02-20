@@ -92,7 +92,6 @@ import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
-import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.utils.Preconditions;
 
@@ -287,7 +286,7 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     @Override
     public CompletableFuture<UpdateMetadataResponse> updateMetadata(UpdateMetadataRequest request) {
         UpdateMetadataResponse updateMetadataResponse = new UpdateMetadataResponse();
-        metadataCache.updateMetadata(ClusterMetadataInfo.fromUpdateMetadataRequest(request));
+        metadataCache.updateMetadata(request);
         return CompletableFuture.completedFuture(updateMetadataResponse);
     }
 
@@ -596,16 +595,11 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
             }
 
             // now get the leader
-            Optional<LeaderAndIsr> optLeaderAndIsr = zkClient.getLeaderAndIsr(tableBucket);
-            ServerNode leader;
-            leader =
-                    optLeaderAndIsr
-                            .map(
-                                    leaderAndIsr ->
-                                            metadataCache
-                                                    .getAllAliveTabletServers()
-                                                    .get(leaderAndIsr.leader()))
-                            .orElse(null);
+            Integer leaderId = metadataCache.getLeader(tableBucket);
+            ServerNode leader = null;
+            if (leaderId != null) {
+                leader = metadataCache.getTabletServer(leaderId);
+            }
             bucketLocations.add(
                     new BucketLocation(physicalTablePath, tableBucket, leader, replicaNode));
         }

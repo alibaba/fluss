@@ -566,15 +566,14 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         CoordinatorGateway coordinatorGateway = FLUSS_CLUSTER_EXTENSION.newCoordinatorClient();
         retry(
                 Duration.ofMinutes(2),
-                () -> {
-                    assertThat(
-                                    coordinatorGateway
-                                            .metadata(new MetadataRequest())
-                                            .get()
-                                            .getTabletServersCount())
-                            .as("Tablet server number should be " + tabletServerNumber)
-                            .isEqualTo(tabletServerNumber);
-                });
+                () ->
+                        assertThat(
+                                        coordinatorGateway
+                                                .metadata(new MetadataRequest())
+                                                .get()
+                                                .getTabletServersCount())
+                                .as("Tablet server number should be " + tabletServerNumber)
+                                .isEqualTo(tabletServerNumber));
     }
 
     private void assertNoBucketSnapshot(KvSnapshots snapshots, int expectBucketNum) {

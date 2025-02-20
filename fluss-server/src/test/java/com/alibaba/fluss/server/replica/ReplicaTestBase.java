@@ -29,6 +29,7 @@ import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.rpc.RpcClient;
+import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.server.coordinator.TestCoordinatorGateway;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
@@ -44,7 +45,6 @@ import com.alibaba.fluss.server.log.LogTablet;
 import com.alibaba.fluss.server.log.checkpoint.OffsetCheckpointFile;
 import com.alibaba.fluss.server.log.remote.RemoteLogManager;
 import com.alibaba.fluss.server.log.remote.TestingRemoteLogStorage;
-import com.alibaba.fluss.server.metadata.ClusterMetadataInfo;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.metadata.ServerMetadataCacheImpl;
 import com.alibaba.fluss.server.metrics.group.BucketMetricGroup;
@@ -104,6 +104,7 @@ import static com.alibaba.fluss.record.TestData.DATA2_TABLE_ID;
 import static com.alibaba.fluss.record.TestData.DATA2_TABLE_PATH;
 import static com.alibaba.fluss.server.coordinator.CoordinatorContext.INITIAL_COORDINATOR_EPOCH;
 import static com.alibaba.fluss.server.replica.ReplicaManager.HIGH_WATERMARK_CHECKPOINT_FILE_NAME;
+import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeUpdateMetadataRequest;
 import static com.alibaba.fluss.server.zk.data.LeaderAndIsr.INITIAL_BUCKET_EPOCH;
 import static com.alibaba.fluss.server.zk.data.LeaderAndIsr.INITIAL_LEADER_EPOCH;
 import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsWithWriterId;
@@ -199,8 +200,8 @@ public class ReplicaTestBase {
     }
 
     private void initMetadataCache(ServerMetadataCache metadataCache) {
-        metadataCache.updateMetadata(
-                new ClusterMetadataInfo(
+        UpdateMetadataRequest updateMetadataRequest =
+                makeUpdateMetadataRequest(
                         Optional.of(new ServerNode(-1, "localhost", 1234, ServerType.COORDINATOR)),
                         new HashSet<>(
                                 Arrays.asList(
@@ -212,7 +213,8 @@ public class ReplicaTestBase {
                                         new ServerNode(
                                                 2, "localhost", 91, ServerType.TABLET_SERVER),
                                         new ServerNode(
-                                                3, "localhost", 92, ServerType.TABLET_SERVER)))));
+                                                3, "localhost", 92, ServerType.TABLET_SERVER))));
+        metadataCache.updateMetadata(updateMetadataRequest);
     }
 
     private void registerTableInZkClient() throws Exception {

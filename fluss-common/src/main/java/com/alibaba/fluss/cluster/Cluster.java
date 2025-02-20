@@ -194,11 +194,6 @@ public final class Cluster {
         return Optional.ofNullable(availableLocationByBucket.get(tableBucket));
     }
 
-    /** Get alive tablet server by id. */
-    public Optional<ServerNode> getAliveTabletServerById(int serverId) {
-        return Optional.ofNullable(aliveTabletServersById.get(serverId));
-    }
-
     /** Get the tablet server by id. */
     @Nullable
     public ServerNode getTabletServer(int id) {

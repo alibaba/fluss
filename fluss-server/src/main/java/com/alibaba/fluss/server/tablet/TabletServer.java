@@ -375,6 +375,11 @@ public class TabletServer extends ServerBase {
         return replicaManager;
     }
 
+    @VisibleForTesting
+    public ServerMetadataCache getServerMetadataCache() {
+        return metadataCache;
+    }
+
     private static void validateConfigs(Configuration conf) {
         Optional<Integer> serverId = conf.getOptional(ConfigOptions.TABLET_SERVER_ID);
         if (!serverId.isPresent()) {

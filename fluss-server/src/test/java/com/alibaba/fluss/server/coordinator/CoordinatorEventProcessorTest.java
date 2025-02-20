@@ -77,6 +77,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.server.coordinator.CoordinatorTestUtils.checkLeaderAndIsr;
+import static com.alibaba.fluss.server.coordinator.CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess;
 import static com.alibaba.fluss.server.coordinator.CoordinatorTestUtils.verifyBucketForPartitionInState;
 import static com.alibaba.fluss.server.coordinator.CoordinatorTestUtils.verifyBucketForTableInState;
 import static com.alibaba.fluss.server.coordinator.CoordinatorTestUtils.verifyReplicaForPartitionInState;
@@ -166,7 +168,7 @@ class CoordinatorEventProcessorTest {
     void testCreateAndDropTable() throws Exception {
         CoordinatorContext coordinatorContext = eventProcessor.getCoordinatorContext();
         // make sure all request to gateway should be successful
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 eventProcessor.getCoordinatorContext(), testCoordinatorChannelManager);
         // create a table,
         TablePath t1 = TablePath.of(defaultDatabase, "create_drop_t1");
@@ -208,20 +210,14 @@ class CoordinatorEventProcessorTest {
                         completedSnapshotStoreManager,
                         autoPartitionManager,
                         TestingMetricGroups.COORDINATOR_METRICS);
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 testCoordinatorChannelManager,
                 Arrays.stream(zookeeperClient.getSortedTabletServerList())
                         .boxed()
                         .collect(Collectors.toSet()));
         eventProcessor.startup();
         // make sure the table can still be deleted successfully
-        retry(
-                Duration.ofMinutes(1),
-                () -> assertThat(zookeeperClient.getTableAssignment(t2Id)).isEmpty());
-
-        // no replica and bucket for t2 should exist in the context
-        assertThat(coordinatorContext.getAllBucketsForTable(t2Id)).isEmpty();
-        assertThat(coordinatorContext.getAllReplicasForTable(t2Id)).isEmpty();
+        verifyTableDropped(coordinatorContext, t2Id);
     }
 
     @Test
@@ -254,18 +250,14 @@ class CoordinatorEventProcessorTest {
         // drop the table;
         metadataManager.dropTable(t1, false);
 
-        // retry until the assignment has been deleted from zk, then it means
-        // the table has been deleted successfully
-        retry(
-                Duration.ofMinutes(1),
-                () -> assertThat(zookeeperClient.getTableAssignment(t1Id)).isEmpty());
+        verifyTableDropped(coordinatorContext, t1Id);
     }
 
     @Test
     void testServerBecomeOnlineAndOfflineLine() throws Exception {
         CoordinatorContext coordinatorContext = eventProcessor.getCoordinatorContext();
         // make sure all request to gateway should be successful
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 eventProcessor.getCoordinatorContext(), testCoordinatorChannelManager);
         // assume a new server become online;
         // check the server has been added into coordinator context
@@ -285,7 +277,7 @@ class CoordinatorEventProcessorTest {
                         assertThat(coordinatorContext.getLiveTabletServers())
                                 .containsKey(newlyServerId));
 
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 eventProcessor.getCoordinatorContext(), testCoordinatorChannelManager);
         verifyTabletServer(coordinatorContext, newlyServerId, tabletServerRegistration);
 
@@ -355,7 +347,7 @@ class CoordinatorEventProcessorTest {
         // should change the leader for bucket2 of t1 should change since the leader fail
         assertThat(coordinatorContext.getBucketState(t1Bucket1)).isEqualTo(OnlineBucket);
         // leader should change to replica2, leader epoch should be 1
-        CoordinatorTestUtils.checkLeaderAndIsr(zookeeperClient, t1Bucket1, 1, 2);
+        checkLeaderAndIsr(zookeeperClient, t1Bucket1, 1, 2);
 
         // the bucket with no any other available servers should be still offline,
         // t2 bucket0 should still be offline
@@ -402,7 +394,7 @@ class CoordinatorEventProcessorTest {
 
         // in this test case, so make requests to gateway should always be
         // successful for when start up, it will send request to tablet servers
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 testCoordinatorChannelManager,
                 Arrays.stream(zookeeperClient.getSortedTabletServerList())
                         .boxed()
@@ -435,7 +427,7 @@ class CoordinatorEventProcessorTest {
         long table1Id = metadataManager.createTable(tablePath, TEST_TABLE, tableAssignment, false);
 
         // let's restart
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 eventProcessor.getCoordinatorContext(), testCoordinatorChannelManager);
         eventProcessor.shutdown();
         eventProcessor =
@@ -470,7 +462,7 @@ class CoordinatorEventProcessorTest {
                 });
 
         // check the changed leader and isr info
-        CoordinatorTestUtils.checkLeaderAndIsr(zookeeperClient, t1Bucket0, 1, 1);
+        checkLeaderAndIsr(zookeeperClient, t1Bucket0, 1, 1);
         retry(
                 Duration.ofMinutes(1),
                 () -> {
@@ -563,7 +555,7 @@ class CoordinatorEventProcessorTest {
     void testCreateAndDropPartition() throws Exception {
         CoordinatorContext coordinatorContext = eventProcessor.getCoordinatorContext();
         // make sure all request to gateway should be successful
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 eventProcessor.getCoordinatorContext(), testCoordinatorChannelManager);
         // create a partitioned table
         TablePath tablePath = TablePath.of(defaultDatabase, "partition_table");
@@ -591,14 +583,19 @@ class CoordinatorEventProcessorTest {
         zookeeperClient.registerPartitionAssignment(partition1Id, partitionAssignment);
         zookeeperClient.registerPartitionAssignment(partition2Id, partitionAssignment);
 
+        // process crete partition event, put into event manager to mock
+        // how coordinator works
+        CoordinatorEventManager coordinatorEventManager =
+                eventProcessor.getCoordinatorEventManager();
         CoordinatorEvent createPartitionEvent =
                 new CreatePartitionEvent(
                         tablePath, tableId, partition1Id, partition1Name, partitionAssignment);
-        eventProcessor.process(createPartitionEvent);
+        coordinatorEventManager.put(createPartitionEvent);
         createPartitionEvent =
                 new CreatePartitionEvent(
                         tablePath, tableId, partition2Id, partition2Name, partitionAssignment);
-        eventProcessor.process(createPartitionEvent);
+        coordinatorEventManager.put(createPartitionEvent);
+
         verifyPartitionCreated(
                 coordinatorContext,
                 new TablePartition(tableId, partition1Id),
@@ -614,7 +611,7 @@ class CoordinatorEventProcessorTest {
 
         // drop the partition
         DropPartitionEvent dropPartitionEvent = new DropPartitionEvent(tableId, partition1Id);
-        eventProcessor.process(dropPartitionEvent);
+        coordinatorEventManager.put(dropPartitionEvent);
 
         verifyPartitionDropped(coordinatorContext, tableId, partition1Id);
 
@@ -632,7 +629,7 @@ class CoordinatorEventProcessorTest {
                         completedSnapshotStoreManager,
                         autoPartitionManager,
                         TestingMetricGroups.COORDINATOR_METRICS);
-        CoordinatorTestUtils.makeSendLeaderAndStopRequestAlwaysSuccess(
+        makeSendLeaderAndStopRequestAlwaysSuccess(
                 testCoordinatorChannelManager,
                 Arrays.stream(zookeeperClient.getSortedTabletServerList())
                         .boxed()
@@ -679,14 +676,13 @@ class CoordinatorEventProcessorTest {
                                 nBuckets * replicationFactor,
                                 ReplicaState.OnlineReplica));
         for (TableBucket tableBucket : coordinatorContext.getAllBucketsForTable(tableId)) {
-            CoordinatorTestUtils.checkLeaderAndIsr(
-                    zookeeperClient,
-                    tableBucket,
-                    0,
+            int leader =
                     tableAssignment
                             .getBucketAssignment(tableBucket.getBucket())
                             .getReplicas()
-                            .get(0));
+                            .get(0);
+            checkLeaderAndIsr(zookeeperClient, tableBucket, 0, leader);
+            assertThat(serverMetadataCache.getLeader(tableBucket)).isEqualTo(leader);
         }
     }
 
@@ -732,14 +728,13 @@ class CoordinatorEventProcessorTest {
         for (TableBucket tableBucket :
                 coordinatorContext.getAllBucketsForPartition(
                         tablePartition.getTableId(), tablePartition.getPartitionId())) {
-            CoordinatorTestUtils.checkLeaderAndIsr(
-                    zookeeperClient,
-                    tableBucket,
-                    0,
+            int leader =
                     tableAssignment
                             .getBucketAssignment(tableBucket.getBucket())
                             .getReplicas()
-                            .get(0));
+                            .get(0);
+            checkLeaderAndIsr(zookeeperClient, tableBucket, 0, leader);
+            assertThat(serverMetadataCache.getLeader(tableBucket)).isEqualTo(leader);
         }
     }
 
@@ -851,6 +846,8 @@ class CoordinatorEventProcessorTest {
                 .partitionedBy("b")
                 .property(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED.key(), "true")
                 .property(ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT.key(), "DAY")
+                // not to auto create partitions
+                .property(ConfigOptions.TABLE_AUTO_PARTITION_NUM_PRECREATE, 0)
                 .build()
                 .withReplicationFactor(REPLICATION_FACTOR);
     }
