@@ -30,7 +30,7 @@ import com.alibaba.fluss.record.LogRecordReadContext;
 import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.record.RowKind;
-import com.alibaba.fluss.row.encode.KeyEncoder;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.row.encode.ValueEncoder;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
 import com.alibaba.fluss.rpc.entity.LimitScanResultForBucket;
@@ -643,8 +643,8 @@ class ReplicaManagerTest extends ReplicaTestBase {
 
         // first lookup key without in table, key = 1.
         Object[] key1 = DATA_1_WITH_KEY_AND_VALUE.get(0).f0;
-        KeyEncoder keyEncoder = new KeyEncoder(DATA1_ROW_TYPE, new int[] {0});
-        byte[] key1Bytes = keyEncoder.encode(row(key1));
+        CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(DATA1_ROW_TYPE, new int[] {0});
+        byte[] key1Bytes = keyEncoder.encodeKey(row(key1));
         verifyLookup(tb, key1Bytes, null);
 
         // send one batch kv.
@@ -665,7 +665,7 @@ class ReplicaManagerTest extends ReplicaTestBase {
 
         // key = 3 is deleted, need return null.
         Object[] key3 = DATA_1_WITH_KEY_AND_VALUE.get(2).f0;
-        byte[] key3Bytes = keyEncoder.encode(row(key3));
+        byte[] key3Bytes = keyEncoder.encodeKey(row(key3));
         verifyLookup(tb, key3Bytes, null);
 
         // Lookup from none pk table.
@@ -700,6 +700,7 @@ class ReplicaManagerTest extends ReplicaTestBase {
                         new DataField("a", DataTypes.INT()),
                         new DataField("b", DataTypes.STRING()),
                         new DataField("c", DataTypes.BIGINT()));
+
         long tableId =
                 registerTableInZkClient(
                         tablePath,
@@ -727,8 +728,8 @@ class ReplicaManagerTest extends ReplicaTestBase {
         assertThat(future.get()).containsOnly(new PutKvResultForBucket(tb, 4));
         // second prefix lookup in table, prefix key = (1, "a").
         Object[] prefixKey1 = new Object[] {1, "a"};
-        KeyEncoder keyEncoder = new KeyEncoder(rowType, new int[] {0, 1});
-        byte[] prefixKey1Bytes = keyEncoder.encode(row(prefixKey1));
+        CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(rowType, new int[] {0, 1});
+        byte[] prefixKey1Bytes = keyEncoder.encodeKey(row(prefixKey1));
         List<byte[]> key1ExpectedValues =
                 Arrays.asList(
                         ValueEncoder.encodeValue(
@@ -747,7 +748,7 @@ class ReplicaManagerTest extends ReplicaTestBase {
 
         // third prefix lookup in table for multi prefix keys, prefix key = (1, "a") and (2, "a").
         Object[] prefixKey2 = new Object[] {2, "a"};
-        byte[] prefixKey2Bytes = keyEncoder.encode(row(prefixKey2));
+        byte[] prefixKey2Bytes = keyEncoder.encodeKey(row(prefixKey2));
         List<byte[]> key2ExpectedValues =
                 Collections.singletonList(
                         ValueEncoder.encodeValue(

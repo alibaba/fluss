@@ -16,8 +16,10 @@
 
 package com.alibaba.fluss.server.coordinator;
 
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.server.coordinator.statemachine.BucketState;
@@ -41,6 +43,7 @@ public class TableManager {
     private static final Logger LOG = LoggerFactory.getLogger(TableManager.class);
 
     private final MetadataManager metadataManager;
+    private final RemoteStorageCleaner remoteStorageCleaner;
     private final CoordinatorContext coordinatorContext;
     private final ReplicaStateMachine replicaStateMachine;
     private final TableBucketStateMachine tableBucketStateMachine;
@@ -49,8 +52,10 @@ public class TableManager {
             MetadataManager metadataManager,
             CoordinatorContext coordinatorContext,
             ReplicaStateMachine replicaStateMachine,
-            TableBucketStateMachine tableBucketStateMachine) {
+            TableBucketStateMachine tableBucketStateMachine,
+            RemoteStorageCleaner remoteStorageCleaner) {
         this.metadataManager = metadataManager;
+        this.remoteStorageCleaner = remoteStorageCleaner;
         this.coordinatorContext = coordinatorContext;
         this.replicaStateMachine = replicaStateMachine;
         this.tableBucketStateMachine = tableBucketStateMachine;
@@ -242,6 +247,7 @@ public class TableManager {
     private void completeDeleteTable(long tableId) {
         Set<TableBucketReplica> replicas = coordinatorContext.getAllReplicasForTable(tableId);
         replicaStateMachine.handleStateChanges(replicas, ReplicaState.NonExistentReplica);
+        deleteRemoteDirectory(tableId);
         try {
             metadataManager.completeDeleteTable(tableId);
         } catch (Exception e) {
@@ -255,12 +261,39 @@ public class TableManager {
                 coordinatorContext.getAllReplicasForPartition(
                         tablePartition.getTableId(), tablePartition.getPartitionId());
         replicaStateMachine.handleStateChanges(replicas, ReplicaState.NonExistentReplica);
+        deleteRemoteDirectory(tablePartition);
         try {
             metadataManager.completeDeletePartition(tablePartition.getPartitionId());
         } catch (Exception e) {
             LOG.error("Fail to complete partition {} deletion.", tablePartition, e);
         }
         coordinatorContext.removePartition(tablePartition);
+    }
+
+    private void deleteRemoteDirectory(long tableId) {
+        // delete table remote dir, when restore the coordinator, the table info will be null
+        // we can't delete the remote dir since we don't know tablePath now
+        TableInfo tableInfo = coordinatorContext.getTableInfoById(tableId);
+        if (tableInfo != null) {
+            remoteStorageCleaner.deleteTableRemoteDir(
+                    tableInfo.getTablePath(), tableInfo.hasPrimaryKey(), tableId);
+        }
+    }
+
+    private void deleteRemoteDirectory(TablePartition tablePartition) {
+        // delete partition remote dir, when restore the coordinator, the table info will be null
+        // we can't delete the remote dir since we don't tablePath and partition name now
+        TableInfo tableInfo = coordinatorContext.getTableInfoById(tablePartition.getTableId());
+        if (tableInfo != null) {
+            String partitionName =
+                    coordinatorContext.getPartitionName(tablePartition.getPartitionId());
+            if (partitionName != null) {
+                remoteStorageCleaner.deletePartitionRemoteDir(
+                        PhysicalTablePath.of(tableInfo.getTablePath(), partitionName),
+                        tableInfo.hasPrimaryKey(),
+                        tablePartition);
+            }
+        }
     }
 
     private boolean isEligibleForDeletion(long tableId) {

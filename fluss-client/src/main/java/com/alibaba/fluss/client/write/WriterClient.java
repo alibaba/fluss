@@ -17,7 +17,7 @@
 package com.alibaba.fluss.client.write;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.client.lakehouse.LakeTableBucketAssigner;
+import com.alibaba.fluss.bucketing.BucketingFunction;
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.metrics.WriterMetricGroup;
 import com.alibaba.fluss.client.write.RecordAccumulator.RecordAppendResult;
@@ -156,8 +156,8 @@ public class WriterClient {
                             k -> createBucketAssigner(physicalTablePath, conf, cluster));
 
             // Append the record to the accumulator.
-            int bucketId =
-                    bucketAssigner.assignBucket(record.getBucketKey(), record.getRow(), cluster);
+            int bucketId = bucketAssigner.assignBucket(record.getBucketKey(), cluster);
+
             RecordAppendResult result =
                     accumulator.append(
                             record, callback, cluster, bucketId, bucketAssigner.abortIfBatchFull());
@@ -165,9 +165,7 @@ public class WriterClient {
             if (result.abortRecordForNewBatch) {
                 int prevBucketId = bucketId;
                 bucketAssigner.onNewBatch(cluster, prevBucketId);
-                bucketId =
-                        bucketAssigner.assignBucket(
-                                record.getBucketKey(), record.getRow(), cluster);
+                bucketId = bucketAssigner.assignBucket(record.getBucketKey(), cluster);
                 LOG.trace(
                         "Retrying append due to new batch creation for table {} bucket {}, the old bucket was {}.",
                         physicalTablePath,
@@ -305,13 +303,10 @@ public class WriterClient {
         int bucketNumber = tableInfo.getNumBuckets();
         List<String> bucketKeys = tableInfo.getBucketKeys();
         if (!bucketKeys.isEmpty()) {
-            if (tableInfo.getTableConfig().isDataLakeEnabled()) {
-                // if lake is enabled, use lake table bucket assigner
-                return new LakeTableBucketAssigner(
-                        tableInfo.getRowType(), bucketKeys, bucketNumber);
-            } else {
-                return new HashBucketAssigner(bucketNumber);
-            }
+            BucketingFunction function =
+                    BucketingFunction.of(
+                            tableInfo.getTableConfig().getDataLakeFormat().orElse(null));
+            return new HashBucketAssigner(bucketNumber, function);
         } else {
             ConfigOptions.NoKeyAssigner noKeyAssigner =
                     conf.get(ConfigOptions.CLIENT_WRITER_BUCKET_NO_KEY_ASSIGNER);

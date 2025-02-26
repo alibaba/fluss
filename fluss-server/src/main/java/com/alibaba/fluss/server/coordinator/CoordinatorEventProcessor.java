@@ -19,6 +19,8 @@ package com.alibaba.fluss.server.coordinator;
 import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
+import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FencedLeaderEpochException;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.InvalidCoordinatorException;
@@ -77,6 +79,8 @@ import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.server.zk.data.TabletServerRegistration;
 import com.alibaba.fluss.server.zk.data.ZkData.PartitionIdsZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.TableIdsZNode;
+import com.alibaba.fluss.utils.ExecutorUtils;
+import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 import com.alibaba.fluss.utils.types.Tuple2;
 
 import org.slf4j.Logger;
@@ -94,6 +98,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.OfflineBucket;
@@ -102,6 +109,7 @@ import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.Off
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OnlineReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.ReplicaDeletionStarted;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.ReplicaDeletionSuccessful;
+import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 import static com.alibaba.fluss.utils.concurrent.FutureUtils.completeFromCallable;
 
 /** An implementation for {@link EventProcessor}. */
@@ -126,6 +134,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
     private final CoordinatorMetricGroup coordinatorMetricGroup;
 
     private final CompletedSnapshotStoreManager completedSnapshotStoreManager;
+    private final ExecutorService ioExecutor;
 
     // in normal case, it won't be null, but from I can see, it'll only be null in unit test
     // since the we won't register a coordinator node in zk.
@@ -142,17 +151,17 @@ public class CoordinatorEventProcessor implements EventProcessor {
             ZooKeeperClient zooKeeperClient,
             ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
-            CompletedSnapshotStoreManager completedSnapshotStoreManager,
             AutoPartitionManager autoPartitionManager,
-            CoordinatorMetricGroup coordinatorMetricGroup) {
+            CoordinatorMetricGroup coordinatorMetricGroup,
+            Configuration conf) {
         this(
                 zooKeeperClient,
                 serverMetadataCache,
                 coordinatorChannelManager,
                 new CoordinatorContext(),
-                completedSnapshotStoreManager,
                 autoPartitionManager,
-                coordinatorMetricGroup);
+                coordinatorMetricGroup,
+                conf);
     }
 
     public CoordinatorEventProcessor(
@@ -160,9 +169,9 @@ public class CoordinatorEventProcessor implements EventProcessor {
             ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
             CoordinatorContext coordinatorContext,
-            CompletedSnapshotStoreManager completedSnapshotStoreManager,
             AutoPartitionManager autoPartitionManager,
-            CoordinatorMetricGroup coordinatorMetricGroup) {
+            CoordinatorMetricGroup coordinatorMetricGroup,
+            Configuration conf) {
         this.zooKeeperClient = zooKeeperClient;
         this.serverMetadataCache = serverMetadataCache;
         this.coordinatorChannelManager = coordinatorChannelManager;
@@ -180,18 +189,29 @@ public class CoordinatorEventProcessor implements EventProcessor {
                                 coordinatorChannelManager, coordinatorEventManager),
                         zooKeeperClient);
         this.metadataManager = new MetadataManager(zooKeeperClient);
+
+        int ioExecutorPoolSize = conf.get(ConfigOptions.COORDINATOR_IO_POOL_SIZE);
+        checkArgument(ioExecutorPoolSize > 0, "ioExecutorPoolSize must be positive");
+        this.ioExecutor =
+                Executors.newFixedThreadPool(
+                        ioExecutorPoolSize, new ExecutorThreadFactory("coordinator-io"));
         this.tableManager =
                 new TableManager(
                         metadataManager,
                         coordinatorContext,
                         replicaStateMachine,
-                        tableBucketStateMachine);
+                        tableBucketStateMachine,
+                        new RemoteStorageCleaner(conf, ioExecutor));
         this.tableChangeWatcher = new TableChangeWatcher(zooKeeperClient, coordinatorEventManager);
         this.tabletServerChangeWatcher =
                 new TabletServerChangeWatcher(zooKeeperClient, coordinatorEventManager);
         this.coordinatorRequestBatch =
                 new CoordinatorRequestBatch(coordinatorChannelManager, coordinatorEventManager);
-        this.completedSnapshotStoreManager = completedSnapshotStoreManager;
+        this.completedSnapshotStoreManager =
+                new CompletedSnapshotStoreManager(
+                        conf.getInt(ConfigOptions.KV_MAX_RETAINED_SNAPSHOTS),
+                        ioExecutor,
+                        zooKeeperClient);
         this.autoPartitionManager = autoPartitionManager;
         this.coordinatorMetricGroup = coordinatorMetricGroup;
         registerMetric();
@@ -224,7 +244,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
         // We need to send UpdateMetadataRequest after the coordinator context is initialized and
         // before the state machines in tableManager
-        // are started. The is because tablet servers need to receive the list of live tablet
+        // are started. This is because tablet servers need to receive the list of live tablet
         // servers from UpdateMetadataRequest before
         // they can process the LeaderRequests that are generated by
         // replicaStateMachine.startup() and
@@ -414,6 +434,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
         // then stop watchers
         tableChangeWatcher.stop();
         tabletServerChangeWatcher.stop();
+        // shutdown io executor
+        ExecutorUtils.gracefulShutdown(5, TimeUnit.SECONDS, ioExecutor);
     }
 
     @Override
@@ -499,6 +521,15 @@ public class CoordinatorEventProcessor implements EventProcessor {
     }
 
     private void processDropTable(DropTableEvent dropTableEvent) {
+        // If this is a primary key table, drop the kv snapshot store.
+        TableInfo dropTableInfo = coordinatorContext.getTableInfoById(dropTableEvent.getTableId());
+        if (dropTableInfo.hasPrimaryKey()) {
+            Set<TableBucket> deleteTableBuckets =
+                    coordinatorContext.getAllBucketsForTable(dropTableEvent.getTableId());
+            completedSnapshotStoreManager.removeCompletedSnapshotStoreByTableBuckets(
+                    deleteTableBuckets);
+        }
+
         coordinatorContext.queueTableDeletion(Collections.singleton(dropTableEvent.getTableId()));
         tableManager.onDeleteTable(dropTableEvent.getTableId());
         if (dropTableEvent.isAutoPartitionTable()) {
@@ -510,6 +541,18 @@ public class CoordinatorEventProcessor implements EventProcessor {
         TablePartition tablePartition =
                 new TablePartition(
                         dropPartitionEvent.getTableId(), dropPartitionEvent.getPartitionId());
+
+        // If this is a primary key table partition, drop the kv snapshot store.
+        TableInfo dropTableInfo =
+                coordinatorContext.getTableInfoById(dropPartitionEvent.getTableId());
+        if (dropTableInfo.hasPrimaryKey()) {
+            Set<TableBucket> deleteTableBuckets =
+                    coordinatorContext.getAllBucketsForPartition(
+                            dropPartitionEvent.getTableId(), dropPartitionEvent.getPartitionId());
+            completedSnapshotStoreManager.removeCompletedSnapshotStoreByTableBuckets(
+                    deleteTableBuckets);
+        }
+
         coordinatorContext.queuePartitionDeletion(Collections.singleton(tablePartition));
         tableManager.onDeletePartition(
                 dropPartitionEvent.getTableId(), dropPartitionEvent.getPartitionId());
@@ -983,5 +1026,10 @@ public class CoordinatorEventProcessor implements EventProcessor {
         coordinatorRequestBatch.addUpdateMetadataRequestForTabletServers(
                 serverIds, coordinatorServer, aliveTabletServers);
         coordinatorRequestBatch.sendUpdateMetadataRequest();
+    }
+
+    @VisibleForTesting
+    CompletedSnapshotStoreManager completedSnapshotStoreManager() {
+        return completedSnapshotStoreManager;
     }
 }

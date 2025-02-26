@@ -23,11 +23,11 @@ Lakehouse Storage disabled by default, you must enable it manually.
 First, you must configure the lakehouse storage in `server.yaml`. Take Paimon
 as an example, you must configure the following configurations:
 ```yaml
-lakehouse.storage: paimon
+datalake.format: paimon
 
 # the catalog config about Paimon, assuming using Filesystem catalog
-paimon.catalog.type: filesystem
-paimon.catalog.warehouse: /tmp/paimon_data_warehouse
+datalake.paimon.metastore: filesystem
+datalake.paimon.warehouse: /tmp/paimon_data_warehouse
 ```
 
 ### Start The Datalake Tiering Service

@@ -73,7 +73,8 @@ public class FlinkPaimonTestBase {
         conf.set(ConfigOptions.KV_SNAPSHOT_INTERVAL, Duration.ofSeconds(1))
                 // not to clean snapshots for test purpose
                 .set(ConfigOptions.KV_MAX_RETAINED_SNAPSHOTS, Integer.MAX_VALUE);
-        conf.set(ConfigOptions.LAKEHOUSE_STORAGE, "paimon");
+        conf.setString("datalake.format", "paimon");
+        conf.setString("datalake.paimon.metastore", "filesystem");
         try {
             warehousePath =
                     Files.createTempDirectory("fluss-testing-datalake-tiered")
@@ -82,10 +83,7 @@ public class FlinkPaimonTestBase {
         } catch (Exception e) {
             throw new FlussRuntimeException("Failed to create warehouse path");
         }
-        Map<String, String> paimonConf = getPaimonCatalogConf();
-        for (Map.Entry<String, String> entry : paimonConf.entrySet()) {
-            conf.setString("paimon.catalog." + entry.getKey(), entry.getValue());
-        }
+        conf.setString("datalake.paimon.warehouse", warehousePath);
         return conf;
     }
 
@@ -103,7 +101,7 @@ public class FlinkPaimonTestBase {
 
     protected static Map<String, String> getPaimonCatalogConf() {
         Map<String, String> paimonConf = new HashMap<>();
-        paimonConf.put("type", "filesystem");
+        paimonConf.put("metastore", "filesystem");
         paimonConf.put("warehouse", warehousePath);
         return paimonConf;
     }

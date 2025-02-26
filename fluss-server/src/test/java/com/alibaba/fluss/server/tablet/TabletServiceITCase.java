@@ -24,7 +24,7 @@ import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.DefaultKvRecordBatch;
 import com.alibaba.fluss.record.DefaultValueRecordBatch;
-import com.alibaba.fluss.row.encode.KeyEncoder;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.row.encode.ValueEncoder;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
@@ -412,8 +412,8 @@ public class TabletServiceITCase {
 
         // first lookup without in table, key = 1.
         Object[] key1 = DATA_1_WITH_KEY_AND_VALUE.get(0).f0;
-        KeyEncoder keyEncoder = new KeyEncoder(DATA1_ROW_TYPE, new int[] {0});
-        byte[] key1Bytes = keyEncoder.encode(row(key1));
+        CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(DATA1_ROW_TYPE, new int[] {0});
+        byte[] key1Bytes = keyEncoder.encodeKey(row(key1));
         assertLookupResponse(
                 leaderGateWay.lookup(newLookupRequest(tableId, 0, key1Bytes)).get(), null);
 
@@ -434,7 +434,7 @@ public class TabletServiceITCase {
 
         // key = 3 is deleted, need return null.
         Object[] key3 = DATA_1_WITH_KEY_AND_VALUE.get(2).f0;
-        byte[] key3Bytes = keyEncoder.encode(row(key3));
+        byte[] key3Bytes = keyEncoder.encodeKey(row(key3));
         assertLookupResponse(
                 leaderGateWay.lookup(newLookupRequest(tableId, 0, key3Bytes)).get(), null);
 
@@ -501,8 +501,8 @@ public class TabletServiceITCase {
                 FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
         // first prefix lookup without in table, prefix key = (1, "a").
         Object[] prefixKey1 = new Object[] {1, "a"};
-        KeyEncoder keyEncoder = new KeyEncoder(rowType, new int[] {0, 1});
-        byte[] prefixKey1Bytes = keyEncoder.encode(row(prefixKey1));
+        CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(rowType, new int[] {0, 1});
+        byte[] prefixKey1Bytes = keyEncoder.encodeKey(row(prefixKey1));
         assertPrefixLookupResponse(
                 leaderGateWay
                         .prefixLookup(
@@ -550,7 +550,7 @@ public class TabletServiceITCase {
 
         // third prefix lookup in table for multi prefix keys, prefix key = (1, "a") and (2, "a").
         Object[] prefixKey2 = new Object[] {2, "a"};
-        byte[] prefixKey2Bytes = keyEncoder.encode(row(prefixKey2));
+        byte[] prefixKey2Bytes = keyEncoder.encodeKey(row(prefixKey2));
         List<byte[]> key2ExpectedValues =
                 Collections.singletonList(
                         ValueEncoder.encodeValue(

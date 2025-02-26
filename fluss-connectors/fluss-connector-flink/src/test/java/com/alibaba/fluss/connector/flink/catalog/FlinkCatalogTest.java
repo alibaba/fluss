@@ -124,6 +124,10 @@ class FlinkCatalogTest {
 
     @BeforeEach
     void beforeEach() throws Exception {
+        // First check if database exists, and drop it if it does
+        if (catalog.databaseExists(DEFAULT_DB)) {
+            catalog.dropDatabase(DEFAULT_DB, true, true);
+        }
         try {
             catalog.createDatabase(
                     DEFAULT_DB, new CatalogDatabaseImpl(Collections.emptyMap(), null), true);

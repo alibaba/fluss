@@ -34,6 +34,7 @@ import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.fs.FsPathAndFileName;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.KvFormat;
@@ -149,7 +150,10 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         TableInfo tableInfo = admin.getTableInfo(DEFAULT_TABLE_PATH).get();
         assertThat(tableInfo.getSchemaId()).isEqualTo(schemaInfo.getSchemaId());
         assertThat(tableInfo.toTableDescriptor())
-                .isEqualTo(DEFAULT_TABLE_DESCRIPTOR.withReplicationFactor(3));
+                .isEqualTo(
+                        DEFAULT_TABLE_DESCRIPTOR
+                                .withReplicationFactor(3)
+                                .withDataLakeFormat(DataLakeFormat.PAIMON));
         assertThat(schemaInfo2).isEqualTo(schemaInfo);
         assertThat(tableInfo.getCreatedTime()).isEqualTo(tableInfo.getModifiedTime());
         assertThat(tableInfo.getCreatedTime()).isLessThan(timestampAfterCreate);
@@ -171,7 +175,10 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         timestampAfterCreate = System.currentTimeMillis();
         assertThat(tableInfo.getSchemaId()).isEqualTo(schemaInfo.getSchemaId());
         assertThat(tableInfo.toTableDescriptor())
-                .isEqualTo(DEFAULT_TABLE_DESCRIPTOR.withReplicationFactor(3));
+                .isEqualTo(
+                        DEFAULT_TABLE_DESCRIPTOR
+                                .withReplicationFactor(3)
+                                .withDataLakeFormat(DataLakeFormat.PAIMON));
         assertThat(schemaInfo2).isEqualTo(schemaInfo);
         // assert created time
         assertThat(tableInfo.getCreatedTime())
@@ -378,7 +385,10 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         admin.createTable(tablePath, DEFAULT_TABLE_DESCRIPTOR, false).get();
         TableInfo tableInfo = admin.getTableInfo(DEFAULT_TABLE_PATH).get();
         assertThat(tableInfo.toTableDescriptor())
-                .isEqualTo(DEFAULT_TABLE_DESCRIPTOR.withReplicationFactor(3));
+                .isEqualTo(
+                        DEFAULT_TABLE_DESCRIPTOR
+                                .withReplicationFactor(3)
+                                .withDataLakeFormat(DataLakeFormat.PAIMON));
     }
 
     @Test
@@ -538,11 +548,11 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
             // check table snapshot info
             assertTableSnapshot(snapshots, bucketNum, expectedSnapshots);
 
-            // write data again, should fall into bucket 2
+            // write data again, should fall into bucket 0
             upsertWriter.upsert(row(0, "v000", 1));
             upsertWriter.flush();
 
-            TableBucket tb = new TableBucket(snapshots.getTableId(), 2);
+            TableBucket tb = new TableBucket(snapshots.getTableId(), 0);
             // wait util the snapshot finish
             expectedSnapshots.put(
                     tb.getBucket(), FLUSS_CLUSTER_EXTENSION.waitUtilSnapshotFinished(tb, 1));

@@ -17,12 +17,14 @@
 package com.alibaba.fluss.lakehouse.paimon.sink;
 
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.lakehouse.paimon.FlussDataTypeToPaimonDataType;
 import com.alibaba.fluss.lakehouse.paimon.source.NewTablesAddedListener;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
+import org.apache.paimon.catalog.Catalog.DatabaseNotExistException;
 import org.apache.paimon.catalog.CatalogContext;
 import org.apache.paimon.catalog.CatalogFactory;
 import org.apache.paimon.catalog.Identifier;
@@ -84,7 +86,9 @@ public class NewTablesAddedPaimonListener implements NewTablesAddedListener {
         Identifier identifier = toPaimonIdentifier(tableInfo.getTablePath());
 
         // if database not exists, create it
-        if (!paimonCatalog.databaseExists(identifier.getDatabaseName())) {
+        try {
+            paimonCatalog.getDatabase(identifier.getDatabaseName());
+        } catch (DatabaseNotExistException ignored) {
             paimonCatalog.createDatabase(identifier.getDatabaseName(), true);
         }
 
@@ -100,11 +104,12 @@ public class NewTablesAddedPaimonListener implements NewTablesAddedListener {
         Schema.Builder schemaBuilder = Schema.newBuilder();
         Options options = new Options();
 
-        // only bucket exists, we set bucket num in paimon
-        // otherwise, it will be considered as dynamic bucket in paimon
-        options.set(CoreOptions.BUCKET, flussTable.getNumBuckets());
+        // When bucket key is undefined, it should use dynamic bucket (bucket = -1) mode.
         if (flussTable.hasBucketKey()) {
+            options.set(CoreOptions.BUCKET, flussTable.getNumBuckets());
             options.set(CoreOptions.BUCKET_KEY, String.join(",", flussTable.getBucketKeys()));
+        } else {
+            options.set(CoreOptions.BUCKET, CoreOptions.BUCKET.defaultValue());
         }
 
         // set schema

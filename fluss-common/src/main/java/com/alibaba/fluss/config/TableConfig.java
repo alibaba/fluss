@@ -18,6 +18,7 @@ package com.alibaba.fluss.config;
 
 import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.compression.ArrowCompressionInfo;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.MergeEngineType;
@@ -73,6 +74,14 @@ public class TableConfig {
     /** Whether the data lake is enabled. */
     public boolean isDataLakeEnabled() {
         return config.get(ConfigOptions.TABLE_DATALAKE_ENABLED);
+    }
+
+    /**
+     * Return the data lake format of the table. It'll be the datalake format configured in Fluss
+     * whiling creating the table. Return empty if no datalake format configured while creating.
+     */
+    public Optional<DataLakeFormat> getDataLakeFormat() {
+        return config.getOptional(ConfigOptions.TABLE_DATALAKE_FORMAT);
     }
 
     /** Gets the optional merge engine type of the table. */

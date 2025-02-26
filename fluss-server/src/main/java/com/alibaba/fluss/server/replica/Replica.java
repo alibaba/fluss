@@ -692,8 +692,7 @@ public final class Replica {
                             logTablet,
                             startRecoverLogOffset,
                             recoverContext,
-                            tableConfig.getKvFormat(),
-                            partitionKeys);
+                            tableConfig.getKvFormat());
             kvRecoverHelper.recover();
         } catch (Exception e) {
             throw new KvStorageException(

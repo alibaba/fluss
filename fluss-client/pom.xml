@@ -48,6 +48,7 @@
         </dependency>
 
         <!-- paimon bundle -->
+        <!-- remove paimon bundle in #408 -->
         <dependency>
             <groupId>org.apache.paimon</groupId>
             <artifactId>paimon-bundle</artifactId>

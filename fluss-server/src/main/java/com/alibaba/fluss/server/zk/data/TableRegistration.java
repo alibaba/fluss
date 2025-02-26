@@ -76,6 +76,17 @@ public class TableRegistration {
     }
 
     public TableInfo toTableInfo(TablePath tablePath, SchemaInfo schemaInfo) {
+        return toTableInfo(tablePath, schemaInfo, null);
+    }
+
+    public TableInfo toTableInfo(
+            TablePath tablePath,
+            SchemaInfo schemaInfo,
+            @Nullable Map<String, String> additionalProperties) {
+        Configuration properties = Configuration.fromMap(this.properties);
+        if (additionalProperties != null) {
+            additionalProperties.forEach(properties::setString);
+        }
         return new TableInfo(
                 tablePath,
                 this.tableId,
@@ -84,7 +95,7 @@ public class TableRegistration {
                 this.bucketKeys,
                 this.partitionKeys,
                 this.bucketCount,
-                Configuration.fromMap(this.properties),
+                properties,
                 Configuration.fromMap(this.customProperties),
                 this.comment,
                 this.createdTime,

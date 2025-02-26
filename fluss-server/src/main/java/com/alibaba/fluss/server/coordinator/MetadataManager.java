@@ -244,6 +244,12 @@ public class MetadataManager {
     }
 
     public TableInfo getTable(TablePath tablePath) throws TableNotExistException {
+        return getTable(tablePath, null);
+    }
+
+    public TableInfo getTable(
+            TablePath tablePath, @Nullable Map<String, String> additionalProperties)
+            throws TableNotExistException {
         Optional<TableRegistration> optionalTable;
         try {
             optionalTable = zookeeperClient.getTable(tablePath);
@@ -255,7 +261,7 @@ public class MetadataManager {
         }
         TableRegistration tableReg = optionalTable.get();
         SchemaInfo schemaInfo = getLatestSchema(tablePath);
-        return tableReg.toTableInfo(tablePath, schemaInfo);
+        return tableReg.toTableInfo(tablePath, schemaInfo, additionalProperties);
     }
 
     public SchemaInfo getLatestSchema(TablePath tablePath) throws SchemaNotExistException {

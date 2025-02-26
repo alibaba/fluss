@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Copyright (c) 2025 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.client.lakehouse.paimon;
+package com.alibaba.fluss.lakehouse.paimon;
 
 import com.alibaba.fluss.types.ArrayType;
 import com.alibaba.fluss.types.BigIntType;
@@ -41,13 +41,7 @@ import com.alibaba.fluss.types.TinyIntType;
 import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.DataTypes;
 
-/**
- * Convert from Fluss's data type to Paimon's data type.
- *
- * <p>Copied from com.alibaba.fluss.lakehouse.paimon.sink.FlussDataTypeToPaimonDataType
- *
- * <p>// todo: extract it to a common class
- */
+/** Convert from Fluss's data type to Paimon's data type. */
 public class FlussDataTypeToPaimonDataType implements DataTypeVisitor<DataType> {
 
     public static final FlussDataTypeToPaimonDataType INSTANCE =

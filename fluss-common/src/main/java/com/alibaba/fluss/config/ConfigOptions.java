@@ -19,6 +19,7 @@ package com.alibaba.fluss.config;
 import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.compression.ArrowCompressionType;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.MergeEngineType;
@@ -1004,6 +1005,15 @@ public class ConfigOptions {
                                     + "When this option is set to ture and the datalake tiering service is up,"
                                     + " the table will be tiered and compacted into datalake format stored on lakehouse storage.");
 
+    public static final ConfigOption<DataLakeFormat> TABLE_DATALAKE_FORMAT =
+            key("table.datalake.format")
+                    .enumType(DataLakeFormat.class)
+                    .noDefaultValue()
+                    .withDescription(
+                            "The format of the datalake that the Fluss cluster uses as lake storage for the table."
+                                    + " It will be set with the Fluss's configuration 'datalake.format' by Fluss while creating the table. "
+                                    + "If non-null, the data distribution will follow the strategy of the corresponding datalake uses.");
+
     public static final ConfigOption<MergeEngineType> TABLE_MERGE_ENGINE =
             key("table.merge-engine")
                     .enumType(MergeEngineType.class)
@@ -1324,12 +1334,12 @@ public class ConfigOptions {
     // ------------------------------------------------------------------------
     //  ConfigOptions for lakehouse storage
     // ------------------------------------------------------------------------
-    public static final ConfigOption<String> LAKEHOUSE_STORAGE =
-            key("lakehouse.storage")
-                    .stringType()
+    public static final ConfigOption<DataLakeFormat> DATALAKE_FORMAT =
+            key("datalake.format")
+                    .enumType(DataLakeFormat.class)
                     .noDefaultValue()
                     .withDescription(
-                            "The kind of lakehouse storage used by of Fluss such as Paimon, Iceberg, Hudi. "
+                            "The datalake format used by Fluss to be as lake storage, such as Paimon, Iceberg, Hudi. "
                                     + "Now, only support Paimon.");
 
     /**

@@ -33,7 +33,7 @@ import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.row.encode.KeyEncoder;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.types.DataTypes;
 import com.alibaba.fluss.types.RowType;
 
@@ -443,13 +443,13 @@ class FlinkSourceSplitReaderTest extends FlinkTestBase {
     }
 
     private static int getBucketId(InternalRow row) {
-        KeyEncoder keyEncoder =
-                new KeyEncoder(
+        CompactedKeyEncoder keyEncoder =
+                new CompactedKeyEncoder(
                         DEFAULT_PK_TABLE_SCHEMA.getRowType(),
                         DEFAULT_PK_TABLE_SCHEMA.getPrimaryKeyIndexes());
-        byte[] key = keyEncoder.encode(row);
+        byte[] key = keyEncoder.encodeKey(row);
         HashBucketAssigner hashBucketAssigner = new HashBucketAssigner(DEFAULT_BUCKET_NUM);
-        return hashBucketAssigner.assignBucket(key, null);
+        return hashBucketAssigner.assignBucket(key);
     }
 
     private List<SourceSplitBase> getHybridSnapshotLogSplits(TablePath tablePath) throws Exception {

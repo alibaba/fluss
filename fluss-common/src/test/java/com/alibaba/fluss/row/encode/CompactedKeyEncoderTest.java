@@ -40,26 +40,26 @@ import static com.alibaba.fluss.testutils.DataTestUtils.row;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Test for {@link KeyEncoder}. */
-class KeyEncoderTest {
+/** Test for {@link CompactedKeyEncoder}. */
+class CompactedKeyEncoderTest {
 
     @Test
-    void testEncode() {
+    void testEncodeKey() {
         // test int, long as primary key
         final RowType rowType = RowType.of(DataTypes.INT(), DataTypes.BIGINT(), DataTypes.INT());
         InternalRow row = row(1, 3L, 2);
-        KeyEncoder encoder = new KeyEncoder(rowType);
+        CompactedKeyEncoder encoder = new CompactedKeyEncoder(rowType);
 
-        byte[] bytes = encoder.encode(row);
+        byte[] bytes = encoder.encodeKey(row);
         assertThat(bytes).isEqualTo(new byte[] {1, 3, 2});
 
         row = row(2, 5L, 6);
-        bytes = encoder.encode(row);
+        bytes = encoder.encodeKey(row);
         assertThat(bytes).isEqualTo(new byte[] {2, 5, 6});
     }
 
     @Test
-    void testEncodeWithKeyNames() {
+    void testEncodeKeyWithKeyNames() {
         final DataType[] dataTypes =
                 new DataType[] {DataTypes.STRING(), DataTypes.BIGINT(), DataTypes.STRING()};
         final String[] fieldNames = new String[] {"partition", "f1", "f2"};
@@ -68,8 +68,8 @@ class KeyEncoderTest {
         InternalRow row = row("p1", 1L, "a2");
         List<String> pk = Collections.singletonList("f2");
 
-        KeyEncoder keyEncoder = KeyEncoder.createKeyEncoder(rowType, pk);
-        byte[] encodedBytes = keyEncoder.encode(row);
+        CompactedKeyEncoder keyEncoder = CompactedKeyEncoder.createKeyEncoder(rowType, pk);
+        byte[] encodedBytes = keyEncoder.encodeKey(row);
 
         // decode it, should only get "a2"
         InternalRow encodedKey =
@@ -89,18 +89,18 @@ class KeyEncoderTest {
                 RowType.of(
                         DataTypes.INT(), DataTypes.BIGINT(), DataTypes.INT(), DataTypes.STRING());
         int[] pkIndexes = new int[] {0, 1, 2};
-        final KeyEncoder keyEncoder = new KeyEncoder(rowType, pkIndexes);
+        final CompactedKeyEncoder compactedKeyEncoder = new CompactedKeyEncoder(rowType, pkIndexes);
 
         InternalRow row = row(1, 3L, 2, "a1");
 
-        byte[] keyBytes = keyEncoder.encode(row);
+        byte[] keyBytes = compactedKeyEncoder.encodeKey(row);
         assertThat(keyBytes).isEqualTo(new byte[] {1, 3, 2});
 
         // should throw exception when the column is null
         assertThatThrownBy(
                         () -> {
                             InternalRow nullRow = row(1, 2L, null, "a2");
-                            keyEncoder.encode(nullRow);
+                            compactedKeyEncoder.encodeKey(nullRow);
                         })
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(
@@ -114,14 +114,14 @@ class KeyEncoderTest {
                         DataTypes.STRING(),
                         DataTypes.STRING());
         pkIndexes = new int[] {1, 2};
-        final KeyEncoder keyEncoder1 = new KeyEncoder(rowType1, pkIndexes);
+        final CompactedKeyEncoder keyEncoder1 = new CompactedKeyEncoder(rowType1, pkIndexes);
         row =
                 row(
                         BinaryString.fromString("a1"),
                         1,
                         BinaryString.fromString("a2"),
                         BinaryString.fromString("a3"));
-        keyBytes = keyEncoder1.encode(row);
+        keyBytes = keyEncoder1.encodeKey(row);
 
         InternalRow keyRow =
                 decodeRow(
@@ -148,8 +148,8 @@ class KeyEncoderTest {
                 keyDataTypes[i] = dataTypes[pkIndexes[i]].copy(false);
             }
 
-            final KeyEncoder keyEncoder = new KeyEncoder(rowType, pkIndexes);
-            byte[] keyBytes = keyEncoder.encode(row);
+            final CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(rowType, pkIndexes);
+            byte[] keyBytes = keyEncoder.encodeKey(row);
 
             InternalRow keyRow = decodeRow(keyDataTypes, keyBytes);
 

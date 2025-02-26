@@ -142,7 +142,6 @@ class FlussPartitionedTableITCase extends ClientToServerITCaseBase {
                     i == 0
                             ? Arrays.asList("b", "a", "c")
                             : i == 1 ? Arrays.asList("a", "b", "c") : Arrays.asList("a", "c", "b");
-            RowType prefixKeyRowType = rowType.project(schema.getColumnIndexes(lookupColumns));
             Lookuper prefixLookuper = table.newLookup().lookupBy(lookupColumns).createLookuper();
             for (String partition : partitionIdByNames.keySet()) {
                 Object[] lookupRow =

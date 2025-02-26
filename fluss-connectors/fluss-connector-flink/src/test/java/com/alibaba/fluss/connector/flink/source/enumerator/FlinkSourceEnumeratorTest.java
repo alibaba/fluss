@@ -34,7 +34,7 @@ import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.row.encode.KeyEncoder;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.types.DataTypes;
 
@@ -649,8 +649,8 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
 
     private static Map<Integer, Integer> putRows(TablePath tablePath, int rowsNum)
             throws Exception {
-        KeyEncoder keyEncoder =
-                new KeyEncoder(
+        CompactedKeyEncoder keyEncoder =
+                new CompactedKeyEncoder(
                         DEFAULT_PK_TABLE_SCHEMA.getRowType(),
                         DEFAULT_PK_TABLE_SCHEMA.getPrimaryKeyIndexes());
         HashBucketAssigner hashBucketAssigner = new HashBucketAssigner(DEFAULT_BUCKET_NUM);
@@ -661,8 +661,8 @@ class FlinkSourceEnumeratorTest extends FlinkTestBase {
                 InternalRow row = row(i, "v" + i);
                 upsertWriter.upsert(row);
 
-                byte[] key = keyEncoder.encode(row);
-                int bucketId = hashBucketAssigner.assignBucket(key, null);
+                byte[] key = keyEncoder.encodeKey(row);
+                int bucketId = hashBucketAssigner.assignBucket(key);
 
                 bucketRows.merge(bucketId, 1, Integer::sum);
             }

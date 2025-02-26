@@ -17,9 +17,9 @@
 package com.alibaba.fluss.client.table.writer;
 
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
-import com.alibaba.fluss.client.table.getter.BucketKeyGetter;
 import com.alibaba.fluss.client.write.WriteRecord;
 import com.alibaba.fluss.client.write.WriterClient;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -27,7 +27,9 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.InternalRow.FieldGetter;
 import com.alibaba.fluss.row.encode.IndexedRowEncoder;
+import com.alibaba.fluss.row.encode.KeyEncoder;
 import com.alibaba.fluss.row.indexed.IndexedRow;
+import com.alibaba.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
@@ -38,7 +40,8 @@ import java.util.concurrent.CompletableFuture;
 class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
     private static final AppendResult APPEND_SUCCESS = new AppendResult();
 
-    private final @Nullable BucketKeyGetter bucketKeyGetter;
+    private final @Nullable KeyEncoder bucketKeyEncoder;
+
     private final LogFormat logFormat;
     private final IndexedRowEncoder indexedRowEncoder;
     private final FieldGetter[] fieldGetters;
@@ -50,10 +53,14 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
             WriterClient writerClient) {
         super(tablePath, tableInfo, metadataUpdater, writerClient);
         List<String> bucketKeys = tableInfo.getBucketKeys();
-        this.bucketKeyGetter =
-                bucketKeys.isEmpty()
-                        ? null
-                        : new BucketKeyGetter(tableInfo.getRowType(), bucketKeys);
+        if (bucketKeys.isEmpty()) {
+            this.bucketKeyEncoder = null;
+        } else {
+            RowType rowType = tableInfo.getSchema().getRowType();
+            DataLakeFormat lakeFormat = tableInfo.getTableConfig().getDataLakeFormat().orElse(null);
+            this.bucketKeyEncoder = KeyEncoder.of(rowType, bucketKeys, lakeFormat);
+        }
+
         this.logFormat = tableInfo.getTableConfig().getLogFormat();
         this.indexedRowEncoder = new IndexedRowEncoder(tableInfo.getRowType());
         this.fieldGetters = InternalRow.createFieldGetters(tableInfo.getRowType());
@@ -69,7 +76,7 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
         checkFieldCount(row);
 
         PhysicalTablePath physicalPath = getPhysicalPath(row);
-        byte[] bucketKey = bucketKeyGetter != null ? bucketKeyGetter.getBucketKey(row) : null;
+        byte[] bucketKey = bucketKeyEncoder != null ? bucketKeyEncoder.encodeKey(row) : null;
 
         final WriteRecord record;
         if (logFormat == LogFormat.INDEXED) {

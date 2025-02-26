@@ -128,6 +128,8 @@ public class FlinkSourceEnumerator
 
     private boolean lakeEnabled = false;
 
+    private volatile boolean closed = false;
+
     private Predicate predicate;
 
     public FlinkSourceEnumerator(
@@ -323,6 +325,10 @@ public class FlinkSourceEnumerator
 
     /** Init the splits for Fluss. */
     private void checkPartitionChanges(Set<PartitionInfo> partitionInfos, Throwable t) {
+        if (closed) {
+            // skip if the enumerator is closed to avoid unnecessary error logs
+            return;
+        }
         if (t != null) {
             LOG.error("Failed to list partitions for {}", tablePath, t);
             return;
@@ -735,6 +741,7 @@ public class FlinkSourceEnumerator
     @Override
     public void close() throws IOException {
         try {
+            closed = true;
             if (flussAdmin != null) {
                 flussAdmin.close();
             }

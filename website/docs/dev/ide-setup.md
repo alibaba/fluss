@@ -13,6 +13,10 @@ command line first (`mvn clean package -DskipTests`) as it might be your IDE
 that has a bug or is not properly set up.
 :::
 
+:::tip
+Using the included [Maven Wrapper](https://maven.apache.org/wrapper/) by replacing `mvn` with `./mvnw` ensures that the correct Maven version is used.
+:::
+
 ## Preparation
 
 To get started, please first checkout the Fluss sources from our

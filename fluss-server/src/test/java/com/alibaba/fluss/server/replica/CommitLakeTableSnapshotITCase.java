@@ -17,6 +17,8 @@
 package com.alibaba.fluss.server.replica;
 
 import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
@@ -50,11 +52,21 @@ class CommitLakeTableSnapshotITCase {
 
     @RegisterExtension
     public static final FlussClusterExtension FLUSS_CLUSTER_EXTENSION =
-            FlussClusterExtension.builder().setNumOfTabletServers(3).build();
+            FlussClusterExtension.builder()
+                    .setClusterConf(initConfig())
+                    .setNumOfTabletServers(3)
+                    .build();
 
     private static final int BUCKET_NUM = 3;
 
     private static ZooKeeperClient zkClient;
+
+    private static Configuration initConfig() {
+        Configuration conf = new Configuration();
+        // set default datalake format for the cluster and enable datalake tables
+        conf.set(ConfigOptions.DATALAKE_FORMAT, DataLakeFormat.PAIMON);
+        return conf;
+    }
 
     @BeforeAll
     static void beforeAll() {

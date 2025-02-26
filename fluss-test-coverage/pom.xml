@@ -264,7 +264,7 @@
                                         <exclude>com.alibaba.fluss.metrics.*</exclude>
                                         <!-- end exclude for metric -->
                                         <!-- start exclude for lakehouse-paimon -->
-                                        <exclude>com.alibaba.fluss.lakehouse.paimon.*</exclude>
+                                        <exclude>com.alibaba.fluss.lakehouse.*</exclude>
                                         <exclude>com.alibaba.fluss.connector.flink.lakehouse.*</exclude>
                                         <!-- end exclude for lakehouse-paimon -->
                                         <exclude>com.alibaba.fluss.lakehouse.cli.*</exclude>

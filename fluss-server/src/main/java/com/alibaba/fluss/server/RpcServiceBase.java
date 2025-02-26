@@ -32,6 +32,7 @@ import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.SchemaInfo;
@@ -94,7 +95,6 @@ import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
-import com.alibaba.fluss.utils.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -104,6 +104,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +115,7 @@ import java.util.concurrent.CompletableFuture;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeGetLatestKvSnapshotsResponse;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeKvSnapshotMetadataResponse;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.toTablePath;
+import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 import static com.alibaba.fluss.utils.Preconditions.checkState;
 
 /**
@@ -136,6 +138,7 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     private ObtainedSecurityToken securityToken = null;
 
     private @Nullable final LakeStorageInfo lakeStorageInfo;
+    private @Nullable final Map<String, String> tableDataLakeProperties;
 
     public RpcServiceBase(
             Configuration config,
@@ -150,9 +153,10 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         this.metadataCache = metadataCache;
         this.metadataManager = new MetadataManager(zkClient);
         this.lakeStorageInfo =
-                config.get(ConfigOptions.LAKEHOUSE_STORAGE) != null
+                config.get(ConfigOptions.DATALAKE_FORMAT) != null
                         ? LakeStorageUtils.getLakeStorageInfo(config)
                         : null;
+        this.tableDataLakeProperties = getTableDataLakeProperties(config);
     }
 
     @Override
@@ -215,7 +219,7 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     public CompletableFuture<GetTableInfoResponse> getTableInfo(GetTableInfoRequest request) {
         GetTableInfoResponse response = new GetTableInfoResponse();
         TablePath tablePath = toTablePath(request.getTablePath());
-        TableInfo tableInfo = metadataManager.getTable(tablePath);
+        TableInfo tableInfo = metadataManager.getTable(tablePath, tableDataLakeProperties);
         response.setTableJson(tableInfo.toTableDescriptor().toJsonBytes())
                 .setSchemaId(tableInfo.getSchemaId())
                 .setTableId(tableInfo.getTableId())
@@ -491,12 +495,12 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
 
     private PartitionMetadataInfo getPartitionMetadata(PhysicalTablePath partitionPath) {
         try {
-            Preconditions.checkNotNull(
+            checkNotNull(
                     partitionPath.getPartitionName(),
                     "partitionName must be not null, but get: " + partitionPath);
             AssignmentInfo assignmentInfo = getAssignmentInfo(null, partitionPath);
             List<BucketLocation> bucketLocations = new ArrayList<>();
-            Preconditions.checkNotNull(
+            checkNotNull(
                     assignmentInfo.partitionId,
                     "partition id must be not null for " + partitionPath);
             if (assignmentInfo.tableAssignment != null) {
@@ -630,7 +634,7 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
                     zkClient.getPartitionAssignment(partitionId).orElse(null),
                     partitionId);
         } else {
-            Preconditions.checkNotNull(tableId, "tableId must be not null");
+            checkNotNull(tableId, "tableId must be not null");
             return new AssignmentInfo(
                     tableId, zkClient.getTableAssignment(tableId).orElse(null), null);
         }
@@ -648,5 +652,23 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
             this.tableAssignment = tableAssignment;
             this.partitionId = partitionId;
         }
+    }
+
+    @Nullable
+    private Map<String, String> getTableDataLakeProperties(Configuration configuration) {
+        Optional<DataLakeFormat> optDataLakeFormat =
+                configuration.getOptional(ConfigOptions.DATALAKE_FORMAT);
+        if (!optDataLakeFormat.isPresent()) {
+            return null;
+        }
+        Map<String, String> datalakeProperties = new HashMap<>();
+        String dataLakePrefix = "datalake." + optDataLakeFormat.get() + ".";
+        for (Map.Entry<String, String> configurationEntry : configuration.toMap().entrySet()) {
+            if (configurationEntry.getKey().startsWith(dataLakePrefix)) {
+                datalakeProperties.put(
+                        "table." + configurationEntry.getKey(), configurationEntry.getValue());
+            }
+        }
+        return datalakeProperties;
     }
 }

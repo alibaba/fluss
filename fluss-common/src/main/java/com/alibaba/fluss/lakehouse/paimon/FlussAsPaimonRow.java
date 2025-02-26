@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Copyright (c) 2025 Alibaba Group Holding Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.client.lakehouse.paimon;
+package com.alibaba.fluss.lakehouse.paimon;
 
 import org.apache.paimon.data.BinaryString;
 import org.apache.paimon.data.Decimal;
@@ -28,7 +28,7 @@ import org.apache.paimon.types.RowKind;
  * A wrapper to wrap Fluss's {@link com.alibaba.fluss.row.InternalRow} to Paimon's {@link
  * InternalRow} .
  */
-public class FlussRowWrapper implements InternalRow {
+public class FlussAsPaimonRow implements InternalRow {
 
     private com.alibaba.fluss.row.InternalRow row;
 

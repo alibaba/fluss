@@ -156,6 +156,7 @@ public class CoordinatorServer extends ServerBase {
                             conf.getString(ConfigOptions.COORDINATOR_HOST),
                             conf.getString(ConfigOptions.COORDINATOR_PORT),
                             coordinatorService,
+                            serverMetricGroup,
                             RequestsMetrics.createCoordinatorServerRequestMetrics(
                                     serverMetricGroup));
             rpcServer.start();
@@ -166,12 +167,6 @@ public class CoordinatorServer extends ServerBase {
             this.rpcClient = RpcClient.create(conf, clientMetricGroup);
 
             this.coordinatorChannelManager = new CoordinatorChannelManager(rpcClient);
-
-            CompletedSnapshotStoreManager bucketSnapshotManager =
-                    new CompletedSnapshotStoreManager(
-                            conf.getInt(ConfigOptions.KV_MAX_RETAINED_SNAPSHOTS),
-                            conf.getInt(ConfigOptions.COORDINATOR_IO_POOL_SIZE),
-                            zkClient);
 
             this.autoPartitionManager = new AutoPartitionManager(metadataCache, zkClient, conf);
             autoPartitionManager.start();
@@ -186,9 +181,9 @@ public class CoordinatorServer extends ServerBase {
                             zkClient,
                             metadataCache,
                             coordinatorChannelManager,
-                            bucketSnapshotManager,
                             autoPartitionManager,
-                            serverMetricGroup);
+                            serverMetricGroup,
+                            conf);
             coordinatorEventProcessor.startup();
 
             createDefaultDatabase();

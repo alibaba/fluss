@@ -20,7 +20,7 @@ import com.alibaba.fluss.memory.UnmanagedPagedOutputView;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.row.BinaryRow;
 import com.alibaba.fluss.row.compacted.CompactedRow;
-import com.alibaba.fluss.row.encode.KeyEncoder;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.BytesUtils;
 
@@ -123,11 +123,11 @@ public class KvRecordTestUtils {
     public static class PKBasedKvRecordFactory {
         private final RowType rowType;
 
-        private final KeyEncoder keyEncoder;
+        private final CompactedKeyEncoder keyEncoder;
 
         private PKBasedKvRecordFactory(RowType rowType, int[] pkIndex) {
             this.rowType = rowType;
-            this.keyEncoder = new KeyEncoder(rowType, pkIndex);
+            this.keyEncoder = new CompactedKeyEncoder(rowType, pkIndex);
         }
 
         public static PKBasedKvRecordFactory of(RowType rowType, int[] pkIndex) {
@@ -140,7 +140,7 @@ public class KvRecordTestUtils {
          */
         public KvRecord ofRecord(@Nonnull Object[] value) {
             CompactedRow row = compactedRow(rowType, value);
-            return new SimpleTestKvRecord(keyEncoder.encode(row), row);
+            return new SimpleTestKvRecord(keyEncoder.encodeKey(row), row);
         }
     }
 

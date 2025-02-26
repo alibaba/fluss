@@ -23,7 +23,6 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.server.coordinator.AutoPartitionManager;
-import com.alibaba.fluss.server.coordinator.CompletedSnapshotStoreManager;
 import com.alibaba.fluss.server.coordinator.CoordinatorChannelManager;
 import com.alibaba.fluss.server.coordinator.CoordinatorContext;
 import com.alibaba.fluss.server.coordinator.CoordinatorEventProcessor;
@@ -45,9 +44,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -63,8 +61,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Test for {@link TableBucketStateMachine}. */
 class TableBucketStateMachineTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(TableBucketStateMachineTest.class);
-
     @RegisterExtension
     public static final AllCallbackWrapper<ZooKeeperExtension> ZOO_KEEPER_EXTENSION_WRAPPER =
             new AllCallbackWrapper<>(new ZooKeeperExtension());
@@ -74,7 +70,6 @@ class TableBucketStateMachineTest {
     private ServerMetadataCache serverMetadataCache;
     private TestCoordinatorChannelManager testCoordinatorChannelManager;
     private CoordinatorRequestBatch coordinatorRequestBatch;
-    private CompletedSnapshotStoreManager completedSnapshotStoreManager;
     private AutoPartitionManager autoPartitionManager;
 
     @BeforeAll
@@ -86,9 +81,10 @@ class TableBucketStateMachineTest {
     }
 
     @BeforeEach
-    void beforeEach() {
+    void beforeEach() throws IOException {
         Configuration conf = new Configuration();
         conf.setString(ConfigOptions.COORDINATOR_HOST, "localhost");
+        conf.setString(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
         coordinatorContext = new CoordinatorContext();
         testCoordinatorChannelManager = new TestCoordinatorChannelManager();
         coordinatorRequestBatch =
@@ -98,7 +94,6 @@ class TableBucketStateMachineTest {
                             // do nothing
                         });
         serverMetadataCache = new ServerMetadataCacheImpl();
-        completedSnapshotStoreManager = new CompletedSnapshotStoreManager(1, 1, zookeeperClient);
         autoPartitionManager =
                 new AutoPartitionManager(serverMetadataCache, zookeeperClient, new Configuration());
     }
@@ -233,9 +228,9 @@ class TableBucketStateMachineTest {
                                         new Configuration(),
                                         TestingClientMetricGroup.newInstance())),
                         coordinatorContext,
-                        completedSnapshotStoreManager,
                         autoPartitionManager,
-                        TestingMetricGroups.COORDINATOR_METRICS);
+                        TestingMetricGroups.COORDINATOR_METRICS,
+                        new Configuration());
         CoordinatorEventManager eventManager =
                 new CoordinatorEventManager(coordinatorEventProcessor);
         coordinatorRequestBatch =

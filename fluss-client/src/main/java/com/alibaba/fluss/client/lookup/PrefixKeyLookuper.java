@@ -16,9 +16,10 @@
 
 package com.alibaba.fluss.client.lookup;
 
-import com.alibaba.fluss.client.lakehouse.LakeTableBucketAssigner;
+import com.alibaba.fluss.bucketing.BucketingFunction;
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.table.getter.PartitionGetter;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.row.InternalRow;
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-import static com.alibaba.fluss.client.utils.ClientUtils.getBucketId;
 import static com.alibaba.fluss.client.utils.ClientUtils.getPartitionId;
 
 /**
@@ -54,9 +54,8 @@ class PrefixKeyLookuper implements Lookuper {
     /** Extract bucket key from prefix lookup key row. */
     private final KeyEncoder bucketKeyEncoder;
 
+    private final BucketingFunction bucketingFunction;
     private final int numBuckets;
-
-    private final LakeTableBucketAssigner lakeTableBucketAssigner;
 
     /**
      * a getter to extract partition from prefix lookup key row, null when it's not a partitioned.
@@ -80,17 +79,10 @@ class PrefixKeyLookuper implements Lookuper {
         this.lookupClient = lookupClient;
         // the row type of the input lookup row
         RowType lookupRowType = tableInfo.getRowType().project(lookupColumnNames);
-        this.bucketKeyEncoder =
-                KeyEncoder.createKeyEncoder(lookupRowType, tableInfo.getBucketKeys());
+        DataLakeFormat lakeFormat = tableInfo.getTableConfig().getDataLakeFormat().orElse(null);
 
-        if (tableInfo.getTableConfig().isDataLakeEnabled()) {
-            this.lakeTableBucketAssigner =
-                    new LakeTableBucketAssigner(
-                            lookupRowType, tableInfo.getBucketKeys(), numBuckets);
-        } else {
-            this.lakeTableBucketAssigner = null;
-        }
-
+        this.bucketKeyEncoder = KeyEncoder.of(lookupRowType, tableInfo.getBucketKeys(), lakeFormat);
+        this.bucketingFunction = BucketingFunction.of(lakeFormat);
         this.partitionGetter =
                 tableInfo.isPartitioned()
                         ? new PartitionGetter(lookupRowType, tableInfo.getPartitionKeys())
@@ -152,14 +144,8 @@ class PrefixKeyLookuper implements Lookuper {
 
     @Override
     public CompletableFuture<LookupResult> lookup(InternalRow prefixKey) {
-        byte[] bucketKeyBytes = bucketKeyEncoder.encode(prefixKey);
-        int bucketId =
-                getBucketId(
-                        bucketKeyBytes,
-                        prefixKey,
-                        lakeTableBucketAssigner,
-                        numBuckets,
-                        metadataUpdater);
+        byte[] bucketKeyBytes = bucketKeyEncoder.encodeKey(prefixKey);
+        int bucketId = bucketingFunction.bucketing(bucketKeyBytes, numBuckets);
 
         Long partitionId = null;
         if (partitionGetter != null) {

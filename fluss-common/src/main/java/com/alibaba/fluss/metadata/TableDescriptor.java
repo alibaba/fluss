@@ -21,7 +21,6 @@ import com.alibaba.fluss.annotation.PublicStable;
 import com.alibaba.fluss.config.ConfigOption;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.ConfigurationUtils;
-import com.alibaba.fluss.utils.Preconditions;
 import com.alibaba.fluss.utils.json.JsonSerdeUtils;
 import com.alibaba.fluss.utils.json.TableDescriptorJsonSerde;
 
@@ -240,6 +239,16 @@ public final class TableDescriptor implements Serializable {
         Map<String, String> newProperties = new HashMap<>(properties);
         newProperties.put(
                 ConfigOptions.TABLE_REPLICATION_FACTOR.key(), String.valueOf(newReplicationFactor));
+        return withProperties(newProperties);
+    }
+
+    /**
+     * Returns a new TableDescriptor instance that is a copy of this TableDescriptor with a new
+     * datalake format.
+     */
+    public TableDescriptor withDataLakeFormat(DataLakeFormat dataLakeFormat) {
+        Map<String, String> newProperties = new HashMap<>(properties);
+        newProperties.put(ConfigOptions.TABLE_DATALAKE_FORMAT.key(), dataLakeFormat.toString());
         return withProperties(newProperties);
     }
 
@@ -500,8 +509,8 @@ public final class TableDescriptor implements Serializable {
          * <p>Table properties are controlled by Fluss and will change the behavior of the table.
          */
         public <T> Builder property(ConfigOption<T> configOption, T value) {
-            Preconditions.checkNotNull(configOption, "Config option must not be null.");
-            Preconditions.checkNotNull(value, "Value must not be null.");
+            checkNotNull(configOption, "Config option must not be null.");
+            checkNotNull(value, "Value must not be null.");
             properties.put(
                     configOption.key(), ConfigurationUtils.convertValue(value, String.class));
             return this;
@@ -513,8 +522,8 @@ public final class TableDescriptor implements Serializable {
          * <p>Table properties are controlled by Fluss and will change the behavior of the table.
          */
         public Builder property(String key, String value) {
-            Preconditions.checkNotNull(key, "Key must not be null.");
-            Preconditions.checkNotNull(value, "Value must not be null.");
+            checkNotNull(key, "Key must not be null.");
+            checkNotNull(value, "Value must not be null.");
             properties.put(key, value);
             return this;
         }
@@ -525,7 +534,7 @@ public final class TableDescriptor implements Serializable {
          * <p>Table properties are controlled by Fluss and will change the behavior of the table.
          */
         public Builder properties(Map<String, String> properties) {
-            Preconditions.checkNotNull(properties, "properties must not be null.");
+            checkNotNull(properties, "properties must not be null.");
             this.properties.putAll(properties);
             return this;
         }
@@ -538,8 +547,8 @@ public final class TableDescriptor implements Serializable {
          * for users.
          */
         public Builder customProperty(String key, String value) {
-            Preconditions.checkNotNull(key, "Key must not be null.");
-            Preconditions.checkNotNull(value, "Value must not be null.");
+            checkNotNull(key, "Key must not be null.");
+            checkNotNull(value, "Value must not be null.");
             this.customProperties.put(key, value);
             return this;
         }
@@ -552,7 +561,7 @@ public final class TableDescriptor implements Serializable {
          * for users.
          */
         public Builder customProperties(Map<String, String> customProperties) {
-            Preconditions.checkNotNull(customProperties, "customProperties must not be null.");
+            checkNotNull(customProperties, "customProperties must not be null.");
             this.customProperties.putAll(customProperties);
             return this;
         }

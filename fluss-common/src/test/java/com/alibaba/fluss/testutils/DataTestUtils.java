@@ -47,8 +47,8 @@ import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.arrow.ArrowWriter;
 import com.alibaba.fluss.row.arrow.ArrowWriterPool;
 import com.alibaba.fluss.row.compacted.CompactedRow;
+import com.alibaba.fluss.row.encode.CompactedKeyEncoder;
 import com.alibaba.fluss.row.encode.CompactedRowEncoder;
-import com.alibaba.fluss.row.encode.KeyEncoder;
 import com.alibaba.fluss.row.encode.RowEncoder;
 import com.alibaba.fluss.row.encode.ValueEncoder;
 import com.alibaba.fluss.row.indexed.IndexedRow;
@@ -226,7 +226,7 @@ public class DataTestUtils {
             long writerId,
             int batchSequence)
             throws Exception {
-        KeyEncoder keyEncoder = new KeyEncoder(keyType);
+        CompactedKeyEncoder keyEncoder = new CompactedKeyEncoder(keyType);
         KvRecordTestUtils.KvRecordBatchFactory kvRecordBatchFactory =
                 KvRecordTestUtils.KvRecordBatchFactory.of(DEFAULT_SCHEMA_ID);
         KvRecordTestUtils.KvRecordFactory kvRecordFactory =
@@ -235,7 +235,7 @@ public class DataTestUtils {
         for (Tuple2<Object[], Object[]> keyAndValue : keyAndValues) {
             records.add(
                     kvRecordFactory.ofRecord(
-                            keyEncoder.encode(row(keyAndValue.f0)), keyAndValue.f1));
+                            keyEncoder.encodeKey(row(keyAndValue.f0)), keyAndValue.f1));
         }
         return kvRecordBatchFactory.ofRecords(records, writerId, batchSequence);
     }

@@ -31,7 +31,7 @@ import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.DefaultKvRecord;
-import com.alibaba.fluss.record.DefaultLogRecord;
+import com.alibaba.fluss.record.IndexedLogRecord;
 import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordBatch;
 import com.alibaba.fluss.record.LogRecordReadContext;
@@ -78,7 +78,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Test for {@link RecordAccumulator}. */
-public class RecordAccumulatorTest {
+class RecordAccumulatorTest {
     private static final long ZSTD_TABLE_ID = 16001L;
     private static final PhysicalTablePath ZSTD_PHYSICAL_TABLE_PATH =
             PhysicalTablePath.of(TablePath.of("test_db_1", "test_zstd_table_1"));
@@ -333,14 +333,14 @@ public class RecordAccumulatorTest {
         int expectedAppends = expectedNumAppends(row, batchSize);
 
         // Create first batch.
-        int bucketId = bucketAssigner.assignBucket(null, cluster);
+        int bucketId = bucketAssigner.assignBucket(cluster);
         accum.append(createRecord(row), writeCallback, cluster, bucketId, false);
         int appends = 1;
 
         boolean switchBucket = false;
         while (!switchBucket) {
             // Append to the first batch.
-            bucketId = bucketAssigner.assignBucket(null, cluster);
+            bucketId = bucketAssigner.assignBucket(cluster);
             RecordAccumulator.RecordAppendResult result =
                     accum.append(createRecord(row), writeCallback, cluster, bucketId, true);
             int numBatches = getBatchNumInAccum(accum);
@@ -362,14 +362,14 @@ public class RecordAccumulatorTest {
 
         // Writer would call this method in this case, make second batch.
         bucketAssigner.onNewBatch(cluster, bucketId);
-        bucketId = bucketAssigner.assignBucket(null, cluster);
+        bucketId = bucketAssigner.assignBucket(cluster);
         accum.append(createRecord(row), writeCallback, cluster, bucketId, false);
         appends++;
 
         // These append operations all go into the second batch.
         while (!switchBucket) {
             // Append to the first batch.
-            bucketId = bucketAssigner.assignBucket(null, cluster);
+            bucketId = bucketAssigner.assignBucket(cluster);
             RecordAccumulator.RecordAppendResult result =
                     accum.append(createRecord(row), writeCallback, cluster, bucketId, true);
             int numBatches = getBatchNumInAccum(accum);
@@ -391,7 +391,7 @@ public class RecordAccumulatorTest {
     void testPartialDrain() throws Exception {
         IndexedRow row = indexedRow(DATA1_ROW_TYPE, new Object[] {1, "a"});
         RecordAccumulator accum = createTestRecordAccumulator(1024, 10L * 1024);
-        int appends = 1024 / DefaultLogRecord.sizeOf(row) + 1;
+        int appends = 1024 / IndexedLogRecord.sizeOf(row) + 1;
         List<TableBucket> buckets = Arrays.asList(tb1, tb2);
         for (TableBucket tb : buckets) {
             for (int i = 0; i < appends; i++) {
@@ -597,7 +597,7 @@ public class RecordAccumulatorTest {
         int size = RECORD_BATCH_HEADER_SIZE;
         int offsetDelta = 0;
         while (true) {
-            int recordSize = DefaultLogRecord.sizeOf(row);
+            int recordSize = IndexedLogRecord.sizeOf(row);
             if (size + recordSize > batchSize) {
                 return offsetDelta;
             }
