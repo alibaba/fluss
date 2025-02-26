@@ -28,7 +28,6 @@ import java.util.Objects;
  */
 @PublicEvolving
 public class PartitionInfo {
-
     private final long partitionId;
     private final String partitionName;
 
