@@ -22,13 +22,13 @@ import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.connector.flink.lakehouse.LakeCatalog;
-import com.alibaba.fluss.connector.flink.utils.CatalogExceptionUtils;
 import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.utils.CatalogExceptionUtils;
 import com.alibaba.fluss.utils.ExceptionUtils;
 import com.alibaba.fluss.utils.IOUtils;
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.connector.flink.utils;
+package com.alibaba.fluss.utils;
 
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
