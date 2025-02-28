@@ -27,6 +27,7 @@ import com.alibaba.fluss.connector.flink.source.split.SourceSplitSerializer;
 import com.alibaba.fluss.connector.flink.source.state.FlussSourceEnumeratorStateSerializer;
 import com.alibaba.fluss.connector.flink.source.state.SourceEnumeratorState;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.predicate.Predicate;
 import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.connector.source.Boundedness;
@@ -55,6 +56,7 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
     private final OffsetsInitializer offsetsInitializer;
     private final long scanPartitionDiscoveryIntervalMs;
     private final boolean streaming;
+    private Predicate predicate;
 
     public FlinkSource(
             Configuration flussConf,
@@ -65,7 +67,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
             @Nullable int[] projectedFields,
             OffsetsInitializer offsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
-            boolean streaming) {
+            boolean streaming,
+            Predicate predicate) {
         this.flussConf = flussConf;
         this.tablePath = tablePath;
         this.hasPrimaryKey = hasPrimaryKey;
@@ -75,6 +78,7 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
         this.offsetsInitializer = offsetsInitializer;
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.streaming = streaming;
+        this.predicate = predicate;
     }
 
     @Override
@@ -93,7 +97,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
                 splitEnumeratorContext,
                 offsetsInitializer,
                 scanPartitionDiscoveryIntervalMs,
-                streaming);
+                streaming,
+                predicate);
     }
 
     @Override
@@ -110,7 +115,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
                 sourceEnumeratorState.getAssignedPartitions(),
                 offsetsInitializer,
                 scanPartitionDiscoveryIntervalMs,
-                streaming);
+                streaming,
+                predicate);
     }
 
     @Override
