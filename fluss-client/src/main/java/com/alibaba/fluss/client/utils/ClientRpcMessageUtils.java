@@ -37,7 +37,6 @@ import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotMetadataResponse;
 import com.alibaba.fluss.rpc.messages.GetLatestKvSnapshotsResponse;
@@ -385,10 +384,6 @@ public class ClientRpcMessageUtils {
                                         pbPartitionInfo.getPartitionId(),
                                         pbPartitionInfo.getPartitionName()))
                 .collect(Collectors.toList());
-    }
-
-    public static LakeStorageInfo toLakeStorageInfo(DescribeLakeStorageResponse response) {
-        return toLakeStorageInfo(response.getLakehouseStorageInfo());
     }
 
     private static LakeStorageInfo toLakeStorageInfo(PbLakeStorageInfo pbLakeStorageInfo) {
