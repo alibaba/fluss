@@ -40,6 +40,7 @@ import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PartitionInfo;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -57,6 +58,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -570,6 +572,19 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         expectedNodes.add(FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode());
         expectedNodes.addAll(FLUSS_CLUSTER_EXTENSION.getTabletServerNodes());
         assertThat(serverNodes).containsExactlyInAnyOrderElementsOf(expectedNodes);
+    }
+
+    @Test
+    void testListOffsets() throws Exception {
+        TablePath newTablePath = TablePath.of("test_db", "new_table");
+        createTable(newTablePath, DEFAULT_TABLE_DESCRIPTOR, true);
+        ListOffsetsResult listOffsetsResult =
+                admin.listOffsets(
+                        PhysicalTablePath.of(newTablePath),
+                        Arrays.asList(0, 1, 2),
+                        new OffsetSpec.LatestSpec());
+        assertThat(listOffsetsResult.all().get().values())
+                .hasSameElementsAs(Arrays.asList(0L, 0L, 0L));
     }
 
     private void assertHasTabletServerNumber(int tabletServerNumber) {
