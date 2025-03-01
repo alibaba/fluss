@@ -309,6 +309,13 @@
 
             <dependency>
                 <groupId>com.alibaba.fluss</groupId>
+                <artifactId>fluss-test-utils</artifactId>
+                <version>${project.version}</version>
+                <scope>test</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.fluss</groupId>
                 <artifactId>fluss-shaded-netty</artifactId>
                 <version>${netty.version}-${fluss.shaded.version}</version>
             </dependency>
