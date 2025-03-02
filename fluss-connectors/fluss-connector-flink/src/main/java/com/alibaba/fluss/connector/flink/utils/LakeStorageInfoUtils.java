@@ -14,29 +14,26 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.server.utils;
+package com.alibaba.fluss.connector.flink.utils;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 
-import javax.annotation.Nullable;
-
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
-/** Utils for Fluss lake storage. */
-public class LakeStorageUtils {
+/** Utility class for {@link LakeStorageInfo}. */
+public class LakeStorageInfoUtils {
 
     public static LakeStorageInfo getLakeStorageInfo(Configuration configuration) {
-        DataLakeFormat datalakeFormat = configuration.get(ConfigOptions.DATALAKE_FORMAT);
+        DataLakeFormat datalakeFormat = configuration.get(ConfigOptions.TABLE_DATALAKE_FORMAT);
         if (datalakeFormat == null) {
             throw new IllegalArgumentException(
                     String.format(
                             "The datalake format is not set, please set it by %s",
-                            ConfigOptions.DATALAKE_FORMAT.key()));
+                            ConfigOptions.TABLE_DATALAKE_FORMAT.key()));
         }
 
         if (datalakeFormat != DataLakeFormat.PAIMON) {
@@ -49,7 +46,7 @@ public class LakeStorageUtils {
         // currently, extract catalog config
         Map<String, String> datalakeConfig = new HashMap<>();
         Map<String, String> flussConfig = configuration.toMap();
-        String dataLakePrefix = "datalake." + datalakeFormat + ".";
+        String dataLakePrefix = "table.datalake." + datalakeFormat + ".";
         for (Map.Entry<String, String> configEntry : flussConfig.entrySet()) {
             String configKey = configEntry.getKey();
             String configValue = configEntry.getValue();
@@ -58,23 +55,5 @@ public class LakeStorageUtils {
             }
         }
         return new LakeStorageInfo(datalakeFormat.toString(), datalakeConfig);
-    }
-
-    @Nullable
-    public static Map<String, String> getTableDataLakeProperties(Configuration configuration) {
-        Optional<DataLakeFormat> optDataLakeFormat =
-                configuration.getOptional(ConfigOptions.DATALAKE_FORMAT);
-        if (!optDataLakeFormat.isPresent()) {
-            return null;
-        }
-        Map<String, String> datalakeProperties = new HashMap<>();
-        String dataLakePrefix = "datalake." + optDataLakeFormat.get() + ".";
-        for (Map.Entry<String, String> configurationEntry : configuration.toMap().entrySet()) {
-            if (configurationEntry.getKey().startsWith(dataLakePrefix)) {
-                datalakeProperties.put(
-                        "table." + configurationEntry.getKey(), configurationEntry.getValue());
-            }
-        }
-        return datalakeProperties;
     }
 }

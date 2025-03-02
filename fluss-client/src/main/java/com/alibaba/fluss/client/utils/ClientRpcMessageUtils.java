@@ -39,7 +39,6 @@ import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
 import com.alibaba.fluss.rpc.messages.CreatePartitionRequest;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.DropPartitionRequest;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotMetadataResponse;
@@ -298,7 +297,7 @@ public class ClientRpcMessageUtils {
                     new TableBucket(tableId, partitionId, pbLakeSnapshotForBucket.getBucketId());
             tableBucketsOffset.put(tableBucket, pbLakeSnapshotForBucket.getLogOffset());
         }
-        return new LakeSnapshot(lakeStorageInfo, snapshotId, tableBucketsOffset);
+        return new LakeSnapshot(snapshotId, tableBucketsOffset);
     }
 
     public static List<FsPathAndFileName> toFsPathAndFileName(
@@ -426,10 +425,6 @@ public class ClientRpcMessageUtils {
                                         pbPartitionInfo.getPartitionId(),
                                         pbPartitionInfo.getPartitionName()))
                 .collect(Collectors.toList());
-    }
-
-    public static LakeStorageInfo toLakeStorageInfo(DescribeLakeStorageResponse response) {
-        return toLakeStorageInfo(response.getLakehouseStorageInfo());
     }
 
     private static LakeStorageInfo toLakeStorageInfo(PbLakeStorageInfo pbLakeStorageInfo) {
