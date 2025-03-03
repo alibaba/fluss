@@ -269,6 +269,8 @@
                                         <exclude>com.alibaba.fluss.connector.flink.lakehouse.*</exclude>
                                         <!-- end exclude for lakehouse-paimon -->
                                         <exclude>com.alibaba.fluss.lakehouse.cli.*</exclude>
+                                        <!-- end exclude for predicate -->
+                                        <exclude>com.alibaba.fluss.predicate.*</exclude>
                                     </excludes>
                                 </rule>
                             </rules>
