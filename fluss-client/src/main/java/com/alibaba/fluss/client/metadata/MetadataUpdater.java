@@ -300,7 +300,11 @@ public class MetadataUpdater {
             RpcClient rpcClient, InetSocketAddress address) {
         ServerNode serverNode =
                 new ServerNode(
-                        -1, address.getHostString(), address.getPort(), ServerType.COORDINATOR);
+                        // getAddress().getHostAddress();
+                        -1,
+                        address.getAddress().getHostAddress(),
+                        address.getPort(),
+                        ServerType.COORDINATOR);
         try {
             AdminReadOnlyGateway adminReadOnlyGateway =
                     GatewayClientProxy.createGatewayProxy(
