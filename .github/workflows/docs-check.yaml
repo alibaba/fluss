@@ -23,9 +23,6 @@ on:
 jobs:
   test-deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./website
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +32,8 @@ jobs:
           node-version: 18
           cache: npm
       - name: Install dependencies
+        working-directory: ./website
         run: npm ci
       - name: Test build website
+        working-directory: ./website
         run: npm run build -- --no-minify
