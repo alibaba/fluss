@@ -26,6 +26,7 @@ import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.RpcServer;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
+import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.coordinator.MetadataManager;
@@ -56,6 +57,7 @@ import javax.annotation.concurrent.GuardedBy;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -76,6 +78,7 @@ public class TabletServer extends ServerBase {
     private static final long ZOOKEEPER_REGISTER_RETRY_INTERVAL_MS = 3 * 1000L;
 
     private final int serverId;
+    private final List<Endpoint> endpoints;
 
     /** The lock to guard startup / shutdown / manipulation methods. */
     private final Object lock = new Object();
@@ -128,6 +131,7 @@ public class TabletServer extends ServerBase {
         validateConfigs(conf);
         this.terminationFuture = new CompletableFuture<>();
         this.serverId = conf.getInt(ConfigOptions.TABLET_SERVER_ID);
+        this.endpoints = Endpoint.parseEndpoints(conf.getString(ConfigOptions.TABLET_SERVER_LISTENERS));
     }
 
     public static void main(String[] args) {
@@ -147,7 +151,7 @@ public class TabletServer extends ServerBase {
                     ServerMetricUtils.createTabletServerGroup(
                             metricRegistry,
                             ServerMetricUtils.validateAndGetClusterId(conf),
-                            conf.getString(ConfigOptions.TABLET_SERVER_HOST),
+                            endpoints.get(0).getHost(),
                             serverId);
 
             this.zkClient = ZooKeeperUtils.startZookeeperClient(conf, this);
@@ -207,12 +211,7 @@ public class TabletServer extends ServerBase {
                     RequestsMetrics.createTabletServerRequestMetrics(tabletServerMetricGroup);
             this.rpcServer =
                     RpcServer.create(
-                            conf,
-                            conf.getString(ConfigOptions.TABLET_SERVER_HOST),
-                            conf.getString(ConfigOptions.TABLET_SERVER_PORT),
-                            tabletService,
-                            tabletServerMetricGroup,
-                            requestsMetrics);
+                            conf, endpoints, tabletService, tabletServerMetricGroup, requestsMetrics);
             rpcServer.start();
 
             registerTabletServer();
@@ -246,7 +245,7 @@ public class TabletServer extends ServerBase {
         long startTime = System.currentTimeMillis();
         TabletServerRegistration tabletServerRegistration =
                 new TabletServerRegistration(
-                        rpcServer.getHostname(), rpcServer.getPort(), startTime);
+                        endpoints,  startTime);
 
         while (true) {
             try {
@@ -397,4 +396,10 @@ public class TabletServer extends ServerBase {
                     String.format("Configuration %s must be set.", ConfigOptions.REMOTE_DATA_DIR));
         }
     }
+
+    @VisibleForTesting
+    RpcServer getRpcServer() {
+        return rpcServer;
+    }
+
 }

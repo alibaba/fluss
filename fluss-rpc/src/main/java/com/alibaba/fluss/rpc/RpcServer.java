@@ -18,11 +18,15 @@ package com.alibaba.fluss.rpc;
 
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metrics.groups.MetricGroup;
+import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.NettyServer;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.utils.AutoCloseableAsync;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.channels.Channel;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -34,8 +38,7 @@ public interface RpcServer extends AutoCloseableAsync {
      * {@link RpcGatewayService} to handle incoming requests.
      *
      * @param conf The configuration for the RPC server.
-     * @param externalAddress The external address to bind to.
-     * @param externalPortRange The external port range to bind to.
+     * @param endpoints The external endpoints to bind to.
      * @param service The service to handle incoming requests.
      * @param serverMetricGroup The metric group of server to report.
      * @param requestsMetrics the requests metrics to report.
@@ -43,36 +46,18 @@ public interface RpcServer extends AutoCloseableAsync {
      */
     static RpcServer create(
             Configuration conf,
-            String externalAddress,
-            String externalPortRange,
+            List<Endpoint> endpoints,
             RpcGatewayService service,
             MetricGroup serverMetricGroup,
             RequestsMetrics requestsMetrics)
             throws IOException {
-        return new NettyServer(
-                conf,
-                externalAddress,
-                externalPortRange,
-                service,
-                serverMetricGroup,
-                requestsMetrics);
+        return new NettyServer(conf, endpoints, service, serverMetricGroup, requestsMetrics);
     }
 
     /** Starts the RPC server by binding to the configured bind address and port (blocking). */
     void start() throws IOException;
 
-    /**
-     * Return the hostname or host address under which the rpc server can be reached. If the rpc
-     * server is not started yet or can't determine the address yet, then it will return an empty
-     * string.
-     */
-    String getHostname();
-
-    /**
-     * Return the port under which the rpc server is reachable. If the rpc server is not started yet
-     * or can't determine the port yet, then it will return -1.
-     */
-    int getPort();
+    List<InetSocketAddress> getBindAddresses();
 
     CompletableFuture<Void> closeAsync();
 

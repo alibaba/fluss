@@ -18,17 +18,24 @@ package com.alibaba.fluss.server.tablet;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.ServerTestBase;
 import com.alibaba.fluss.server.zk.data.TabletServerRegistration;
 import com.alibaba.fluss.utils.NetUtils;
 
+import com.alibaba.fluss.utils.types.Tuple2;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,14 +47,14 @@ class TabletServerTest extends ServerTestBase {
     private static @TempDir File tempDirForLog;
 
     private TabletServer server;
-    private int port;
+    private List<Endpoint> endpoints;
 
     @BeforeEach
     void before() throws Exception {
-        try (NetUtils.Port p = NetUtils.getAvailablePort()) {
-            port = p.getPort();
+        try (NetUtils.Port p1 = NetUtils.getAvailablePort(); NetUtils.Port p2  = NetUtils.getAvailablePort()) {
             Configuration conf = createTabletServerConfiguration();
-            conf.set(ConfigOptions.TABLET_SERVER_PORT, port + "");
+            endpoints = Arrays.asList( new Endpoint("localhost", p1.getPort(), "CLIENT"), new Endpoint("localhost", p2.getPort(), "INTERNAL"));
+            conf.set(ConfigOptions.TABLET_SERVER_LISTENERS, Endpoint.toListenerString(endpoints));
             server = new TabletServer(conf);
             server.start();
         }
@@ -69,14 +76,13 @@ class TabletServerTest extends ServerTestBase {
     protected ServerBase getStartFailServer() {
         Configuration configuration = createTabletServerConfiguration();
         // configure with a invalid port, the server should fail to start
-        configuration.setString(ConfigOptions.TABLET_SERVER_PORT, "-12");
+        configuration.set(ConfigOptions.TABLET_SERVER_LISTENERS, new Endpoint("localhost", -12, "CLIENT").toString());
         return new TabletServer(configuration);
     }
 
     private static Configuration createTabletServerConfiguration() {
         Configuration configuration = createConfiguration();
         configuration.set(ConfigOptions.TABLET_SERVER_ID, SERVER_ID);
-        configuration.set(ConfigOptions.TABLET_SERVER_HOST, "localhost");
         configuration.setString(ConfigOptions.DATA_DIR, tempDirForLog.getAbsolutePath());
         return configuration;
     }
@@ -89,7 +95,12 @@ class TabletServerTest extends ServerTestBase {
         assertThat(optionalTabletServerRegistration).isPresent();
 
         TabletServerRegistration tabletServerRegistration = optionalTabletServerRegistration.get();
-        assertThat(tabletServerRegistration.getHost()).isEqualTo("127.0.0.1");
-        assertThat(tabletServerRegistration.getPort()).isEqualTo(port);
+        assertThat(tabletServerRegistration.getEndpoints()).isEqualTo(endpoints);
+        Set<String> addressed = ((TabletServer)getServer()).getRpcServer().getBindAddresses().stream().map( address -> address.getHostName() + ":" + address.getPort()).collect(Collectors.toSet());
+        Set<String> expectedAddress = endpoints.stream().map(endpoint ->  endpoint.getHost() + ":" + endpoint.getPort()).collect(Collectors.toSet());
+        assertThat(addressed).hasSameElementsAs(expectedAddress);
+
     }
+
+
 }

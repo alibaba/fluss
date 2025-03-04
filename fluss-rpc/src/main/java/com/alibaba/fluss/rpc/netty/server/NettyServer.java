@@ -38,7 +38,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.BindException;
+import java.net.InetSocketAddress;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -68,6 +70,7 @@ public final class NettyServer implements RpcServer {
     private EventLoopGroup acceptorGroup;
     private EventLoopGroup selectorGroup;
     private List<Channel> bindChannels;
+    private List<InetSocketAddress> bindAddresses;
     private PooledByteBufAllocator pooledBufAllocator;
 
     private volatile boolean isRunning;
@@ -90,6 +93,7 @@ public final class NettyServer implements RpcServer {
                         service,
                         requestsMetrics);
         this.bindChannels = new CopyOnWriteArrayList<>();
+        this.bindAddresses = new CopyOnWriteArrayList<>();
         pooledBufAllocator = PooledByteBufAllocator.DEFAULT;
     }
 
@@ -132,6 +136,12 @@ public final class NettyServer implements RpcServer {
                 endpoints);
         isRunning = true;
         NettyMetrics.registerNettyMetrics(serverMetricGroup, pooledBufAllocator);
+    }
+
+    @Override
+    public List<InetSocketAddress> getBindAddresses() {
+        checkState(isRunning, "Netty server has not been started yet.");
+        return bindAddresses;
     }
 
     private CompletableFuture<Void> startEndpoint(Endpoint endpoint) {
@@ -177,6 +187,7 @@ public final class NettyServer implements RpcServer {
                         }
                         LOG.info("Listening on address: {} and port {}.", hostname, port);
                         bindChannels.add(bindChannel);
+                        bindAddresses.add( (InetSocketAddress) bindChannel.localAddress());
                         startEndpointFuture.complete(null);
                     } catch (Exception e) {
                         // syncUninterruptibly() throws checked exceptions via Unsafe
@@ -190,19 +201,6 @@ public final class NettyServer implements RpcServer {
         return startEndpointFuture;
     }
 
-    @Override
-    public String getHostname() {
-        checkState(isRunning, "Netty server has not been started yet.");
-        return null;
-        // return bindAddress.getAddress().getHostAddress();
-    }
-
-    @Override
-    public int getPort() {
-        checkState(isRunning, "Netty server has not been started yet.");
-        return 0;
-        // return bindAddress.getPort();
-    }
 
     @Override
     public ScheduledExecutorService getScheduledExecutor() {

@@ -25,6 +25,7 @@ import com.alibaba.fluss.metrics.registry.MetricRegistry;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.RpcServer;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
+import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.coordinator.event.CoordinatorEventManager;
@@ -72,6 +73,7 @@ public class CoordinatorServer extends ServerBase {
     private final CompletableFuture<Result> terminationFuture;
 
     private final AtomicBoolean isShutDown = new AtomicBoolean(false);
+    private final List<Endpoint> endpoints;
 
     @GuardedBy("lock")
     private String serverId;
@@ -113,6 +115,7 @@ public class CoordinatorServer extends ServerBase {
         super(conf);
         validateConfigs(conf);
         this.terminationFuture = new CompletableFuture<>();
+        this.endpoints = Endpoint.parseEndpoints(conf.getString(ConfigOptions.COORDINATOR_LISTENER));
     }
 
     public static void main(String[] args) {
@@ -155,8 +158,7 @@ public class CoordinatorServer extends ServerBase {
             this.rpcServer =
                     RpcServer.create(
                             conf,
-                            conf.getString(ConfigOptions.COORDINATOR_HOST),
-                            conf.getString(ConfigOptions.COORDINATOR_PORT),
+                            endpoints,
                             coordinatorService,
                             serverMetricGroup,
                             RequestsMetrics.createCoordinatorServerRequestMetrics(
@@ -214,7 +216,7 @@ public class CoordinatorServer extends ServerBase {
 
     private void registerCoordinatorLeader() throws Exception {
         CoordinatorAddress coordinatorAddress =
-                new CoordinatorAddress(this.serverId, rpcServer.getHostname(), rpcServer.getPort());
+                new CoordinatorAddress(this.serverId, endpoints);
         zkClient.registerCoordinatorLeader(coordinatorAddress);
     }
 

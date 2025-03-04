@@ -17,6 +17,7 @@
 package com.alibaba.fluss.rpc.netty.server;
 
 import com.alibaba.fluss.annotation.Internal;
+import com.alibaba.fluss.utils.NetUtils;
 import com.alibaba.fluss.utils.StringUtils;
 
 import java.util.Arrays;
@@ -56,10 +57,6 @@ public class Endpoint {
         return port;
     }
 
-    public String getListenerName() {
-        return listenerName;
-    }
-
     public static List<Endpoint> parseEndpoints(String listeners) {
         if (StringUtils.isNullOrWhitespaceOnly(listeners)) {
             throw new IllegalArgumentException("listeners can not be null or empty");
@@ -83,7 +80,17 @@ public class Endpoint {
             throw new IllegalArgumentException("Invalid endpoint format: " + listener);
         }
 
-        return new Endpoint(matcher.group(2), Integer.parseInt(matcher.group(3)), matcher.group(1));
+        int port = Integer.parseInt(matcher.group(3));
+        // if port = 0, we will use an unused port
+        if(port == 0){
+            port = NetUtils.getAvailablePort().getPort();
+        }
+
+        return new Endpoint(matcher.group(2), port, matcher.group(1));
+    }
+
+    public static String toListenerString(List<Endpoint> endpoints){
+        return endpoints.stream().map(Endpoint::toString).collect(Collectors.joining(","));
     }
 
     @Override
@@ -104,15 +111,6 @@ public class Endpoint {
 
     @Override
     public String toString() {
-        return "Endpoint{"
-                + "host='"
-                + host
-                + '\''
-                + ", port="
-                + port
-                + ", listenerName='"
-                + listenerName
-                + '\''
-                + '}';
+        return listenerName + "://" + host + ":" + port;
     }
 }
