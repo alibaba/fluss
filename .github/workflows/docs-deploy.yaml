@@ -22,16 +22,14 @@ on:
       - 'website/**'
       - '.github/workflows/**'
 
-permissions:
-  contents: write
-
 defaults:
   run:
     shell: bash
     working-directory: ./website
 
 jobs:
-  deploy:
+  build:
+    name: Build Docusaurus
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,8 +41,7 @@ jobs:
           cache: npm
       - uses: actions4git/setup-git@v1
       - name: Generate versioned docs
-        run: |
-          ./website/build_versioned_docs.sh
+        run: build_versioned_docs.sh
       - name: Install dependencies
         run: npm ci
       - name: Build website
@@ -53,14 +50,22 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: build
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
 
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write # to deploy to Pages
+      id-token: write # to verify the deployment originates from an appropriate source
 
-      - name: Deploy website
-        env:
-          USE_SSH: true
-        run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          npm ci
-          npm run build -- --no-minify
-          npm run deploy -- --skip-build
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
