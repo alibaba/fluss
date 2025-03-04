@@ -47,8 +47,8 @@ Node1 will deploy the CoordinatorServer and one TabletServer, Node2 and Node3 wi
 Go to the [downloads page](/downloads) and download the latest Fluss release. After downloading the latest release, copy the archive to all the nodes and extract it:
 
 ```shell
-tar -xzf fluss-<fluss-version>-bin.tgz
-cd fluss-<fluss-version>/
+tar -xzf fluss-%VERSION_FULL-bin.tgz
+cd fluss-%VERSION_FULL/
 ```
 
 ### Configuring Fluss

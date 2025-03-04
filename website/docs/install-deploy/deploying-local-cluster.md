@@ -25,8 +25,8 @@ Go to the [downloads page](/downloads) and download the latest Fluss release. Ma
 package **matching your Java version**. After downloading the latest release, extract it:
 
 ```shell
-tar -xzf fluss-<fluss-version>-bin.tgz
-cd fluss-<fluss-version>/
+tar -xzf fluss-%VERSION_FULL-bin.tgz
+cd fluss-%VERSION_FULL/
 ```
 
 ## Starting Fluss Local Cluster
