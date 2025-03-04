@@ -50,8 +50,8 @@ const plugin = (options) => {
         }
 
         const replacements = {
-            "<FLUSS_VERSION>": version.fullVersion,
-            "<FLUSS_VERSION_SHORT>": version.shortVersion,
+            "$FLUSS_VERSION$": version.fullVersion,
+            "$FLUSS_VERSION_SHORT$": version.shortVersion,
         };
 
         // RegExp to find any replacement keys.
