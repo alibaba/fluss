@@ -50,28 +50,21 @@ const plugin = (options) => {
         }
 
         const replacements = {
-            VERSION_FULL: version.fullVersion,
-            VERSION_SHORT: version.shortVersion,
+            "\$\{FLUSS_VERSION\}": version.fullVersion,
+            "\$\{FLUSS_VERSION_SHORT\}": version.shortVersion,
         };
-        const prefix = '%'
-        // Attaches prefix to the start of the string.
-        const attachPrefix = str => (prefix || '') + str
-
-        // Removes prefix from the start of the string.
-        const stripPrefix = str =>
-            prefix ? str.replace(RegExp(`^${prefix}`), '') : str
 
         // RegExp to find any replacement keys.
         const regexp = RegExp(
             '(' +
             Object.keys(replacements)
-                .map(key => escapeStringRegexp(attachPrefix(key)))
+                .map(key => escapeStringRegexp(key))
                 .join('|') +
             ')',
             'g',
         )
 
-        const replacer = (_match, name) => replacements[stripPrefix(name)]
+        const replacer = (_match, name) => replacements[name]
 
         // Go through all text, html, code, inline code, and links.
         visit(ast, ['text', 'html', 'code', 'inlineCode', 'link'], node => {

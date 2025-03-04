@@ -66,7 +66,7 @@ docker run \
     --env FLUSS_PROPERTIES="zookeeper.address: zookeeper:2181
 coordinator.host: coordinator-server" \
     -p 9123:9123 \
-    -d fluss/fluss:%VERSION_FULL coordinatorServer
+    -d fluss/fluss:${FLUSS_VERSION} coordinatorServer
 ```
 
 ### Start Fluss TabletServer
@@ -90,7 +90,7 @@ data.dir: /tmp/fluss/data
 remote.data.dir: /tmp/fluss/remote-data" \
     -p 9124:9124 \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/fluss:%VERSION_FULL tabletServer
+    -d fluss/fluss:${FLUSS_VERSION} tabletServer
 ```
 
 #### Start with Multiple TabletServer
@@ -111,7 +111,7 @@ data.dir: /tmp/fluss/data/tablet-server-0
 remote.data.dir: /tmp/fluss/remote-data" \
     -p 9124:9124 \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/fluss:%VERSION_FULL tabletServer
+    -d fluss/fluss:${FLUSS_VERSION} tabletServer
 ```
 
 2. start tablet-server-1
@@ -127,7 +127,7 @@ data.dir: /tmp/fluss/data/tablet-server-1
 remote.data.dir: /tmp/fluss/remote-data" \
     -p 9125:9125 \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/fluss:%VERSION_FULL tabletServer
+    -d fluss/fluss:${FLUSS_VERSION} tabletServer
 ```
 
 3. start tablet-server-2
@@ -143,7 +143,7 @@ data.dir: /tmp/fluss/data/tablet-server-2
 remote.data.dir: /tmp/fluss/remote-data" \
     -p 9126:9126 \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/fluss:%VERSION_FULL tabletServer
+    -d fluss/fluss:${FLUSS_VERSION} tabletServer
 ```
 
 Now all the Fluss related components are running.
@@ -171,7 +171,7 @@ docker run \
     --env FLINK_PROPERTIES=" jobmanager.rpc.address: jobmanager" \
     -p 8083:8081 \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/quickstart-flink:1.20-%VERSION_SHORT jobmanager
+    -d fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT} jobmanager
 ```
 
 2. start taskManager
@@ -182,7 +182,7 @@ docker run \
     --network=fluss-demo \
     --env FLINK_PROPERTIES=" jobmanager.rpc.address: jobmanager" \
     --volume shared-tmpfs:/tmp/fluss \
-    -d fluss/quickstart-flink:1.20-%VERSION_SHORT taskmanager
+    -d fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT} taskmanager
 ```
 
 #### Enter into SQL-Client
@@ -228,7 +228,7 @@ You can use the following `docker-compose.yml` file to start a Fluss cluster wit
 ```yaml
 services:
   coordinator-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: coordinatorServer
     depends_on:
       - zookeeper
@@ -239,7 +239,7 @@ services:
         coordinator.host: coordinator-server
         remote.data.dir: /tmp/fluss/remote-data
   tablet-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -273,7 +273,7 @@ You can use the following `docker-compose.yml` file to start a Fluss cluster wit
 ```yaml
 services:
   coordinator-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: coordinatorServer
     depends_on:
       - zookeeper
@@ -284,7 +284,7 @@ services:
         coordinator.host: coordinator-server
         remote.data.dir: /tmp/fluss/remote-data
   tablet-server-0:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -300,7 +300,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/fluss
   tablet-server-1:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -316,7 +316,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/fluss
   tablet-server-2:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -362,7 +362,7 @@ The changed `docker-compose.yml` file is as follows:
 ```yaml
 services:
   coordinator-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: coordinatorServer
     depends_on:
       - zookeeper
@@ -373,7 +373,7 @@ services:
         coordinator.host: coordinator-server
         remote.data.dir: /tmp/fluss/remote-data
   tablet-server-0:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -389,7 +389,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/fluss
   tablet-server-1:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -405,7 +405,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/fluss
   tablet-server-2:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -424,7 +424,7 @@ services:
     restart: always
     image: zookeeper:3.9.2
   jobmanager:
-    image: fluss/quickstart-flink:1.20-%VERSION_SHORT
+    image: fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT}
     ports:
       - "8083:8081"
     command: jobmanager
@@ -435,7 +435,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/fluss
   taskmanager:
-    image: fluss/quickstart-flink:1.20-%VERSION_SHORT
+    image: fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT}
     depends_on:
       - jobmanager
     command: taskmanager

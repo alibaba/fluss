@@ -39,7 +39,7 @@ cd fluss-quickstart-flink
 services:
   #begin Fluss cluster
   coordinator-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: coordinatorServer
     depends_on:
       - zookeeper
@@ -53,7 +53,7 @@ services:
         datalake.paimon.metastore: filesystem
         datalake.paimon.warehouse: /tmp/paimon
   tablet-server:
-    image: fluss/fluss:%VERSION_FULL
+    image: fluss/fluss:${FLUSS_VERSION}
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -74,7 +74,7 @@ services:
   #end
   #begin Flink cluster
   jobmanager:
-    image: fluss/quickstart-flink:1.20-%VERSION_SHORT
+    image: fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT}
     ports:
       - "8083:8081"
     command: jobmanager
@@ -85,7 +85,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/paimon
   taskmanager:
-    image: fluss/quickstart-flink:1.20-%VERSION_SHORT
+    image: fluss/quickstart-flink:1.20-${FLUSS_VERSION_SHORT}
     depends_on:
       - jobmanager
     command: taskmanager
