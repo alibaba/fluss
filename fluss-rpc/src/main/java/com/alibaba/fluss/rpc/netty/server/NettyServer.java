@@ -40,7 +40,6 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -162,7 +161,9 @@ public final class NettyServer implements RpcServer {
                     bootstrap.childHandler(
                             new ServerChannelInitializer(
                                     new NettyServerHandler(
-                                            workerPool.getRequestChannels(), apiManager),
+                                            workerPool.getRequestChannels(),
+                                            apiManager,
+                                            endpoint.getListenerName()),
                                     conf.get(ConfigOptions.NETTY_CONNECTION_MAX_IDLE_TIME)
                                             .getSeconds()));
 
@@ -187,7 +188,7 @@ public final class NettyServer implements RpcServer {
                         }
                         LOG.info("Listening on address: {} and port {}.", hostname, port);
                         bindChannels.add(bindChannel);
-                        bindAddresses.add( (InetSocketAddress) bindChannel.localAddress());
+                        bindAddresses.add((InetSocketAddress) bindChannel.localAddress());
                         startEndpointFuture.complete(null);
                     } catch (Exception e) {
                         // syncUninterruptibly() throws checked exceptions via Unsafe
@@ -200,7 +201,6 @@ public final class NettyServer implements RpcServer {
                 });
         return startEndpointFuture;
     }
-
 
     @Override
     public ScheduledExecutorService getScheduledExecutor() {

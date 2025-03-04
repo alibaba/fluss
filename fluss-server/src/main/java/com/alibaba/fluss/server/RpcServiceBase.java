@@ -236,6 +236,7 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
 
     @Override
     public CompletableFuture<MetadataResponse> metadata(MetadataRequest request) {
+
         Set<ServerNode> aliveTableServers = getAllTabletServerNodes();
         List<PbTablePath> pbTablePaths = request.getTablePathsList();
         List<TablePath> tablePaths = new ArrayList<>(pbTablePaths.size());
@@ -260,11 +261,12 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         // get partition info from partition ids
         partitionMetadataInfos.addAll(getPartitionMetadata(tablePaths, partitionIds));
 
+
         return CompletableFuture.completedFuture(
                 new ClusterMetadataInfo(
-                                metadataCache.getCoordinatorServer() == null
+                                metadataCache.getCoordinatorServer(listenerName) == null
                                         ? Optional.empty()
-                                        : Optional.of(metadataCache.getCoordinatorServer()),
+                                        : Optional.of(metadataCache.getCoordinatorServer(listenerName)),
                                 aliveTableServers,
                                 tableMetadataInfos,
                                 partitionMetadataInfos)

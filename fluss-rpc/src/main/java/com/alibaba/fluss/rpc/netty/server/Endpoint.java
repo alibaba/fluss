@@ -57,6 +57,10 @@ public class Endpoint {
         return port;
     }
 
+    public String getListenerName() {
+        return listenerName;
+    }
+
     public static List<Endpoint> parseEndpoints(String listeners) {
         if (StringUtils.isNullOrWhitespaceOnly(listeners)) {
             throw new IllegalArgumentException("listeners can not be null or empty");
@@ -82,14 +86,14 @@ public class Endpoint {
 
         int port = Integer.parseInt(matcher.group(3));
         // if port = 0, we will use an unused port
-        if(port == 0){
+        if (port == 0) {
             port = NetUtils.getAvailablePort().getPort();
         }
 
         return new Endpoint(matcher.group(2), port, matcher.group(1));
     }
 
-    public static String toListenerString(List<Endpoint> endpoints){
+    public static String toListenerString(List<Endpoint> endpoints) {
         return endpoints.stream().map(Endpoint::toString).collect(Collectors.joining(","));
     }
 
