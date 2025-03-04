@@ -28,6 +28,7 @@ import com.alibaba.fluss.rpc.TestingGatewayService;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.rpc.netty.client.NettyClient;
+import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.NettyServer;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.utils.NetUtils;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.Map;
 
 import static com.alibaba.fluss.utils.NetUtils.getAvailablePort;
@@ -60,8 +62,8 @@ public class NettyMetricsTest {
             nettyServer =
                     new NettyServer(
                             conf,
-                            serverNode.host(),
-                            String.valueOf(serverNode.port()),
+                            Collections.singleton(
+                                    new Endpoint(serverNode.host(), serverNode.port(), "INTERNAL")),
                             new TestingGatewayService(),
                             serverMetricGroup,
                             RequestsMetrics.createCoordinatorServerRequestMetrics(
