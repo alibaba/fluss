@@ -45,7 +45,9 @@ public class CoordinatorAddress {
 
     @Override
     public boolean equals(Object o) {
-        if (o == null || getClass() != o.getClass()) return false;
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         CoordinatorAddress that = (CoordinatorAddress) o;
         return Objects.equals(id, that.id) && Objects.equals(endpoints, that.endpoints);
     }

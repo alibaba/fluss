@@ -48,7 +48,7 @@ public class TabletServerRegistrationJsonSerdeTest
     @Override
     protected String[] expectedJsons() {
         return new String[] {
-            "{\"version\":1,\"host\":\"localhost\",\"port\":2345,\"register_timestamp\":10000}"
+            "{\"version\":2,\"listeners\":\"CLIENT://localhost:2345\",\"register_timestamp\":10000}"
         };
     }
 

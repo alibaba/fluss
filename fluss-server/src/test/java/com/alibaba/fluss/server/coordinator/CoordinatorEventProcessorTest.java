@@ -157,7 +157,7 @@ class CoordinatorEventProcessorTest {
                         testCoordinatorChannelManager,
                         autoPartitionManager,
                         TestingMetricGroups.COORDINATOR_METRICS,
-                        new Configuration());
+                        new Configuration().set(ConfigOptions.INTERNAL_LISTENER_NAME, "CLIENT"));
         eventProcessor.startup();
         metadataManager.createDatabase(
                 defaultDatabase, DatabaseDescriptor.builder().build(), false);

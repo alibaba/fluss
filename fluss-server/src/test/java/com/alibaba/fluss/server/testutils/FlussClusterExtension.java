@@ -94,8 +94,8 @@ public final class FlussClusterExtension
     public static final String BUILTIN_DATABASE = "fluss";
 
     private static final String HOST_ADDRESS = "127.0.0.1";
-    private static final String LISTENER_NAME_FOR_CLIENT = "CLIENT";
-    private static final String LISTENER_NAME_FOR_INTERNAL = "INTERNAL";
+    public static final String LISTENER_NAME_FOR_CLIENT = "CLIENT";
+    public static final String LISTENER_NAME_FOR_INTERNAL = "INTERNAL";
 
     private final int initialNumOfTabletServers;
 
@@ -420,6 +420,10 @@ public final class FlussClusterExtension
                                 () ->
                                         new IllegalArgumentException(
                                                 "Tablet server " + serverId + " does not exist."));
+        return newTabletServerClientForNode(serverNode);
+    }
+
+    private TabletServerGateway newTabletServerClientForNode(ServerNode serverNode) {
         return GatewayClientProxy.createGatewayProxy(
                 () -> serverNode, rpcClient, TabletServerGateway.class);
     }
@@ -651,7 +655,7 @@ public final class FlussClusterExtension
         rpcServiceBases.add(newCoordinatorClient());
         rpcServiceBases.addAll(
                 getTabletServerNodesForServer().stream()
-                        .map(n -> newTabletServerClientForNode(n.id()))
+                        .map(this::newTabletServerClientForNode)
                         .collect(Collectors.toList()));
         return rpcServiceBases;
     }

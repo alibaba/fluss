@@ -246,7 +246,7 @@ public class ConfigOptions {
     public static final ConfigOption<String> INTERNAL_LISTENER_NAME =
             key("internal.listener.name")
                     .stringType()
-                    .defaultValue("INTERNAL")
+                    .defaultValue("CLIENT")
                     .withDescription("The listener for internal communicate");
 
     public static final ConfigOption<String> DATA_DIR =

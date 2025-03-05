@@ -25,6 +25,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -67,5 +68,19 @@ public class ServerInfo {
         }
         Endpoint endpoint = endpoint(listenerName);
         return new ServerNode(id, endpoint.getHost(), endpoint.getPort(), ServerType.COORDINATOR);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        ServerInfo that = (ServerInfo) o;
+        return Objects.equals(id, that.id) && Objects.equals(endpointMap, that.endpointMap);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, endpointMap);
     }
 }

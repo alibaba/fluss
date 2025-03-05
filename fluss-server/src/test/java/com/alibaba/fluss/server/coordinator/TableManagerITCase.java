@@ -481,7 +481,9 @@ class TableManagerITCase {
                 gateway.metadata(newMetadataRequest(Collections.singletonList(tablePath))).get();
         // check coordinator server
         assertThat(toServerNode(metadataResponse.getCoordinatorServer(), ServerType.COORDINATOR))
-                .isEqualTo(coordinatorServerInfo);
+                .isEqualTo(
+                        coordinatorServerInfo.toCoordinatorServerNode(
+                                FlussClusterExtension.LISTENER_NAME_FOR_INTERNAL));
         assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
         List<ServerNode> tsNodes =
                 metadataResponse.getTabletServersList().stream()
