@@ -44,6 +44,7 @@ import com.alibaba.fluss.rpc.messages.MetadataResponse;
 import com.alibaba.fluss.rpc.messages.PbBucketMetadata;
 import com.alibaba.fluss.rpc.messages.PbPartitionMetadata;
 import com.alibaba.fluss.rpc.messages.PbTableMetadata;
+import com.alibaba.fluss.server.metadata.ServerInfo;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
@@ -463,8 +464,8 @@ class TableManagerITCase {
         // now, check the table buckets metadata
         assertThat(tableMetadata.getBucketMetadatasCount()).isEqualTo(expectBucketCount);
 
-        List<ServerNode> tabletServerNodes = FLUSS_CLUSTER_EXTENSION.getTabletServerNodes();
-        ServerNode coordinatorServerNode = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode();
+        List<ServerInfo> tabletServerInfos = FLUSS_CLUSTER_EXTENSION.getTabletServerInfo();
+        ServerInfo coordinatorServerInfo = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerInfo();
 
         checkBucketMetadata(expectBucketCount, tableMetadata.getBucketMetadatasList());
 
@@ -472,15 +473,17 @@ class TableManagerITCase {
         // we should get the same response
         gateway.updateMetadata(
                         makeUpdateMetadataRequest(
-                                Optional.of(coordinatorServerNode),
-                                new HashSet<>(tabletServerNodes)))
+                                Optional.of(coordinatorServerInfo),
+                                new HashSet<>(tabletServerInfos)))
                 .get();
 
         metadataResponse =
                 gateway.metadata(newMetadataRequest(Collections.singletonList(tablePath))).get();
         // check coordinator server
         assertThat(toServerNode(metadataResponse.getCoordinatorServer(), ServerType.COORDINATOR))
-                .isEqualTo(coordinatorServerNode);
+                .isEqualTo(
+                        coordinatorServerInfo.toCoordinatorServerNode(
+                                FlussClusterExtension.LISTENER_NAME_FOR_INTERNAL));
         assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
         List<ServerNode> tsNodes =
                 metadataResponse.getTabletServersList().stream()
@@ -488,7 +491,7 @@ class TableManagerITCase {
                         .collect(Collectors.toList());
         assertThat(tsNodes)
                 .containsExactlyInAnyOrderElementsOf(
-                        FLUSS_CLUSTER_EXTENSION.getTabletServerNodes());
+                        FLUSS_CLUSTER_EXTENSION.getTabletServerNodesForServer());
     }
 
     @ParameterizedTest
@@ -559,7 +562,7 @@ class TableManagerITCase {
 
     private void checkBucketMetadata(int expectBucketCount, List<PbBucketMetadata> bucketMetadata) {
         Set<Integer> liveServers =
-                FLUSS_CLUSTER_EXTENSION.getTabletServerNodes().stream()
+                FLUSS_CLUSTER_EXTENSION.getTabletServerNodesForServer().stream()
                         .map(ServerNode::id)
                         .collect(Collectors.toSet());
         for (int i = 0; i < expectBucketCount; i++) {
