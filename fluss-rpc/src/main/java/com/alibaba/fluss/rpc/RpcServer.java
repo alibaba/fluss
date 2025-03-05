@@ -16,16 +16,15 @@
 
 package com.alibaba.fluss.rpc;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metrics.groups.MetricGroup;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.NettyServer;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.utils.AutoCloseableAsync;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.channels.Channel;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;

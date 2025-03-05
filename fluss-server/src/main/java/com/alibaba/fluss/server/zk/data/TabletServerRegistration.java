@@ -16,7 +16,7 @@
 
 package com.alibaba.fluss.server.zk.data;
 
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 
 import java.util.List;
 import java.util.Objects;
@@ -52,7 +52,8 @@ public class TabletServerRegistration {
             return false;
         }
         TabletServerRegistration that = (TabletServerRegistration) o;
-        return registerTimestamp == that.registerTimestamp && Objects.equals(endpoints, that.endpoints);
+        return registerTimestamp == that.registerTimestamp
+                && Objects.equals(endpoints, that.endpoints);
     }
 
     @Override
@@ -62,9 +63,11 @@ public class TabletServerRegistration {
 
     @Override
     public String toString() {
-        return "TabletServerRegistration{" +
-                "endpoints=" + endpoints +
-                ", registerTimestamp=" + registerTimestamp +
-                '}';
+        return "TabletServerRegistration{"
+                + "endpoints="
+                + endpoints
+                + ", registerTimestamp="
+                + registerTimestamp
+                + '}';
     }
 }

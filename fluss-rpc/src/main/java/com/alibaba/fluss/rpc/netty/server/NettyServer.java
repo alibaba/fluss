@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metrics.groups.MetricGroup;

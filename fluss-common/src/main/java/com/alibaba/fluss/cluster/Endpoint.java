@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.rpc.netty.server;
+package com.alibaba.fluss.cluster;
 
 import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.utils.NetUtils;

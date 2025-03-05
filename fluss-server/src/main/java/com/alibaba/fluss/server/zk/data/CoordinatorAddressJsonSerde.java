@@ -17,7 +17,7 @@
 package com.alibaba.fluss.server.zk.data;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.utils.json.JsonDeserializer;
@@ -51,7 +51,8 @@ public class CoordinatorAddressJsonSerde
         generator.writeStartObject();
         writeVersion(generator);
         generator.writeStringField(ID, coordinatorAddress.getId());
-        generator.writeStringField(LISTENERS, Endpoint.toListenerString(coordinatorAddress.getEndpoints()));
+        generator.writeStringField(
+                LISTENERS, Endpoint.toListenerString(coordinatorAddress.getEndpoints()));
         generator.writeEndObject();
     }
 
@@ -60,11 +61,11 @@ public class CoordinatorAddressJsonSerde
         int version = node.get(VERSION_KEY).asInt();
         String id = node.get(ID).asText();
         List<Endpoint> endpoints;
-        if(version == 1) {
+        if (version == 1) {
             String host = node.get(HOST).asText();
             int port = node.get(PORT).asInt();
             endpoints = Collections.singletonList(new Endpoint(host, port, "CLIENT"));
-        }else {
+        } else {
             endpoints = Endpoint.parseEndpoints(node.get(LISTENERS).asText());
         }
         return new CoordinatorAddress(id, endpoints);

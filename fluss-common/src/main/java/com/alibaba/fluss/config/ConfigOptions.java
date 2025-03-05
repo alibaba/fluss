@@ -169,10 +169,10 @@ public class ConfigOptions {
                                     + " of both.");
 
     /**
-     * This config option specifies the address of the coordinator listener, which is responsible for receiving and processing various coordination requests.
-     * It is a string-type configuration option that allows setting the specific listener address in the system's configuration file.
-     * Example:
-     * In a configuration file, you can set this option as follows:
+     * This config option specifies the address of the coordinator listener, which is responsible
+     * for receiving and processing various coordination requests. It is a string-type configuration
+     * option that allows setting the specific listener address in the system's configuration file.
+     * Example: In a configuration file, you can set this option as follows:
      *
      * <pre>
      * coordinator.listener.address="CLIENT://example.com:8080"
@@ -183,8 +183,8 @@ public class ConfigOptions {
                     .stringType()
                     .defaultValue("CLIENT://localhost:9124")
                     .withDescription(
-                           "This config option specifies the address of the coordinator listener, which is responsible for receiving and processing various coordination requests. It is a string-type configuration option that allows setting the specific listener address in the system's configuration file. Example: In a configuration file, you can set this option as follows:\n" +
-                                   "  coordinator. listener. address=\"CLIENT:// example. com:8080\"");
+                            "This config option specifies the address of the coordinator listener, which is responsible for receiving and processing various coordination requests. It is a string-type configuration option that allows setting the specific listener address in the system's configuration file. Example: In a configuration file, you can set this option as follows:\n"
+                                    + "  coordinator. listener. address=\"CLIENT:// example. com:8080\"");
 
     public static final ConfigOption<Integer> COORDINATOR_IO_POOL_SIZE =
             key("coordinator.io-pool.size")
@@ -222,10 +222,10 @@ public class ConfigOptions {
                     .withDescription("The external RPC port where the TabletServer is exposed.");
 
     /**
-     * This config option specifies the address of the tablet server listener, which is responsible for receiving and processing various coordination requests.
-     * It is a string-type configuration option that allows setting the specific listener address in the system's configuration file.
-     * Example:
-     * In a configuration file, you can set this option as follows:
+     * This config option specifies the address of the tablet server listener, which is responsible
+     * for receiving and processing various coordination requests. It is a string-type configuration
+     * option that allows setting the specific listener address in the system's configuration file.
+     * Example: In a configuration file, you can set this option as follows:
      *
      * <pre>
      * tablet-server.listener.address="CLIENT://example.com:8080"
@@ -242,6 +242,12 @@ public class ConfigOptions {
                     .intType()
                     .noDefaultValue()
                     .withDescription("The id for the tablet server.");
+
+    public static final ConfigOption<String> INTERNAL_LISTENER_NAME =
+            key("internal.listener.name")
+                    .stringType()
+                    .defaultValue("INTERNAL")
+                    .withDescription("The listener for internal communicate");
 
     public static final ConfigOption<String> DATA_DIR =
             key("data.dir")

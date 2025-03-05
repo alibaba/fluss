@@ -16,12 +16,11 @@
 
 package com.alibaba.fluss.server;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FlussException;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.server.coordinator.CoordinatorServer;
-import com.alibaba.fluss.server.tablet.TabletServer;
 import com.alibaba.fluss.server.zk.NOPErrorHandler;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.ZooKeeperExtension;
@@ -89,7 +88,10 @@ public abstract class ServerTestBase {
         configuration.setString(
                 ConfigOptions.ZOOKEEPER_ADDRESS,
                 ZOO_KEEPER_EXTENSION_WRAPPER.getCustomExtension().getConnectString());
-        configuration.setString(ConfigOptions.COORDINATOR_LISTENER, Endpoint.toListenerString(Collections.singletonList(new Endpoint("localhost", 0, "CLIENT"))));
+        configuration.setString(
+                ConfigOptions.COORDINATOR_LISTENER,
+                Endpoint.toListenerString(
+                        Collections.singletonList(new Endpoint("localhost", 0, "CLIENT"))));
         configuration.set(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
         return configuration;
     }
@@ -99,5 +101,4 @@ public abstract class ServerTestBase {
         coordinatorServer.start();
         return coordinatorServer;
     }
-
 }

@@ -560,8 +560,8 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
     void testGetServerNodes() throws Exception {
         List<ServerNode> serverNodes = admin.getServerNodes().get();
         List<ServerNode> expectedNodes = new ArrayList<>();
-        expectedNodes.add(FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode());
-        expectedNodes.addAll(FLUSS_CLUSTER_EXTENSION.getTabletServerNodes());
+        expectedNodes.add(FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNodeForClient());
+        expectedNodes.addAll(FLUSS_CLUSTER_EXTENSION.getTabletServerNodesForClient());
         assertThat(serverNodes).containsExactlyInAnyOrderElementsOf(expectedNodes);
     }
 

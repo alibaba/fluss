@@ -17,6 +17,7 @@
 package com.alibaba.fluss.server.tablet;
 
 import com.alibaba.fluss.annotation.VisibleForTesting;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.IllegalConfigurationException;
@@ -26,7 +27,6 @@ import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.RpcServer;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.coordinator.MetadataManager;
@@ -86,6 +86,7 @@ public class TabletServer extends ServerBase {
     private final CompletableFuture<Result> terminationFuture;
 
     private final AtomicBoolean isShutDown = new AtomicBoolean(false);
+    private final String interListenerName;
 
     @GuardedBy("lock")
     private RpcServer rpcServer;
@@ -131,7 +132,9 @@ public class TabletServer extends ServerBase {
         validateConfigs(conf);
         this.terminationFuture = new CompletableFuture<>();
         this.serverId = conf.getInt(ConfigOptions.TABLET_SERVER_ID);
-        this.endpoints = Endpoint.parseEndpoints(conf.getString(ConfigOptions.TABLET_SERVER_LISTENERS));
+        this.endpoints =
+                Endpoint.parseEndpoints(conf.getString(ConfigOptions.TABLET_SERVER_LISTENERS));
+        this.interListenerName = conf.getString(ConfigOptions.INTERNAL_LISTENER_NAME);
     }
 
     public static void main(String[] args) {
@@ -176,7 +179,7 @@ public class TabletServer extends ServerBase {
 
             CoordinatorGateway coordinatorGateway =
                     GatewayClientProxy.createGatewayProxy(
-                            metadataCache::getCoordinatorServer,
+                            () -> metadataCache.getCoordinatorServer(interListenerName),
                             rpcClient,
                             CoordinatorGateway.class);
 
@@ -191,7 +194,8 @@ public class TabletServer extends ServerBase {
                             metadataCache,
                             rpcClient,
                             coordinatorGateway,
-                            DefaultCompletedKvSnapshotCommitter.create(rpcClient, metadataCache),
+                            DefaultCompletedKvSnapshotCommitter.create(
+                                    rpcClient, metadataCache, interListenerName),
                             this,
                             tabletServerMetricGroup,
                             systemClock);
@@ -211,7 +215,11 @@ public class TabletServer extends ServerBase {
                     RequestsMetrics.createTabletServerRequestMetrics(tabletServerMetricGroup);
             this.rpcServer =
                     RpcServer.create(
-                            conf, endpoints, tabletService, tabletServerMetricGroup, requestsMetrics);
+                            conf,
+                            endpoints,
+                            tabletService,
+                            tabletServerMetricGroup,
+                            requestsMetrics);
             rpcServer.start();
 
             registerTabletServer();
@@ -244,8 +252,7 @@ public class TabletServer extends ServerBase {
     private void registerTabletServer() throws Exception {
         long startTime = System.currentTimeMillis();
         TabletServerRegistration tabletServerRegistration =
-                new TabletServerRegistration(
-                        endpoints,  startTime);
+                new TabletServerRegistration(endpoints, startTime);
 
         while (true) {
             try {
@@ -395,11 +402,16 @@ public class TabletServer extends ServerBase {
             throw new IllegalConfigurationException(
                     String.format("Configuration %s must be set.", ConfigOptions.REMOTE_DATA_DIR));
         }
+
+        if (conf.get(ConfigOptions.INTERNAL_LISTENER_NAME) == null) {
+            throw new IllegalConfigurationException(
+                    String.format(
+                            "Configuration %s must be set.", ConfigOptions.INTERNAL_LISTENER_NAME));
+        }
     }
 
     @VisibleForTesting
     RpcServer getRpcServer() {
         return rpcServer;
     }
-
 }

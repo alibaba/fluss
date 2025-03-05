@@ -18,7 +18,6 @@ package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.ServerTestBase;
 import com.alibaba.fluss.server.zk.data.CoordinatorAddress;
@@ -26,7 +25,6 @@ import com.alibaba.fluss.server.zk.data.CoordinatorAddress;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,7 +65,10 @@ class CoordinatorServerTest extends ServerTestBase {
         Optional<CoordinatorAddress> optCoordinatorAddr = zookeeperClient.getCoordinatorAddress();
         assertThat(optCoordinatorAddr).isNotEmpty();
         CoordinatorAddress coordinatorAddress = optCoordinatorAddr.get();
-        assertThat(coordinatorAddress.getEndpoints()).hasSameSizeAs(coordinatorServer.getRpcServer().getBindAddresses());
-        assertThat(coordinatorAddress.getEndpoints().get(0).getHost()).isEqualTo(coordinatorServer.getRpcServer().getBindAddresses().get(0).getHostName());
+        assertThat(coordinatorAddress.getEndpoints())
+                .hasSameSizeAs(coordinatorServer.getRpcServer().getBindAddresses());
+        assertThat(coordinatorAddress.getEndpoints().get(0).getHost())
+                .isEqualTo(
+                        coordinatorServer.getRpcServer().getBindAddresses().get(0).getHostName());
     }
 }

@@ -16,7 +16,7 @@
 
 package com.alibaba.fluss.rpc.server;
 
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +25,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Test for {@link com.alibaba.fluss.rpc.netty.server.Endpoint}. */
+/** Test for {@link Endpoint}. */
 public class EndPointTest {
 
     @Test

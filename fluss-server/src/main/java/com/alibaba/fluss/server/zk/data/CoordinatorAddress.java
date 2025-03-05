@@ -16,7 +16,7 @@
 
 package com.alibaba.fluss.server.zk.data;
 
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 
 import java.util.List;
 import java.util.Objects;
@@ -33,7 +33,6 @@ public class CoordinatorAddress {
     public CoordinatorAddress(String id, List<Endpoint> endpoints) {
         this.id = id;
         this.endpoints = endpoints;
-
     }
 
     public String getId() {
@@ -58,9 +57,6 @@ public class CoordinatorAddress {
 
     @Override
     public String toString() {
-        return "CoordinatorAddress{" +
-                "id='" + id + '\'' +
-                ", endpoints=" + endpoints +
-                '}';
+        return "CoordinatorAddress{" + "id='" + id + '\'' + ", endpoints=" + endpoints + '}';
     }
 }

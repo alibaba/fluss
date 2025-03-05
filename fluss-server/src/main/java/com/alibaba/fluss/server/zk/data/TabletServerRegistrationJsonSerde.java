@@ -17,7 +17,7 @@
 package com.alibaba.fluss.server.zk.data;
 
 import com.alibaba.fluss.annotation.Internal;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.utils.json.JsonDeserializer;
@@ -39,10 +39,8 @@ public class TabletServerRegistrationJsonSerde
     private static final String VERSION_KEY = "version";
     private static final int VERSION = 2;
 
-    @Deprecated
-    private static final String HOST = "host";
-    @Deprecated
-    private static final String PORT = "port";
+    @Deprecated private static final String HOST = "host";
+    @Deprecated private static final String PORT = "port";
     private static final String REGISTER_TIMESTAMP = "register_timestamp";
     private static final String LISTENERS = "listeners";
 
@@ -52,7 +50,8 @@ public class TabletServerRegistrationJsonSerde
             throws IOException {
         generator.writeStartObject();
         generator.writeNumberField(VERSION_KEY, VERSION);
-        generator.writeStringField(LISTENERS, Endpoint.toListenerString(tabletServerRegistration.getEndpoints()));
+        generator.writeStringField(
+                LISTENERS, Endpoint.toListenerString(tabletServerRegistration.getEndpoints()));
         generator.writeNumberField(
                 REGISTER_TIMESTAMP, tabletServerRegistration.getRegisterTimestamp());
         generator.writeEndObject();
@@ -62,11 +61,11 @@ public class TabletServerRegistrationJsonSerde
     public TabletServerRegistration deserialize(JsonNode node) {
         int version = node.get(VERSION_KEY).asInt();
         List<Endpoint> endpoints;
-        if(version == 1) {
+        if (version == 1) {
             String host = node.get(HOST).asText();
             int port = node.get(PORT).asInt();
             endpoints = Collections.singletonList(new Endpoint(host, port, "CLIENT"));
-        }else {
+        } else {
             endpoints = Endpoint.parseEndpoints(node.get(LISTENERS).asText());
         }
 

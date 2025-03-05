@@ -16,19 +16,18 @@
 
 package com.alibaba.fluss.server.zk.data;
 
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonEncoding;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.util.ByteArrayBuilder;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import com.alibaba.fluss.utils.json.JsonSerdeTestBase;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.Collections;
-
 
 /** Test for {@link com.alibaba.fluss.server.zk.data.CoordinatorAddressJsonSerde}. */
 public class CoordinatorAddressJsonSerdeTest extends JsonSerdeTestBase<CoordinatorAddress> {
@@ -39,13 +38,16 @@ public class CoordinatorAddressJsonSerdeTest extends JsonSerdeTestBase<Coordinat
 
     @Override
     protected CoordinatorAddress[] createObjects() {
-        CoordinatorAddress coordinatorAddress = new CoordinatorAddress("1", Endpoint.parseEndpoints("CLIENT://localhost:1001"));
+        CoordinatorAddress coordinatorAddress =
+                new CoordinatorAddress("1", Endpoint.parseEndpoints("CLIENT://localhost:1001"));
         return new CoordinatorAddress[] {coordinatorAddress};
     }
 
     @Override
     protected String[] expectedJsons() {
-        return new String[] {"{\"version\":2,\"id\":\"1\",\"listeners\":\"CLIENT://localhost:1001\"}"};
+        return new String[] {
+            "{\"version\":2,\"id\":\"1\",\"listeners\":\"CLIENT://localhost:1001\"}"
+        };
     }
 
     @Test
@@ -53,12 +55,14 @@ public class CoordinatorAddressJsonSerdeTest extends JsonSerdeTestBase<Coordinat
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonInVersion1 = objectMapper.readTree(serializeInVersion1(objectMapper));
 
-        CoordinatorAddress coordinatorAddress = CoordinatorAddressJsonSerde.INSTANCE.deserialize(jsonInVersion1);
-        CoordinatorAddress expectedCoordinator = new CoordinatorAddress("1", Endpoint.parseEndpoints("CLIENT://localhost:1001"));
+        CoordinatorAddress coordinatorAddress =
+                CoordinatorAddressJsonSerde.INSTANCE.deserialize(jsonInVersion1);
+        CoordinatorAddress expectedCoordinator =
+                new CoordinatorAddress("1", Endpoint.parseEndpoints("CLIENT://localhost:1001"));
         assertEquals(coordinatorAddress, expectedCoordinator);
     }
 
-    private byte[] serializeInVersion1(ObjectMapper objectMapper){
+    private byte[] serializeInVersion1(ObjectMapper objectMapper) {
         try (ByteArrayBuilder bb =
                 new ByteArrayBuilder(objectMapper.getFactory()._getBufferRecycler())) {
             JsonGenerator generator = objectMapper.createGenerator(bb, JsonEncoding.UTF8);

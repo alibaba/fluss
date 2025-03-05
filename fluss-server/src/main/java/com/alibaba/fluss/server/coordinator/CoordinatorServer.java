@@ -17,6 +17,7 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.annotation.VisibleForTesting;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.IllegalConfigurationException;
@@ -25,7 +26,6 @@ import com.alibaba.fluss.metrics.registry.MetricRegistry;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.RpcServer;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.coordinator.event.CoordinatorEventManager;
@@ -115,7 +115,8 @@ public class CoordinatorServer extends ServerBase {
         super(conf);
         validateConfigs(conf);
         this.terminationFuture = new CompletableFuture<>();
-        this.endpoints = Endpoint.parseEndpoints(conf.getString(ConfigOptions.COORDINATOR_LISTENER));
+        this.endpoints =
+                Endpoint.parseEndpoints(conf.getString(ConfigOptions.COORDINATOR_LISTENER));
     }
 
     public static void main(String[] args) {
@@ -138,7 +139,7 @@ public class CoordinatorServer extends ServerBase {
                     ServerMetricUtils.createCoordinatorGroup(
                             metricRegistry,
                             ServerMetricUtils.validateAndGetClusterId(conf),
-                            conf.getString(ConfigOptions.COORDINATOR_HOST),
+                            endpoints.get(0).getHost(),
                             serverId);
 
             this.zkClient = ZooKeeperUtils.startZookeeperClient(conf, this);
@@ -215,8 +216,7 @@ public class CoordinatorServer extends ServerBase {
     }
 
     private void registerCoordinatorLeader() throws Exception {
-        CoordinatorAddress coordinatorAddress =
-                new CoordinatorAddress(this.serverId, endpoints);
+        CoordinatorAddress coordinatorAddress = new CoordinatorAddress(this.serverId, endpoints);
         zkClient.registerCoordinatorLeader(coordinatorAddress);
     }
 

@@ -16,13 +16,14 @@
 
 package com.alibaba.fluss.server.zk.data;
 
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonEncoding;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.core.util.ByteArrayBuilder;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import com.alibaba.fluss.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import com.alibaba.fluss.utils.json.JsonSerdeTestBase;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -39,7 +40,8 @@ public class TabletServerRegistrationJsonSerdeTest
     @Override
     protected TabletServerRegistration[] createObjects() {
         TabletServerRegistration tabletServerRegistration =
-                new TabletServerRegistration(Endpoint.parseEndpoints("CLIENT://localhost:2345"), 10000);
+                new TabletServerRegistration(
+                        Endpoint.parseEndpoints("CLIENT://localhost:2345"), 10000);
         return new TabletServerRegistration[] {tabletServerRegistration};
     }
 
@@ -55,14 +57,17 @@ public class TabletServerRegistrationJsonSerdeTest
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode jsonInVersion1 = objectMapper.readTree(serializeInVersion1(objectMapper));
 
-        TabletServerRegistration tabletServerRegistration = TabletServerRegistrationJsonSerde.INSTANCE.deserialize(jsonInVersion1);
-        TabletServerRegistration expectedTabletServerRegistration = new TabletServerRegistration( Endpoint.parseEndpoints("CLIENT://localhost:1001"), 10000);
+        TabletServerRegistration tabletServerRegistration =
+                TabletServerRegistrationJsonSerde.INSTANCE.deserialize(jsonInVersion1);
+        TabletServerRegistration expectedTabletServerRegistration =
+                new TabletServerRegistration(
+                        Endpoint.parseEndpoints("CLIENT://localhost:1001"), 10000);
         assertEquals(tabletServerRegistration, expectedTabletServerRegistration);
     }
 
-    private byte[] serializeInVersion1(ObjectMapper objectMapper){
+    private byte[] serializeInVersion1(ObjectMapper objectMapper) {
         try (ByteArrayBuilder bb =
-                     new ByteArrayBuilder(objectMapper.getFactory()._getBufferRecycler())) {
+                new ByteArrayBuilder(objectMapper.getFactory()._getBufferRecycler())) {
             JsonGenerator generator = objectMapper.createGenerator(bb, JsonEncoding.UTF8);
             generator.writeStartObject();
             generator.writeNumberField("version", 1);

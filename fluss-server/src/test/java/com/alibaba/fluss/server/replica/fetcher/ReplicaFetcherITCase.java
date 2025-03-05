@@ -258,7 +258,7 @@ public class ReplicaFetcherITCase {
         int leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
 
         int serverToKill =
-                FLUSS_CLUSTER_EXTENSION.getTabletServerNodes().stream()
+                FLUSS_CLUSTER_EXTENSION.getTabletServerNodesForServer().stream()
                         .filter(node -> node.id() != leader)
                         .findFirst()
                         .get()

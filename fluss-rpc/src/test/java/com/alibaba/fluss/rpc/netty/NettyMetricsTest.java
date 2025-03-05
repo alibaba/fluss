@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.rpc.netty;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.Configuration;
@@ -28,7 +29,6 @@ import com.alibaba.fluss.rpc.TestingGatewayService;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.rpc.netty.client.NettyClient;
-import com.alibaba.fluss.rpc.netty.server.Endpoint;
 import com.alibaba.fluss.rpc.netty.server.NettyServer;
 import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.utils.NetUtils;
