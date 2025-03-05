@@ -65,7 +65,10 @@ class CoordinatorServerTest extends ServerTestBase {
         Optional<CoordinatorAddress> optCoordinatorAddr = zookeeperClient.getCoordinatorAddress();
         assertThat(optCoordinatorAddr).isNotEmpty();
         CoordinatorAddress coordinatorAddress = optCoordinatorAddr.get();
-        assertThat(coordinatorAddress.getHost())
-                .isEqualTo(coordinatorServer.getRpcServer().getHostname());
+        assertThat(coordinatorAddress.getEndpoints())
+                .hasSameSizeAs(coordinatorServer.getRpcServer().getBindAddresses());
+        assertThat(coordinatorAddress.getEndpoints().get(0).getHost())
+                .isEqualTo(
+                        coordinatorServer.getRpcServer().getBindAddresses().get(0).getHostName());
     }
 }

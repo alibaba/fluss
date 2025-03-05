@@ -16,11 +16,11 @@
 
 package com.alibaba.fluss.server;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FlussException;
 import com.alibaba.fluss.server.coordinator.CoordinatorServer;
-import com.alibaba.fluss.server.tablet.TabletServer;
 import com.alibaba.fluss.server.zk.NOPErrorHandler;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.ZooKeeperExtension;
@@ -29,6 +29,8 @@ import com.alibaba.fluss.testutils.common.AllCallbackWrapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+
+import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -86,9 +88,10 @@ public abstract class ServerTestBase {
         configuration.setString(
                 ConfigOptions.ZOOKEEPER_ADDRESS,
                 ZOO_KEEPER_EXTENSION_WRAPPER.getCustomExtension().getConnectString());
-        configuration.setString(ConfigOptions.COORDINATOR_HOST, "127.0.0.1");
-        // randomize the coordinator port
-        configuration.setString(ConfigOptions.COORDINATOR_PORT, "0");
+        configuration.setString(
+                ConfigOptions.COORDINATOR_LISTENER,
+                Endpoint.toListenerString(
+                        Collections.singletonList(new Endpoint("localhost", 0, "CLIENT"))));
         configuration.set(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
         return configuration;
     }
@@ -97,11 +100,5 @@ public abstract class ServerTestBase {
         CoordinatorServer coordinatorServer = new CoordinatorServer(conf);
         coordinatorServer.start();
         return coordinatorServer;
-    }
-
-    public static TabletServer startTabletServer(Configuration conf) throws Exception {
-        TabletServer tabletServer = new TabletServer(conf);
-        tabletServer.start();
-        return tabletServer;
     }
 }
