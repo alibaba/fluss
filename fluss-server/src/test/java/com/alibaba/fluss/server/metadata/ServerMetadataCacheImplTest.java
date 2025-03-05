@@ -16,8 +16,7 @@
 
 package com.alibaba.fluss.server.metadata;
 
-import com.alibaba.fluss.cluster.ServerNode;
-import com.alibaba.fluss.cluster.ServerType;
+import com.alibaba.fluss.cluster.Endpoint;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,27 +31,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Test for {@link com.alibaba.fluss.server.metadata.ServerMetadataCacheImpl}. */
 public class ServerMetadataCacheImplTest {
     private ServerMetadataCache serverMetadataCache;
-    private ServerNode coordinatorServer;
-    private Set<ServerNode> aliveTableServers;
+    private ServerInfo coordinatorServer;
+    private Set<ServerInfo> aliveTableServers;
 
     @BeforeEach
     public void setup() {
         serverMetadataCache = new ServerMetadataCacheImpl();
-        coordinatorServer = new ServerNode(0, "localhost", 98, ServerType.COORDINATOR);
+        coordinatorServer =
+                new ServerInfo(
+                        0,
+                        Endpoint.parseEndpoints("CLIENT://localhost:99,INTERNAL://localhost:100"));
         aliveTableServers =
                 new HashSet<>(
                         Arrays.asList(
-                                new ServerNode(0, "localhost", 99, ServerType.TABLET_SERVER),
-                                new ServerNode(1, "localhost", 100, ServerType.TABLET_SERVER),
-                                new ServerNode(2, "localhost", 101, ServerType.TABLET_SERVER)));
+                                new ServerInfo(
+                                        0,
+                                        Endpoint.parseEndpoints(
+                                                "CLIENT://localhost:101, INTERNAL://localhost:102")),
+                                new ServerInfo(
+                                        1, Endpoint.parseEndpoints("INTERNAL://localhost:103")),
+                                new ServerInfo(
+                                        2, Endpoint.parseEndpoints("INTERNAL://localhost:104"))));
     }
 
     @Test
     void testUpdateMetadataRequest() {
         serverMetadataCache.updateMetadata(
                 new ClusterMetadataInfo(Optional.of(coordinatorServer), aliveTableServers));
-        assertThat(serverMetadataCache.getCoordinatorServer()).isEqualTo(coordinatorServer);
+        assertThat(serverMetadataCache.getCoordinatorServer("CLIENT"))
+                .isEqualTo(coordinatorServer.toCoordinatorServerNode("CLIENT"));
+        assertThat(serverMetadataCache.getCoordinatorServer("INTERNAL"))
+                .isEqualTo(coordinatorServer.toCoordinatorServerNode("INTERNAL"));
         assertThat(serverMetadataCache.isAliveTabletServer(0)).isTrue();
-        assertThat(serverMetadataCache.getAllAliveTabletServers().size()).isEqualTo(3);
+        assertThat(serverMetadataCache.getAllAliveTabletServers("CLIENT").size()).isEqualTo(1);
+        assertThat(serverMetadataCache.getAllAliveTabletServers("INTERNAL").size()).isEqualTo(3);
     }
 }

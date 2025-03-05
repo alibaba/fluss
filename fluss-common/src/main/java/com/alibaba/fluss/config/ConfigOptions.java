@@ -128,6 +128,7 @@ public class ConfigOptions {
      * <p>If the coordinator server is used as a bootstrap server (discover all the servers in the
      * cluster), the value of this config option should be a static hostname or address.
      */
+    @Deprecated
     public static final ConfigOption<String> COORDINATOR_HOST =
             key("coordinator.host")
                     .stringType()
@@ -149,6 +150,7 @@ public class ConfigOptions {
      * resolution. The value accepts a list of ports (“50100,50101”), ranges (“50100-50200”) or a
      * combination of both.
      */
+    @Deprecated
     public static final ConfigOption<String> COORDINATOR_PORT =
             key("coordinator.port")
                     .stringType()
@@ -166,6 +168,24 @@ public class ConfigOptions {
                                     + " (“50100,50101”), ranges (“50100-50200”) or a combination"
                                     + " of both.");
 
+    /**
+     * This config option specifies the address of the coordinator listener, which is responsible
+     * for receiving and processing various coordination requests. It is a string-type configuration
+     * option that allows setting the specific listener address in the system's configuration file.
+     * Example: In a configuration file, you can set this option as follows:
+     *
+     * <pre>
+     * coordinator.listener.address="CLIENT://example.com:8080"
+     * </pre>
+     */
+    public static final ConfigOption<String> COORDINATOR_LISTENER =
+            key("coordinator.listener")
+                    .stringType()
+                    .defaultValue("CLIENT://localhost:9124")
+                    .withDescription(
+                            "This config option specifies the address of the coordinator listener, which is responsible for receiving and processing various coordination requests. It is a string-type configuration option that allows setting the specific listener address in the system's configuration file. Example: In a configuration file, you can set this option as follows:\n"
+                                    + "  coordinator. listener. address=\"CLIENT:// example. com:8080\"");
+
     public static final ConfigOption<Integer> COORDINATOR_IO_POOL_SIZE =
             key("coordinator.io-pool.size")
                     .intType()
@@ -180,6 +200,7 @@ public class ConfigOptions {
     //  ConfigOptions for Tablet Server
     // ------------------------------------------------------------------------
     /** The external address of the network interface where the tablet server is exposed. */
+    @Deprecated
     public static final ConfigOption<String> TABLET_SERVER_HOST =
             key("tablet-server.host")
                     .stringType()
@@ -193,10 +214,27 @@ public class ConfigOptions {
      * The default network port the tablet server expects incoming IPC connections. The {@code "0"}
      * means that the TabletServer searches for a free port.
      */
+    @Deprecated
     public static final ConfigOption<String> TABLET_SERVER_PORT =
             key("tablet-server.port")
                     .stringType()
                     .defaultValue("0")
+                    .withDescription("The external RPC port where the TabletServer is exposed.");
+
+    /**
+     * This config option specifies the address of the tablet server listener, which is responsible
+     * for receiving and processing various coordination requests. It is a string-type configuration
+     * option that allows setting the specific listener address in the system's configuration file.
+     * Example: In a configuration file, you can set this option as follows:
+     *
+     * <pre>
+     * tablet-server.listener.address="CLIENT://example.com:8080"
+     * </pre>
+     */
+    public static final ConfigOption<String> TABLET_SERVER_LISTENERS =
+            key("tablet-server.listeners")
+                    .stringType()
+                    .defaultValue("CLIENT://localhost:9124")
                     .withDescription("The external RPC port where the TabletServer is exposed.");
 
     public static final ConfigOption<Integer> TABLET_SERVER_ID =
@@ -204,6 +242,12 @@ public class ConfigOptions {
                     .intType()
                     .noDefaultValue()
                     .withDescription("The id for the tablet server.");
+
+    public static final ConfigOption<String> INTERNAL_LISTENER_NAME =
+            key("internal.listener.name")
+                    .stringType()
+                    .defaultValue("CLIENT")
+                    .withDescription("The listener for internal communicate");
 
     public static final ConfigOption<String> DATA_DIR =
             key("data.dir")
