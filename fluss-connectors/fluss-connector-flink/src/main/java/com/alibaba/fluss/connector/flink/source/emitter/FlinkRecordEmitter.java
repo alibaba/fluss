@@ -22,7 +22,9 @@ import com.alibaba.fluss.connector.flink.source.reader.FlinkSourceReader;
 import com.alibaba.fluss.connector.flink.source.reader.RecordAndPos;
 import com.alibaba.fluss.connector.flink.source.split.HybridSnapshotLogSplitState;
 import com.alibaba.fluss.connector.flink.source.split.SourceSplitState;
-import com.alibaba.fluss.connector.flink.utils.FlussRowToFlinkRowConverter;
+import com.alibaba.fluss.connector.flink.utils.ChangelogRowConverter;
+import com.alibaba.fluss.connector.flink.utils.PlainRowConverter;
+import com.alibaba.fluss.connector.flink.utils.RecordToFlinkRowConverter;
 import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.connector.source.SourceOutput;
@@ -44,12 +46,15 @@ import org.slf4j.LoggerFactory;
 public class FlinkRecordEmitter implements RecordEmitter<RecordAndPos, RowData, SourceSplitState> {
     private static final Logger LOG = LoggerFactory.getLogger(FlinkRecordEmitter.class);
 
-    private final FlussRowToFlinkRowConverter converter;
-
+    private final RecordToFlinkRowConverter converter;
     private LakeRecordRecordEmitter lakeRecordRecordEmitter;
 
-    public FlinkRecordEmitter(RowType rowType) {
-        this.converter = new FlussRowToFlinkRowConverter(rowType);
+    public FlinkRecordEmitter(RowType rowType, boolean enableChangeLog) {
+        if (enableChangeLog) {
+            this.converter = new ChangelogRowConverter(rowType);
+        } else {
+            this.converter = new PlainRowConverter(rowType);
+        }
     }
 
     @Override
@@ -90,9 +95,9 @@ public class FlinkRecordEmitter implements RecordEmitter<RecordAndPos, RowData, 
     private void emitRecord(ScanRecord scanRecord, SourceOutput<RowData> sourceOutput) {
         long timestamp = scanRecord.timestamp();
         if (timestamp > 0) {
-            sourceOutput.collect(converter.toFlinkRowData(scanRecord), timestamp);
+            sourceOutput.collect(converter.convert(scanRecord), timestamp);
         } else {
-            sourceOutput.collect(converter.toFlinkRowData(scanRecord));
+            sourceOutput.collect(converter.convert(scanRecord));
         }
     }
 }

@@ -48,7 +48,6 @@ import java.util.function.Consumer;
 public class FlinkSourceReader
         extends SingleThreadMultiplexSourceReaderBase<
                 RecordAndPos, RowData, SourceSplitBase, SourceSplitState> {
-
     public FlinkSourceReader(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<RecordAndPos>> elementsQueue,
             Configuration flussConfig,
@@ -56,7 +55,8 @@ public class FlinkSourceReader
             RowType sourceOutputType,
             SourceReaderContext context,
             @Nullable int[] projectedFields,
-            FlinkSourceReaderMetrics flinkSourceReaderMetrics) {
+            FlinkSourceReaderMetrics flinkSourceReaderMetrics,
+            boolean enableChangelog) {
         super(
                 elementsQueue,
                 new FlinkSourceFetcherManager(
@@ -69,7 +69,8 @@ public class FlinkSourceReader
                                         projectedFields,
                                         flinkSourceReaderMetrics),
                         (ignore) -> {}),
-                new FlinkRecordEmitter(sourceOutputType),
+                // InternalRow into Flink RowData with the additional metadata columns
+                new FlinkRecordEmitter(sourceOutputType, enableChangelog),
                 context.getConfiguration(),
                 context);
     }
