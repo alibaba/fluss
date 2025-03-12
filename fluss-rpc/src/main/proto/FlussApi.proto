@@ -738,3 +738,58 @@ message PbPartitionInfo {
 message PbPartitionSpec {
   repeated PbKeyValue partition_key_values = 1;
 }
+
+
+
+message PbAclInfo{
+  required string resource_name = 1;
+  required int32 resource_type = 2;
+  required string principal_name = 3;
+  required string principal_type = 4;
+  required string host = 5;
+  required int32 operation_type = 6;
+  required int32 permission_type = 7;
+}
+
+message PbAclRespInfo {
+  required string resource_name = 1;
+  required int32 resource_type = 2;
+  optional int32 error_code = 3;
+  optional string error_message = 4;
+  optional PbAclInfo acl = 5;
+}
+
+message ListAclsRequest{
+  required string resource_name = 1;
+  required int32 resource_type = 2;
+  optional string principal_name = 3;
+  optional string principal_type = 4;
+}
+
+
+message ListAclsResponse{
+  repeated PbAclInfo acl = 1;
+}
+
+message CreateAclsRequest{
+  repeated PbAclInfo acl = 1;
+}
+
+message CreateAclsResponse{
+  repeated PbAclRespInfo aclRes = 1;
+}
+
+
+
+message DropAclsRequest{
+  repeated PbAclInfo acl = 1;
+}
+
+message DropAclsResponse{
+  repeated PbAclRespInfo aclRes = 1;
+}
+
+
+
+
+

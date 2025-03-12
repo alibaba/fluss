@@ -48,6 +48,7 @@ import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
 import com.alibaba.fluss.rpc.messages.ListPartitionInfosResponse;
 import com.alibaba.fluss.rpc.messages.LookupRequest;
 import com.alibaba.fluss.rpc.messages.MetadataRequest;
+import com.alibaba.fluss.rpc.messages.PbAclInfo;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbKeyValue;
 import com.alibaba.fluss.rpc.messages.PbKvSnapshot;
@@ -65,6 +66,13 @@ import com.alibaba.fluss.rpc.messages.PrefixLookupRequest;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
 import com.alibaba.fluss.rpc.messages.PutKvRequest;
 import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.security.acl.AccessControlEntry;
+import com.alibaba.fluss.security.acl.AclBinding;
+import com.alibaba.fluss.security.acl.FlussPrincipal;
+import com.alibaba.fluss.security.acl.OperationType;
+import com.alibaba.fluss.security.acl.PermissionType;
+import com.alibaba.fluss.security.acl.Resource;
+import com.alibaba.fluss.security.acl.ResourceType;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import javax.annotation.Nullable;
@@ -450,5 +458,50 @@ public class ClientRpcMessageUtils {
             partitionValues.add(pbKeyValue.getValue());
         }
         return new ResolvedPartitionSpec(partitionKeys, partitionValues);
+    }
+
+    public static Collection<PbAclInfo> toPbAclInfos(Collection<AclBinding> aclBindings) {
+        return aclBindings.stream()
+                .map(
+                        aclBinding ->
+                                new PbAclInfo()
+                                        .setResourceType(
+                                                aclBinding.getResource().getType().getCode())
+                                        .setResourceName(aclBinding.getResource().getName())
+                                        .setPrincipalName(
+                                                aclBinding
+                                                        .getAccessControlEntryFilter()
+                                                        .getPrincipal()
+                                                        .getName())
+                                        .setPrincipalType(
+                                                aclBinding
+                                                        .getAccessControlEntryFilter()
+                                                        .getPrincipal()
+                                                        .getType())
+                                        .setPermissionType(
+                                                aclBinding
+                                                        .getAccessControlEntryFilter()
+                                                        .getPermissionType()
+                                                        .getCode()))
+                .collect(Collectors.toList());
+    }
+
+    public static Collection<AclBinding> toAclBindings(Collection<PbAclInfo> pbAclInfos) {
+        return pbAclInfos.stream()
+                .map(ClientRpcMessageUtils::toAclBinding)
+                .collect(Collectors.toList());
+    }
+
+    public static AclBinding toAclBinding(PbAclInfo pbAclInfo) {
+        return new AclBinding(
+                new Resource(
+                        ResourceType.fromCode((byte) pbAclInfo.getResourceType()),
+                        pbAclInfo.getResourceName()),
+                new AccessControlEntry(
+                        new FlussPrincipal(
+                                pbAclInfo.getPrincipalName(), pbAclInfo.getPrincipalType()),
+                        PermissionType.fromCode((byte) pbAclInfo.getPermissionType()),
+                        pbAclInfo.getHost(),
+                        OperationType.fromCode((byte) pbAclInfo.getOperationType())));
     }
 }
