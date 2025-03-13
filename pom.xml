@@ -942,6 +942,14 @@
 
                             <removeUnusedImports/>
                         </java>
+                        <scala>
+                            <toggleOffOn />
+
+                            <scalafmt>
+                                <version>${spotless.scalafmt.version}</version>
+                                <file>${maven.multiModuleProjectDirectory}/.scalafmt.conf</file>
+                            </scalafmt>
+                        </scala>
                     </configuration>
                     <executions>
                         <execution>
