@@ -40,7 +40,7 @@ public class AclBinding {
         return resource;
     }
 
-    public AccessControlEntry getAccessControlEntryFilter() {
+    public AccessControlEntry getAccessControlEntry() {
         return accessControlEntry;
     }
 

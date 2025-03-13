@@ -470,17 +470,23 @@ public class ClientRpcMessageUtils {
                                         .setResourceName(aclBinding.getResource().getName())
                                         .setPrincipalName(
                                                 aclBinding
-                                                        .getAccessControlEntryFilter()
+                                                        .getAccessControlEntry()
                                                         .getPrincipal()
                                                         .getName())
                                         .setPrincipalType(
                                                 aclBinding
-                                                        .getAccessControlEntryFilter()
+                                                        .getAccessControlEntry()
                                                         .getPrincipal()
                                                         .getType())
+                                        .setHost(aclBinding.getAccessControlEntry().getHost())
+                                        .setOperationType(
+                                                aclBinding
+                                                        .getAccessControlEntry()
+                                                        .getOperationType()
+                                                        .getCode())
                                         .setPermissionType(
                                                 aclBinding
-                                                        .getAccessControlEntryFilter()
+                                                        .getAccessControlEntry()
                                                         .getPermissionType()
                                                         .getCode()))
                 .collect(Collectors.toList());
