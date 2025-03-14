@@ -16,10 +16,6 @@
 
 package com.alibaba.fluss.kafka;
 
-import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownChannel;
-import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownGroup;
-import static com.alibaba.fluss.utils.Preconditions.checkState;
-
 import com.alibaba.fluss.cluster.MetadataCache;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
@@ -50,6 +46,10 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownChannel;
+import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownGroup;
+import static com.alibaba.fluss.utils.Preconditions.checkState;
 
 public final class KafkaNettyServer implements RpcServer {
     private static final Logger log = LoggerFactory.getLogger(KafkaNettyServer.class);
