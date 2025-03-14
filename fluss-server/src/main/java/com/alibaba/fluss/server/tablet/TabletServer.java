@@ -20,6 +20,7 @@ import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.IllegalConfigurationException;
+import com.alibaba.fluss.kafka.KafkaNettyServer;
 import com.alibaba.fluss.metrics.registry.MetricRegistry;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
 import com.alibaba.fluss.rpc.RpcClient;
@@ -86,6 +87,9 @@ public class TabletServer extends ServerBase {
 
     @GuardedBy("lock")
     private RpcServer rpcServer;
+
+    @GuardedBy("lock")
+    private RpcServer kafkaServer;
 
     @GuardedBy("lock")
     private RpcClient rpcClient;
@@ -215,6 +219,20 @@ public class TabletServer extends ServerBase {
                             requestsMetrics);
             rpcServer.start();
 
+            boolean kafkaEnabled = conf.getBoolean(ConfigOptions.KAFKA_ENABLED);
+            if (kafkaEnabled) {
+                this.kafkaServer =
+                        KafkaNettyServer.create(
+                                conf.getString(ConfigOptions.TABLET_SERVER_HOST),
+                                conf.getInt(ConfigOptions.KAFKA_PORT),
+                                serverId,
+                                conf,
+                                coordinatorGateway,
+                                metadataCache,
+                                tabletService);
+                kafkaServer.start();
+            }
+
             registerTabletServer();
         }
     }
@@ -302,6 +320,14 @@ public class TabletServer extends ServerBase {
             try {
                 if (rpcServer != null) {
                     terminationFutures.add(rpcServer.closeAsync());
+                }
+            } catch (Throwable t) {
+                exception = ExceptionUtils.firstOrSuppressed(t, exception);
+            }
+
+            try {
+                if (kafkaServer != null) {
+                    terminationFutures.add(kafkaServer.closeAsync());
                 }
             } catch (Throwable t) {
                 exception = ExceptionUtils.firstOrSuppressed(t, exception);
