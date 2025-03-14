@@ -1120,4 +1120,72 @@ class FlinkTableSourceITCase extends FlinkTestBase {
             return row(newValues);
         }
     }
+
+    @Test
+    void testReadWithoutChangeLogData() throws Exception {
+        // Create a primary key table
+        tEnv.executeSql(
+                "create table direct_changelog_test (a int not null primary key not enforced, b varchar, c bigint)");
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "direct_changelog_test");
+
+        // Write initial data
+        List<InternalRow> rows =
+                Arrays.asList(row(1, "v1", 100L), row(2, "v2", 200L), row(3, "v3", 300L));
+        writeRows(tablePath, rows, false);
+
+        // Wait until snapshot is complete
+        waitUtilAllBucketFinishSnapshot(admin, tablePath);
+
+        // Update data to generate changelog entries
+        List<InternalRow> updateRows = Arrays.asList(row(1, "v1_updated", 101L));
+        writeRows(tablePath, updateRows, false);
+
+        // Try using the assertResultsIgnoreOrder helper that's already in your codebase
+        CloseableIterator<Row> rowIter =
+                tEnv.executeSql("SELECT a, b, c FROM direct_changelog_test").collect();
+
+        // Expected results - this should be 3 rows total
+        List<String> expected =
+                Arrays.asList("+I[1, v1_updated, 101]", "+I[2, v2, 200]", "+I[3, v3, 300]");
+
+        assertResultsIgnoreOrder(rowIter, expected, true);
+    }
+
+    @Test
+    void testReadWithChangeLogData() throws Exception {
+        // Create a primary key table
+        tEnv.executeSql(
+                "create table changelog_test (a int not null primary key not enforced, b varchar, c bigint)");
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "changelog_test");
+
+        // Write initial data
+        List<InternalRow> rows =
+                Arrays.asList(row(1, "v1", 100L), row(2, "v2", 200L), row(3, "v3", 300L));
+        writeRows(tablePath, rows, false);
+
+        // Wait until snapshot is complete
+        waitUtilAllBucketFinishSnapshot(admin, tablePath);
+
+        // Update a row and add a new row
+        List<InternalRow> updateRows =
+                Arrays.asList(row(1, "v1_updated", 101L), row(4, "v4", 400L));
+        writeRows(tablePath, updateRows, false);
+
+        // Critical: Read from the earliest possible point in the changelog to see all events
+        CloseableIterator<Row> rowIterAll =
+                tEnv.executeSql(
+                                "SELECT _commit_timestamp, _change_type,_log_offset  b, c  FROM changelog_test$changelog "
+                                        + "/*+ OPTIONS('scan.startup.mode' = 'earliest') */")
+                        .collect();
+
+        List<Row> results = new ArrayList<>();
+        int maxRows = 5;
+
+        while (rowIterAll.hasNext() && results.size() < maxRows) {
+            Row row = rowIterAll.next();
+            results.add(row);
+            System.out.println("Row: " + row);
+        }
+        // todo still pending need to complete to back more patterns
+    }
 }
