@@ -16,11 +16,14 @@
 
 package com.alibaba.fluss.server.tablet;
 
+import static com.alibaba.fluss.config.ConfigOptions.BACKGROUND_THREADS;
+
 import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.IllegalConfigurationException;
 import com.alibaba.fluss.kafka.KafkaNettyServer;
+import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metrics.registry.MetricRegistry;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
 import com.alibaba.fluss.rpc.RpcClient;
@@ -52,16 +55,14 @@ import com.alibaba.fluss.utils.concurrent.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.alibaba.fluss.config.ConfigOptions.BACKGROUND_THREADS;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 
 /**
  * Tablet server implementation. The tablet server is responsible to manage the log tablet and kv
@@ -230,6 +231,15 @@ public class TabletServer extends ServerBase {
                                 coordinatorGateway,
                                 metadataCache,
                                 tabletService);
+                // Create Kafka database before starting Kafka server.
+                String kafkaDatabase = conf.getString(ConfigOptions.KAFKA_DATABASE);
+                try {
+                    metadataManager.createDatabase(
+                            kafkaDatabase, DatabaseDescriptor.builder().build(), true);
+                } catch (Exception e) {
+                    LOG.error("Failed to create Kafka database {}", kafkaDatabase, e);
+                    throw e;
+                }
                 kafkaServer.start();
             }
 
