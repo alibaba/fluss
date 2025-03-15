@@ -16,8 +16,6 @@
 
 package com.alibaba.fluss.server.tablet;
 
-import static com.alibaba.fluss.config.ConfigOptions.BACKGROUND_THREADS;
-
 import com.alibaba.fluss.annotation.VisibleForTesting;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
@@ -55,14 +53,16 @@ import com.alibaba.fluss.utils.concurrent.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
+import static com.alibaba.fluss.config.ConfigOptions.BACKGROUND_THREADS;
 
 /**
  * Tablet server implementation. The tablet server is responsible to manage the log tablet and kv
