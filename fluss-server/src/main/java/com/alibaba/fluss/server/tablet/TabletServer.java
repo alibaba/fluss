@@ -232,14 +232,8 @@ public class TabletServer extends ServerBase {
                                 metadataCache,
                                 tabletService);
                 // Create Kafka database before starting Kafka server.
-                String kafkaDatabase = conf.getString(ConfigOptions.KAFKA_DATABASE);
-                try {
-                    metadataManager.createDatabase(
-                            kafkaDatabase, DatabaseDescriptor.builder().build(), true);
-                } catch (Exception e) {
-                    LOG.error("Failed to create Kafka database {}", kafkaDatabase, e);
-                    throw e;
-                }
+                retryCreateKafkaDatabase(
+                        metadataManager, conf.getString(ConfigOptions.KAFKA_DATABASE));
                 kafkaServer.start();
             }
 
@@ -268,6 +262,38 @@ public class TabletServer extends ServerBase {
     @Override
     protected CompletableFuture<Result> getTerminationFuture() {
         return terminationFuture;
+    }
+
+    private void retryCreateKafkaDatabase(MetadataManager metadataManager, String kafkaDatabase) {
+        long startTime = System.currentTimeMillis();
+        while (true) {
+            try {
+                metadataManager.createDatabase(
+                        kafkaDatabase, DatabaseDescriptor.builder().build(), true);
+                break;
+            } catch (Exception e) {
+                long elapsedTime = System.currentTimeMillis() - startTime;
+                if (elapsedTime >= ZOOKEEPER_REGISTER_TOTAL_WAIT_TIME_MS) {
+                    LOG.error(
+                            "Failed to create Kafka database {} after {} ms. Aborting creation attempts.",
+                            kafkaDatabase,
+                            ZOOKEEPER_REGISTER_TOTAL_WAIT_TIME_MS,
+                            e);
+                    throw e;
+                }
+
+                LOG.warn(
+                        "Failed to create Kafka database {}. retrying after {} ms....",
+                        kafkaDatabase,
+                        ZOOKEEPER_REGISTER_RETRY_INTERVAL_MS);
+                try {
+                    Thread.sleep(ZOOKEEPER_REGISTER_RETRY_INTERVAL_MS);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
     }
 
     private void registerTabletServer() throws Exception {
