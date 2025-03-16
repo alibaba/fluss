@@ -61,6 +61,8 @@ import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.LookupFunction;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -85,6 +87,7 @@ public class FlinkTableSource
                 SupportsLimitPushDown,
                 SupportsAggregatePushDown {
 
+    private static final Logger LOG = LoggerFactory.getLogger(FlinkTableSource.class);
     private final TablePath tablePath;
     private final Configuration flussConfig;
     // output type before projection pushdown
@@ -96,6 +99,7 @@ public class FlinkTableSource
     // will be empty if no partition key
     private final int[] partitionKeyIndexes;
     private final boolean streaming;
+    private final boolean enableChangelog;
     private final FlinkConnectorOptionsUtils.StartupOptions startupOptions;
 
     // options for lookup source
@@ -112,6 +116,9 @@ public class FlinkTableSource
 
     // projection push down
     @Nullable private int[] projectedFields;
+
+    // track selected metadata columns
+    @Nullable private int[] selectedMetadataFields;
 
     @Nullable private GenericRowData singleRowFilter;
 
@@ -137,7 +144,8 @@ public class FlinkTableSource
             @Nullable LookupCache cache,
             long scanPartitionDiscoveryIntervalMs,
             boolean isDataLakeEnabled,
-            @Nullable MergeEngineType mergeEngineType) {
+            @Nullable MergeEngineType mergeEngineType,
+            boolean enableChangelog) {
         this.tablePath = tablePath;
         this.flussConfig = flussConfig;
         this.tableOutputType = tableOutputType;
@@ -155,6 +163,7 @@ public class FlinkTableSource
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.isDataLakeEnabled = isDataLakeEnabled;
         this.mergeEngineType = mergeEngineType;
+        this.enableChangelog = enableChangelog;
     }
 
     @Override
@@ -226,11 +235,81 @@ public class FlinkTableSource
             };
         }
 
-        // handle normal scan
         RowType flussRowType = FlinkConversions.toFlussRowType(tableOutputType);
-        if (projectedFields != null) {
+
+        if (enableChangelog) {
+            // STEP 1: Determine which metadata fields are needed
+            if (selectedMetadataFields == null) {
+                // For SELECT * or when nothing is explicitly selected, include all metadata fields
+                if (projectedFields == null) {
+                    this.selectedMetadataFields =
+                            new int[] {0, 1, 2}; // All metadata fields for SELECT *
+                    LOG.debug("SELECT * case - including all metadata fields");
+                } else if (projectedFields.length == 0) {
+                    // Handle metadata-only queries - for cases like SELECT _change_type,
+                    // _log_offset, _commit_timestamp
+                    this.selectedMetadataFields = new int[] {0, 1, 2}; // All metadata fields
+                    LOG.debug("Detected metadata-only query - including all metadata fields");
+                } else {
+                    // For queries with only physical fields like SELECT a,b,c - explicitly set
+                    // EMPTY metadata
+                    this.selectedMetadataFields = new int[0]; // No metadata fields
+                    LOG.debug("Only physical fields selected - setting empty metadata fields");
+                }
+            } else if (selectedMetadataFields.length == 0
+                    && projectedFields != null
+                    && projectedFields.length == 0) {
+                // Edge case: Empty arrays for both physical and metadata, but changelog mode
+                // This might be a metadata-only query that was incorrectly parsed
+                this.selectedMetadataFields = new int[] {0, 1, 2};
+                LOG.debug(
+                        "Edge case: Empty projections in changelog mode - defaulting to all metadata fields");
+            }
+
+            // STEP 2: Set up physical field projection
+            List<String> fieldNames = tableOutputType.getFieldNames();
+            List<String> projectedFieldNames = new ArrayList<>();
+
+            if (projectedFields == null) {
+                // If projectedFields is null, it means "SELECT *" - include all physical fields
+                LOG.debug("SELECT * - including all {} physical fields", fieldNames.size() - 3);
+                for (int i = 3; i < fieldNames.size(); i++) {
+                    projectedFieldNames.add(fieldNames.get(i));
+                }
+            } else if (projectedFields.length > 0) {
+                // Normal projection case
+                LOG.debug("Projecting {} specific physical fields", projectedFields.length);
+                for (int idx : projectedFields) {
+                    // Account for metadata fields in the index
+                    projectedFieldNames.add(fieldNames.get(idx + 3));
+                }
+            } else {
+                // No physical fields selected - might be metadata-only query
+                LOG.debug("No physical fields in projection - likely metadata-only query");
+            }
+
+            // Apply physical field projection if we have any fields to project
+            if (!projectedFieldNames.isEmpty()) {
+                flussRowType = flussRowType.project(projectedFieldNames);
+                LOG.debug(
+                        "Projected row type has {} fields: {}",
+                        flussRowType.getFieldCount(),
+                        flussRowType.getFieldNames());
+            } else if (selectedMetadataFields.length > 0) {
+                // if only metadata fields asked without physical fields
+                throw new UnsupportedOperationException(
+                        "Queries selecting only metadata columns are not supported. "
+                                + "You must include at least one physical field in your query.\n\n"
+                                + "For example, instead of:\n"
+                                + "    SELECT _change_type, _log_offset, _commit_timestamp FROM changelog_test$changelog\n\n"
+                                + "Use:\n"
+                                + "    SELECT _change_type, _log_offset, _commit_timestamp, phycialField FROM changelog_test$changelog");
+            }
+        } else if (!enableChangelog && projectedFields != null) {
+            // For non-changelog tables, continue using index-based projection
             flussRowType = flussRowType.project(projectedFields);
         }
+
         OffsetsInitializer offsetsInitializer;
         switch (startupOptions.startupMode) {
             case EARLIEST:
@@ -261,7 +340,9 @@ public class FlinkTableSource
                         projectedFields,
                         offsetsInitializer,
                         scanPartitionDiscoveryIntervalMs,
-                        streaming);
+                        streaming,
+                        enableChangelog,
+                        selectedMetadataFields);
 
         if (!streaming) {
             // return a bounded source provide to make planner happy,
@@ -350,9 +431,11 @@ public class FlinkTableSource
                         cache,
                         scanPartitionDiscoveryIntervalMs,
                         isDataLakeEnabled,
-                        mergeEngineType);
+                        mergeEngineType,
+                        enableChangelog);
         source.producedDataType = producedDataType;
         source.projectedFields = projectedFields;
+        source.selectedMetadataFields = selectedMetadataFields;
         source.singleRowFilter = singleRowFilter;
         source.modificationScanType = modificationScanType;
         return source;
@@ -370,7 +453,28 @@ public class FlinkTableSource
 
     @Override
     public void applyProjection(int[][] projectedFields, DataType producedDataType) {
-        this.projectedFields = Arrays.stream(projectedFields).mapToInt(value -> value[0]).toArray();
+        if (enableChangelog) {
+            List<Integer> physicalFieldIndices = new ArrayList<>();
+            List<Integer> metadataFieldIndices = new ArrayList<>();
+
+            for (int[] field : projectedFields) {
+                int index = field[0];
+                if (index < 3) { // First 3 columns are metadata in changelog tables
+                    metadataFieldIndices.add(index);
+                } else {
+                    // Adjust index for physical columns (subtract metadata column count)
+                    physicalFieldIndices.add(index - 3);
+                }
+            }
+
+            // Set projected fields (may be empty!)
+            this.projectedFields = physicalFieldIndices.stream().mapToInt(i -> i).toArray();
+            this.selectedMetadataFields = metadataFieldIndices.stream().mapToInt(i -> i).toArray();
+        } else {
+            // Original implementation for non-changelog tables
+            this.projectedFields =
+                    Arrays.stream(projectedFields).mapToInt(value -> value[0]).toArray();
+        }
         this.producedDataType = producedDataType.getLogicalType();
     }
 
@@ -473,5 +577,10 @@ public class FlinkTableSource
             projection[primaryKeyIndexes[i]] = i;
         }
         return projection;
+    }
+
+    @Nullable
+    public int[] getSelectedMetadataFields() {
+        return selectedMetadataFields;
     }
 }

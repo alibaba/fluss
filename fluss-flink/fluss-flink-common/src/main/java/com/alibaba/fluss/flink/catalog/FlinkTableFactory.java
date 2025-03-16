@@ -51,6 +51,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+import static com.alibaba.fluss.flink.catalog.FlinkCatalog.CHANGELOG_TABLE_SPLITTER;
 import static com.alibaba.fluss.flink.catalog.FlinkCatalog.LAKE_TABLE_SPLITTER;
 import static com.alibaba.fluss.flink.utils.FlinkConversions.toFlinkOption;
 
@@ -68,6 +69,11 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
             tableName = tableName.substring(0, tableName.indexOf(LAKE_TABLE_SPLITTER));
             lakeTableFactory = mayInitLakeTableFactory();
             return lakeTableFactory.createDynamicTableSource(context, tableName);
+        }
+        boolean enableChangelog = false;
+        if (tableName.contains(CHANGELOG_TABLE_SPLITTER)) {
+            tableName = tableName.substring(0, tableName.indexOf(CHANGELOG_TABLE_SPLITTER));
+            enableChangelog = true;
         }
 
         FactoryUtil.TableFactoryHelper helper = FactoryUtil.createTableFactoryHelper(this, context);
@@ -114,9 +120,9 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 tableOptions
                         .get(FlinkConnectorOptions.SCAN_PARTITION_DISCOVERY_INTERVAL)
                         .toMillis();
-
+        TablePath tablePath = TablePath.of(tableIdentifier.getDatabaseName(), tableName);
         return new FlinkTableSource(
-                toFlussTablePath(context.getObjectIdentifier()),
+                tablePath,
                 toFlussClientConfig(tableOptions, context.getConfiguration()),
                 tableOutputType,
                 primaryKeyIndexes,
@@ -129,7 +135,8 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 cache,
                 partitionDiscoveryIntervalMs,
                 tableOptions.get(toFlinkOption(ConfigOptions.TABLE_DATALAKE_ENABLED)),
-                tableOptions.get(toFlinkOption(ConfigOptions.TABLE_MERGE_ENGINE)));
+                tableOptions.get(toFlinkOption(ConfigOptions.TABLE_MERGE_ENGINE)),
+                enableChangelog);
     }
 
     @Override
@@ -176,6 +183,7 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                                 FlinkConnectorOptions.SCAN_PARTITION_DISCOVERY_INTERVAL,
                                 FlinkConnectorOptions.LOOKUP_ASYNC,
                                 FlinkConnectorOptions.SINK_IGNORE_DELETE,
+                                FlinkConnectorOptions.CHANGELOG,
                                 LookupOptions.MAX_RETRIES,
                                 LookupOptions.CACHE_TYPE,
                                 LookupOptions.PARTIAL_CACHE_EXPIRE_AFTER_ACCESS,

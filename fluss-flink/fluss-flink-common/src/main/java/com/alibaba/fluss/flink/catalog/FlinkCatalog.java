@@ -35,6 +35,8 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.utils.ExceptionUtils;
 import com.alibaba.fluss.utils.IOUtils;
 
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.catalog.Catalog;
 import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.CatalogDatabase;
@@ -86,6 +88,8 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 public class FlinkCatalog implements Catalog {
 
     public static final String LAKE_TABLE_SPLITTER = "$lake";
+
+    public static final String CHANGELOG_TABLE_SPLITTER = "$changelog";
 
     protected final ClassLoader classLoader;
 
@@ -273,6 +277,46 @@ public class FlinkCatalog implements Catalog {
                 }
                 return getLakeTable(
                         objectPath.getDatabaseName(), tableName, tableInfo.getProperties());
+                // table name contains $changelog, means to read from changlog table which contains
+                // additional metadata columns
+            } else if ((tableName.contains(CHANGELOG_TABLE_SPLITTER))) {
+                String baseTableName = tableName.split("\\" + CHANGELOG_TABLE_SPLITTER)[0];
+                TablePath baseTablePath = TablePath.of(objectPath.getDatabaseName(), baseTableName);
+                tableInfo = admin.getTableInfo(baseTablePath).get();
+                if (!tableInfo.hasPrimaryKey()) {
+                    throw new UnsupportedOperationException(
+                            String.format(
+                                    "\"Table %s has no primary key, only primary key tables support changelog.",
+                                    baseTableName));
+                }
+                CatalogTable originalTable = FlinkConversions.toFlinkTable(tableInfo);
+                Schema originalSchema = originalTable.getUnresolvedSchema();
+                Schema changeLogSchema =
+                        Schema.newBuilder()
+                                .column("_change_type", DataTypes.STRING())
+                                .withComment(
+                                        "+I: Insert, -U: Before the update, +U: After the update, -D: Delete")
+                                .column("_log_offset", DataTypes.BIGINT())
+                                .withComment("the offset of the log")
+                                .column(
+                                        "_commit_timestamp",
+                                        DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE())
+                                .withComment(
+                                        "the timestamp associated when the change was happended")
+                                .fromSchema(originalSchema)
+                                .build();
+
+                Map<String, String> options = new HashMap<>(originalTable.getOptions());
+                options.put(BOOTSTRAP_SERVERS.key(), bootstrapServers);
+                options.put("enable.changelog", "true");
+
+                return CatalogTable.newBuilder()
+                        .schema(changeLogSchema)
+                        .comment(originalTable.getComment())
+                        .options(options)
+                        .partitionKeys(originalTable.getPartitionKeys())
+                        .build();
+
             } else {
                 tableInfo = admin.getTableInfo(tablePath).get();
             }

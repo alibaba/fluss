@@ -49,6 +49,8 @@ public class FlinkSourceReader
         extends SingleThreadMultiplexSourceReaderBase<
                 RecordAndPos, RowData, SourceSplitBase, SourceSplitState> {
 
+    private final @Nullable int[] selectedMetadataFields;
+
     public FlinkSourceReader(
             FutureCompletingBlockingQueue<RecordsWithSplitIds<RecordAndPos>> elementsQueue,
             Configuration flussConfig,
@@ -56,7 +58,9 @@ public class FlinkSourceReader
             RowType sourceOutputType,
             SourceReaderContext context,
             @Nullable int[] projectedFields,
-            FlinkSourceReaderMetrics flinkSourceReaderMetrics) {
+            FlinkSourceReaderMetrics flinkSourceReaderMetrics,
+            boolean enableChangelog,
+            @Nullable int[] selectedMetadataFields) {
         super(
                 elementsQueue,
                 new FlinkSourceFetcherManager(
@@ -67,11 +71,15 @@ public class FlinkSourceReader
                                         tablePath,
                                         sourceOutputType,
                                         projectedFields,
-                                        flinkSourceReaderMetrics),
+                                        flinkSourceReaderMetrics,
+                                        enableChangelog,
+                                        selectedMetadataFields),
                         (ignore) -> {}),
-                new FlinkRecordEmitter(sourceOutputType),
+                new FlinkRecordEmitter(
+                        sourceOutputType, enableChangelog, projectedFields, selectedMetadataFields),
                 context.getConfiguration(),
                 context);
+        this.selectedMetadataFields = selectedMetadataFields;
     }
 
     @Override

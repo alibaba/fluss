@@ -22,7 +22,9 @@ import com.alibaba.fluss.flink.source.reader.FlinkSourceReader;
 import com.alibaba.fluss.flink.source.reader.RecordAndPos;
 import com.alibaba.fluss.flink.source.split.HybridSnapshotLogSplitState;
 import com.alibaba.fluss.flink.source.split.SourceSplitState;
-import com.alibaba.fluss.flink.utils.FlussRowToFlinkRowConverter;
+import com.alibaba.fluss.flink.utils.ChangelogRowConverter;
+import com.alibaba.fluss.flink.utils.PlainRowConverter;
+import com.alibaba.fluss.flink.utils.RecordToFlinkRowConverter;
 import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.connector.source.SourceOutput;
@@ -30,6 +32,8 @@ import org.apache.flink.connector.base.source.reader.RecordEmitter;
 import org.apache.flink.table.data.RowData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 /**
  * The {@link RecordEmitter} implementation for {@link FlinkSourceReader}.
@@ -44,12 +48,23 @@ import org.slf4j.LoggerFactory;
 public class FlinkRecordEmitter implements RecordEmitter<RecordAndPos, RowData, SourceSplitState> {
     private static final Logger LOG = LoggerFactory.getLogger(FlinkRecordEmitter.class);
 
-    private final FlussRowToFlinkRowConverter converter;
-
+    private final RecordToFlinkRowConverter converter;
     private LakeRecordRecordEmitter lakeRecordRecordEmitter;
 
-    public FlinkRecordEmitter(RowType rowType) {
-        this.converter = new FlussRowToFlinkRowConverter(rowType);
+    public FlinkRecordEmitter(
+            RowType rowType,
+            boolean enableChangeLog,
+            @Nullable int[] projectedFields,
+            @Nullable int[] selectedMetadataFields) {
+        if (enableChangeLog) {
+            int[] metadataFields =
+                    selectedMetadataFields != null && selectedMetadataFields.length > 0
+                            ? selectedMetadataFields
+                            : new int[] {};
+            this.converter = new ChangelogRowConverter(rowType, metadataFields);
+        } else {
+            this.converter = new PlainRowConverter(rowType);
+        }
     }
 
     @Override
@@ -88,11 +103,22 @@ public class FlinkRecordEmitter implements RecordEmitter<RecordAndPos, RowData, 
     }
 
     private void emitRecord(ScanRecord scanRecord, SourceOutput<RowData> sourceOutput) {
-        long timestamp = scanRecord.timestamp();
-        if (timestamp > 0) {
-            sourceOutput.collect(converter.toFlinkRowData(scanRecord), timestamp);
-        } else {
-            sourceOutput.collect(converter.toFlinkRowData(scanRecord));
+        try {
+            long timestamp = scanRecord.timestamp();
+            RowData rowData = converter.convert(scanRecord);
+
+            // Debug info to see what's happening
+            LOG.debug("Emitting row with {} fields", rowData.getArity());
+
+            if (timestamp > 0) {
+                sourceOutput.collect(rowData, timestamp);
+            } else {
+                sourceOutput.collect(rowData);
+            }
+        } catch (Exception e) {
+            // CRITICAL FIX: Log and rethrow to avoid silent failures
+            LOG.error("Error emitting record: {}", e.getMessage(), e);
+            throw e;
         }
     }
 }
