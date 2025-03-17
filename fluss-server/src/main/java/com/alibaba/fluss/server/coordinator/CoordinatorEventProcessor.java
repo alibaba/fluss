@@ -80,8 +80,6 @@ import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.server.zk.data.TabletServerRegistration;
 import com.alibaba.fluss.server.zk.data.ZkData.PartitionIdsZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.TableIdsZNode;
-import com.alibaba.fluss.utils.ExecutorUtils;
-import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 import com.alibaba.fluss.utils.types.Tuple2;
 
 import org.slf4j.Logger;
@@ -99,8 +97,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.OfflineBucket;
@@ -109,7 +105,6 @@ import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.Off
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OnlineReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.ReplicaDeletionStarted;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.ReplicaDeletionSuccessful;
-import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 import static com.alibaba.fluss.utils.concurrent.FutureUtils.completeFromCallable;
 
 /** An implementation for {@link EventProcessor}. */
@@ -134,7 +129,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
     private final CoordinatorMetricGroup coordinatorMetricGroup;
 
     private final CompletedSnapshotStoreManager completedSnapshotStoreManager;
-    private final ExecutorService ioExecutor;
 
     // in normal case, it won't be null, but from I can see, it'll only be null in unit test
     // since the we won't register a coordinator node in zk.
@@ -153,7 +147,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
             CoordinatorChannelManager coordinatorChannelManager,
             AutoPartitionManager autoPartitionManager,
             CoordinatorMetricGroup coordinatorMetricGroup,
-            Configuration conf) {
+            Configuration conf,
+            ExecutorService ioExecutor) {
         this(
                 zooKeeperClient,
                 serverMetadataCache,
@@ -161,7 +156,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 new CoordinatorContext(),
                 autoPartitionManager,
                 coordinatorMetricGroup,
-                conf);
+                conf,
+                ioExecutor);
     }
 
     public CoordinatorEventProcessor(
@@ -171,7 +167,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
             CoordinatorContext coordinatorContext,
             AutoPartitionManager autoPartitionManager,
             CoordinatorMetricGroup coordinatorMetricGroup,
-            Configuration conf) {
+            Configuration conf,
+            ExecutorService ioExecutor) {
         this.zooKeeperClient = zooKeeperClient;
         this.serverMetadataCache = serverMetadataCache;
         this.coordinatorChannelManager = coordinatorChannelManager;
@@ -190,11 +187,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
                         zooKeeperClient);
         this.metadataManager = new MetadataManager(zooKeeperClient, conf);
 
-        int ioExecutorPoolSize = conf.get(ConfigOptions.COORDINATOR_IO_POOL_SIZE);
-        checkArgument(ioExecutorPoolSize > 0, "ioExecutorPoolSize must be positive");
-        this.ioExecutor =
-                Executors.newFixedThreadPool(
-                        ioExecutorPoolSize, new ExecutorThreadFactory("coordinator-io"));
         this.tableManager =
                 new TableManager(
                         metadataManager,
@@ -430,8 +422,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
         // then stop watchers
         tableChangeWatcher.stop();
         tabletServerChangeWatcher.stop();
-        // shutdown io executor
-        ExecutorUtils.gracefulShutdown(5, TimeUnit.SECONDS, ioExecutor);
     }
 
     @Override

@@ -166,16 +166,6 @@ public class ConfigOptions {
                                     + " (“50100,50101”), ranges (“50100-50200”) or a combination"
                                     + " of both.");
 
-    public static final ConfigOption<Integer> COORDINATOR_IO_POOL_SIZE =
-            key("coordinator.io-pool.size")
-                    .intType()
-                    .defaultValue(1)
-                    .withDescription(
-                            "The size of the IO thread pool to run blocking operations for coordinator server. "
-                                    + "This includes discard unnecessary snapshot files. "
-                                    + "Increase this value if you experience slow unnecessary snapshot files clean. "
-                                    + "The default value is 1.");
-
     // ------------------------------------------------------------------------
     //  ConfigOptions for Tablet Server
     // ------------------------------------------------------------------------
