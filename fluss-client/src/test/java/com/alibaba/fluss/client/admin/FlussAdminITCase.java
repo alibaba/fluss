@@ -54,6 +54,12 @@ import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.messages.MetadataRequest;
+import com.alibaba.fluss.security.acl.AccessControlEntry;
+import com.alibaba.fluss.security.acl.AclBinding;
+import com.alibaba.fluss.security.acl.FlussPrincipal;
+import com.alibaba.fluss.security.acl.OperationType;
+import com.alibaba.fluss.security.acl.PermissionType;
+import com.alibaba.fluss.security.acl.Resource;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
 import com.alibaba.fluss.server.kv.snapshot.KvSnapshotHandle;
 import com.alibaba.fluss.types.DataTypes;
@@ -773,6 +779,57 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                                     .getTableName())
                     .isEqualTo("test_table_1");
         }
+    }
+
+    @Test
+    void testAclOperation() throws Exception {
+        List<AclBinding> aclBindings =
+                Arrays.asList(
+                        new AclBinding(
+                                Resource.table("test_db", "person"),
+                                new AccessControlEntry(
+                                        new FlussPrincipal("USER", "test_user"),
+                                        PermissionType.ALLOW,
+                                        "*",
+                                        OperationType.CREATE)),
+                        new AclBinding(
+                                Resource.database("test_db2"),
+                                new AccessControlEntry(
+                                        new FlussPrincipal("ROLE", "test_role"),
+                                        PermissionType.ALLOW,
+                                        "127.0.0.1",
+                                        OperationType.DELETE)),
+                        new AclBinding(
+                                Resource.cluster(),
+                                new AccessControlEntry(
+                                        new FlussPrincipal("ROLE", "test_role"),
+                                        PermissionType.ALLOW,
+                                        "127.0.0.1",
+                                        OperationType.DELETE)));
+
+        admin.createAcls(aclBindings)
+                .getFutures()
+                .forEach(
+                        (aclBinding, future) -> {
+                            assertThatThrownBy(() -> future.get())
+                                    .hasMessageContaining("Not implemented yet");
+                        });
+
+        assertThatThrownBy(
+                        () ->
+                                admin.listAcls(
+                                                Resource.all(),
+                                                new FlussPrincipal("ROLE", "test_role"))
+                                        .get())
+                .hasMessageContaining("Not implemented yet");
+
+        admin.dropAcls(aclBindings)
+                .getFutures()
+                .forEach(
+                        (aclBinding, future) -> {
+                            assertThatThrownBy(() -> future.get())
+                                    .hasMessageContaining("Not implemented yet");
+                        });
     }
 
     private void assertHasTabletServerNumber(int tabletServerNumber) {
