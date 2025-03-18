@@ -22,9 +22,9 @@ import com.alibaba.fluss.fs.hdfs.HadoopFileSystem;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * Implementation of the Fluss {@link FileSystem} interface for Google Cloud Storage. This class implements the common
- * behavior implemented directly by Fluss and delegates common calls to an implementation of
- * Hadoop's filesystem abstraction.
+ * Implementation of the Fluss {@link FileSystem} interface for Google Cloud Storage. This class
+ * implements the common behavior implemented directly by Fluss and delegates common calls to an
+ * implementation of Hadoop's filesystem abstraction.
  */
 public class GSFileSystem extends HadoopFileSystem {
 
@@ -32,8 +32,8 @@ public class GSFileSystem extends HadoopFileSystem {
     private final Configuration conf;
 
     /**
-     * Creates a GSFileSystem based on the given Hadoop Google Cloud Storage file system. The given Hadoop file system
-     * object is expected to be initialized already.
+     * Creates a GSFileSystem based on the given Hadoop Google Cloud Storage file system. The given
+     * Hadoop file system object is expected to be initialized already.
      *
      * <p>This constructor additionally configures the entropy injection for the file system.
      *

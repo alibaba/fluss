@@ -16,7 +16,10 @@
 
 package com.alibaba.fluss.fs.gs;
 
-/** Simple factory for the Google Cloud Storage file system, registered for the <tt>gsa://</tt> scheme. */
+/**
+ * Simple factory for the Google Cloud Storage file system, registered for the <tt>gsa://</tt>
+ * scheme.
+ */
 public class GSAFileSystemPlugin extends GSFileSystemPlugin {
 
     @Override
