@@ -21,12 +21,15 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.flink.sink.writer.AppendSinkWriter;
 import com.alibaba.fluss.flink.sink.writer.FlinkSinkWriter;
 import com.alibaba.fluss.flink.sink.writer.UpsertSinkWriter;
+import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.TablePath;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.runtime.metrics.groups.InternalSinkWriterMetricGroup;
+import org.apache.flink.streaming.api.connector.sink2.WithPreWriteTopology;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -34,9 +37,18 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.List;
 
-/** Flink sink for Fluss. */
-class FlinkSink implements Sink<RowData> {
+import static com.alibaba.fluss.flink.sink.FlinkStreamPartitioner.partition;
+import static com.alibaba.fluss.flink.utils.FlinkConversions.toFlussRowType;
+
+/**
+ * Flink sink for Fluss.
+ *
+ * <p>TODO: WithPreWriteTopology need to be changed to supportsPreWriteTopology in Flink 1.20. Trace
+ * by https://github.com/alibaba/fluss/issues/622.
+ */
+class FlinkSink implements Sink<RowData>, WithPreWriteTopology<RowData> {
 
     private static final long serialVersionUID = 1L;
 
@@ -61,9 +73,16 @@ class FlinkSink implements Sink<RowData> {
         return flinkSinkWriter;
     }
 
+    @Override
+    public DataStream<RowData> addPreWriteTopology(DataStream<RowData> input) {
+        return builder.addPreWriteTopology(input);
+    }
+
     @Internal
     interface SinkWriterBuilder<W extends FlinkSinkWriter> extends Serializable {
         W createWriter();
+
+        DataStream<RowData> addPreWriteTopology(DataStream<RowData> input);
     }
 
     @Internal
@@ -75,21 +94,54 @@ class FlinkSink implements Sink<RowData> {
         private final Configuration flussConfig;
         private final RowType tableRowType;
         private final boolean ignoreDelete;
+        private final int numBucket;
+        private final List<String> bucketKeys;
+        private final List<String> partitionKeys;
+        private final @Nullable DataLakeFormat lakeFormat;
+        private final boolean shuffleByBucketId;
 
         public AppendSinkWriterBuilder(
                 TablePath tablePath,
                 Configuration flussConfig,
                 RowType tableRowType,
-                boolean ignoreDelete) {
+                boolean ignoreDelete,
+                int numBucket,
+                List<String> bucketKeys,
+                List<String> partitionKeys,
+                @Nullable DataLakeFormat lakeFormat,
+                boolean shuffleByBucketId) {
             this.tablePath = tablePath;
             this.flussConfig = flussConfig;
             this.tableRowType = tableRowType;
             this.ignoreDelete = ignoreDelete;
+            this.numBucket = numBucket;
+            this.bucketKeys = bucketKeys;
+            this.partitionKeys = partitionKeys;
+            this.lakeFormat = lakeFormat;
+            this.shuffleByBucketId = shuffleByBucketId;
         }
 
         @Override
         public AppendSinkWriter createWriter() {
             return new AppendSinkWriter(tablePath, flussConfig, tableRowType, ignoreDelete);
+        }
+
+        @Override
+        public DataStream<RowData> addPreWriteTopology(DataStream<RowData> input) {
+            // For append only sink, we will do bucket shuffle only if bucket keys are not empty.
+            if (!bucketKeys.isEmpty() && shuffleByBucketId) {
+                return partition(
+                        input,
+                        new FlinkRowDataChannelComputer(
+                                toFlussRowType(tableRowType),
+                                bucketKeys,
+                                partitionKeys,
+                                lakeFormat,
+                                numBucket),
+                        input.getParallelism());
+            } else {
+                return input;
+            }
         }
     }
 
@@ -103,24 +155,54 @@ class FlinkSink implements Sink<RowData> {
         private final RowType tableRowType;
         private final @Nullable int[] targetColumnIndexes;
         private final boolean ignoreDelete;
+        private final int numBucket;
+        private final List<String> bucketKeys;
+        private final List<String> partitionKeys;
+        private final @Nullable DataLakeFormat lakeFormat;
+        private final boolean shuffleByBucketId;
 
         UpsertSinkWriterBuilder(
                 TablePath tablePath,
                 Configuration flussConfig,
                 RowType tableRowType,
                 @Nullable int[] targetColumnIndexes,
-                boolean ignoreDelete) {
+                boolean ignoreDelete,
+                int numBucket,
+                List<String> bucketKeys,
+                List<String> partitionKeys,
+                @Nullable DataLakeFormat lakeFormat,
+                boolean shuffleByBucketId) {
             this.tablePath = tablePath;
             this.flussConfig = flussConfig;
             this.tableRowType = tableRowType;
             this.targetColumnIndexes = targetColumnIndexes;
             this.ignoreDelete = ignoreDelete;
+            this.numBucket = numBucket;
+            this.bucketKeys = bucketKeys;
+            this.partitionKeys = partitionKeys;
+            this.lakeFormat = lakeFormat;
+            this.shuffleByBucketId = shuffleByBucketId;
         }
 
         @Override
         public UpsertSinkWriter createWriter() {
             return new UpsertSinkWriter(
                     tablePath, flussConfig, tableRowType, targetColumnIndexes, ignoreDelete);
+        }
+
+        @Override
+        public DataStream<RowData> addPreWriteTopology(DataStream<RowData> input) {
+            return shuffleByBucketId
+                    ? partition(
+                            input,
+                            new FlinkRowDataChannelComputer(
+                                    toFlussRowType(tableRowType),
+                                    bucketKeys,
+                                    partitionKeys,
+                                    lakeFormat,
+                                    numBucket),
+                            input.getParallelism())
+                    : input;
         }
     }
 }
