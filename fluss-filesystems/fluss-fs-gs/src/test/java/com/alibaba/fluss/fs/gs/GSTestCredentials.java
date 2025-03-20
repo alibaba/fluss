@@ -26,7 +26,7 @@ public class GSTestCredentials {
     @Nullable private static final String GS_TEST_BUCKET = System.getenv("IT_CASE_GS_BUCKET");
 
     @Nullable
-    private static final String GS_SERVICE_ACCOUNT_PATH = System.getenv("IT_CASE_GS_ACCESS_KEY");
+    private static final String GS_SERVICE_ACCOUNT_PATH = System.getenv("IT_CASE_GS_SERVICE_ACCOUNT_PATH");
 
     // ------------------------------------------------------------------------
 
