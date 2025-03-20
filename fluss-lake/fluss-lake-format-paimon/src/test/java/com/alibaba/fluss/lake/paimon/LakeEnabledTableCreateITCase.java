@@ -46,6 +46,9 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.alibaba.fluss.lake.paimon.PaimonLakeCatalog.BUCKET_COLUMN_NAME;
+import static com.alibaba.fluss.lake.paimon.PaimonLakeCatalog.OFFSET_COLUMN_NAME;
+import static com.alibaba.fluss.lake.paimon.PaimonLakeCatalog.TIMESTAMP_COLUMN_NAME;
 import static com.alibaba.fluss.server.utils.LakeStorageUtils.extractLakeProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -93,7 +96,7 @@ class LakeEnabledTableCreateITCase {
         String warehousePath;
         try {
             warehousePath =
-                    Files.createTempDirectory("fluss-testing-datalake-tiered")
+                    Files.createTempDirectory("fluss-testing-datalake-enabled")
                             .resolve("warehouse")
                             .toString();
         } catch (Exception e) {
@@ -137,8 +140,18 @@ class LakeEnabledTableCreateITCase {
                         new DataType[] {
                             org.apache.paimon.types.DataTypes.INT(),
                             org.apache.paimon.types.DataTypes.STRING(),
+                            // for __bucket, __offset, __timestamp
+                            org.apache.paimon.types.DataTypes.INT(),
+                            org.apache.paimon.types.DataTypes.BIGINT(),
+                            org.apache.paimon.types.DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE()
                         },
-                        new String[] {"log_c1", "log_c2"}),
+                        new String[] {
+                            "log_c1",
+                            "log_c2",
+                            BUCKET_COLUMN_NAME,
+                            OFFSET_COLUMN_NAME,
+                            TIMESTAMP_COLUMN_NAME
+                        }),
                 "log_c1,log_c2",
                 BUCKET_NUM,
                 customProperties);
@@ -167,8 +180,18 @@ class LakeEnabledTableCreateITCase {
                         new DataType[] {
                             org.apache.paimon.types.DataTypes.INT(),
                             org.apache.paimon.types.DataTypes.STRING(),
+                            // for __bucket, __offset, __timestamp
+                            org.apache.paimon.types.DataTypes.INT(),
+                            org.apache.paimon.types.DataTypes.BIGINT(),
+                            org.apache.paimon.types.DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE()
                         },
-                        new String[] {"log_c1", "log_c2"}),
+                        new String[] {
+                            "log_c1",
+                            "log_c2",
+                            BUCKET_COLUMN_NAME,
+                            OFFSET_COLUMN_NAME,
+                            TIMESTAMP_COLUMN_NAME
+                        }),
                 null,
                 BUCKET_NUM,
                 customProperties);

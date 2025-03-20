@@ -141,7 +141,6 @@ public class ZooKeeperClient implements AutoCloseable {
                 .creatingParentsIfNeeded()
                 .withMode(CreateMode.EPHEMERAL)
                 .forPath(path, ServerIdZNode.encode(tabletServerRegistration));
-
         LOG.info(
                 "Registered tablet server {} at path {} with registration {}.",
                 tabletServerId,

@@ -347,6 +347,7 @@
                                         <!-- end exclude for lakehouse-paimon -->
                                         <exclude>com.alibaba.fluss.lakehouse.cli.*</exclude>
                                         <exclude>com.alibaba.fluss.kafka.*</exclude>
+                                        <exclde>com.alibaba.fluss.lake.paimon.FlussDataTypeToPaimonDataType</exclde>
                                     </excludes>
                                 </rule>
                             </rules>

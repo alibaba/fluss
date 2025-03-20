@@ -93,7 +93,7 @@ class LakeTableManagerITCase {
         adminGateway
                 .createTable(newCreateTableRequest(lakeTablePath, lakeTableDescriptor, false))
                 .get();
-        // create again, should throw TableAlreadyExistException with message ""
+        // create again, should throw TableAlreadyExistException thrown by lake
         assertThatThrownBy(
                         () ->
                                 adminGateway

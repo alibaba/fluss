@@ -44,7 +44,10 @@ public class LakeStorageUtils {
         return asPrefixedMap(extractPrefix(clusterConf.toMap(), dataLakePrefix), "table.");
     }
 
-    /** Extract the datalake properties configured from the configuration. */
+    /**
+     * Extract the datalake properties configured from the configuration. Return null if datalake is
+     * not configured.
+     */
     @Nullable
     public static Map<String, String> extractLakeProperties(Configuration configuration) {
         DataLakeFormat datalakeFormat = configuration.get(ConfigOptions.DATALAKE_FORMAT);

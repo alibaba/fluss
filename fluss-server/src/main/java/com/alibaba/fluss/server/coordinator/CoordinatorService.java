@@ -19,7 +19,6 @@ package com.alibaba.fluss.server.coordinator;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
-import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
@@ -197,12 +196,6 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         if (isDataLakeEnabled(tableDescriptor)) {
             try {
                 getLakeCatalog().createTable(tablePath, tableDescriptor);
-            } catch (DatabaseNotExistException e) {
-                throw new DatabaseNotExistException(
-                        String.format(
-                                "The database %s does not exist in %s catalog, please "
-                                        + "first create the database.",
-                                tablePath.getDatabaseName(), dataLakeFormat));
             } catch (TableAlreadyExistException e) {
                 throw new TableAlreadyExistException(
                         String.format(

@@ -29,11 +29,16 @@ import org.apache.paimon.catalog.CatalogFactory;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.options.Options;
 import org.apache.paimon.schema.Schema;
+import org.apache.paimon.types.DataTypes;
 
 import java.util.List;
 
 /** A Paimon implementation of {@link LakeCatalog}. */
 public class PaimonLakeCatalog implements LakeCatalog {
+
+    public static final String OFFSET_COLUMN_NAME = "__offset";
+    public static final String TIMESTAMP_COLUMN_NAME = "__timestamp";
+    public static final String BUCKET_COLUMN_NAME = "__bucket";
 
     private final Catalog paimonCatalog;
 
@@ -57,7 +62,13 @@ public class PaimonLakeCatalog implements LakeCatalog {
             try {
                 createTable(paimonPath, paimonSchema);
             } catch (Catalog.DatabaseNotExistException t) {
-                throw new IllegalStateException("");
+                // shouldn't happen in normal cases
+                throw new RuntimeException(
+                        String.format(
+                                "Fail to create table %s in Paimon, because "
+                                        + "Database %s still doesn't exist although create database "
+                                        + "successfully, please try again.",
+                                tablePath, tablePath.getDatabaseName()));
             }
         }
     }
@@ -122,6 +133,12 @@ public class PaimonLakeCatalog implements LakeCatalog {
             options.set(
                     CoreOptions.CHANGELOG_PRODUCER.key(),
                     CoreOptions.ChangelogProducer.INPUT.toString());
+        } else {
+            // for log table, need to set bucket, offset and timestamp
+            schemaBuilder.column(BUCKET_COLUMN_NAME, DataTypes.INT());
+            schemaBuilder.column(OFFSET_COLUMN_NAME, DataTypes.BIGINT());
+            // we use timestamp_ltz type
+            schemaBuilder.column(TIMESTAMP_COLUMN_NAME, DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE());
         }
         // set partition keys
         schemaBuilder.partitionKeys(tableDescriptor.getPartitionKeys());

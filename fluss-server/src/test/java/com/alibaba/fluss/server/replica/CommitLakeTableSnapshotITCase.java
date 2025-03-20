@@ -35,9 +35,7 @@ import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -62,13 +60,11 @@ class CommitLakeTableSnapshotITCase {
     private static final int BUCKET_NUM = 3;
 
     private static ZooKeeperClient zkClient;
-    @TempDir private static Path paimonWarehouse;
 
     private static Configuration initConfig() {
         Configuration conf = new Configuration();
         // set default datalake format for the cluster and enable datalake tables
         conf.set(ConfigOptions.DATALAKE_FORMAT, DataLakeFormat.PAIMON);
-        conf.setString("datalake.paimon.warehouse", paimonWarehouse.toString());
         return conf;
     }
 
