@@ -57,7 +57,13 @@ public class PaimonLakeCatalog implements LakeCatalog {
             try {
                 createTable(paimonPath, paimonSchema);
             } catch (Catalog.DatabaseNotExistException t) {
-                throw new IllegalStateException("");
+                // shouldn't happen in normal cases
+                throw new RuntimeException(
+                        String.format(
+                                "Fail to create table %s in Paimon, because "
+                                        + "Database %s still doesn't exist although create database "
+                                        + "successfully, please try again.",
+                                tablePath, tablePath.getDatabaseName()));
             }
         }
     }

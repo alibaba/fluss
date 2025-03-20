@@ -93,7 +93,7 @@ class LakeEnabledTableCreateITCase {
         String warehousePath;
         try {
             warehousePath =
-                    Files.createTempDirectory("fluss-testing-datalake-tiered")
+                    Files.createTempDirectory("fluss-testing-datalake-enabled")
                             .resolve("warehouse")
                             .toString();
         } catch (Exception e) {
