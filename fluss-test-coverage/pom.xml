@@ -288,47 +288,6 @@
                                         <exclude>com.alibaba.fluss.Bucket</exclude>
                                         <exclude>com.alibaba.fluss.remote.*</exclude>
                                         <exclude>com.alibaba.fluss.compression.*</exclude>
-                                        <!-- start exclude for flink-connector -->
-                                        <exclude>com.alibaba.fluss.flink.catalog.*
-                                        </exclude>
-                                        <exclude>com.alibaba.fluss.flink.utils.*</exclude>
-                                        <exclude>com.alibaba.fluss.flink.source.*
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.catalog.FlinkCatalog
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.catalog.FlinkCatalogOptions
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.FlinkTableSource.*
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.split.HybridSnapshotLogSplitState
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.split.LogSplitState
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.state.SourceEnumeratorState
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.event.PartitionBucketsUnsubscribedEvent
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.emitter.FlinkRecordEmitter
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.source.reader.FlinkSourceReader
-                                        </exclude>
-                                        <exlucde>
-                                            com.alibaba.fluss.flink.source.reader.RecordAndPos
-                                        </exlucde>
-                                        <exclude>com.alibaba.fluss.flink.sink.FlinkSink</exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.flink.metrics.*
-                                        </exclude>
-                                        <!-- end exclude for flink-connector -->
                                         <exclude>com.alibaba.fluss.fs.hdfs.HadoopFsPlugin
                                         </exclude>
                                         <exclude>com.alibaba.fluss.fs.hdfs.HadoopSecurityTokenReceiver</exclude>
