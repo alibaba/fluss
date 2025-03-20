@@ -18,6 +18,9 @@ package com.alibaba.fluss.fs.gs;
 
 import javax.annotation.Nullable;
 
+import java.io.*;
+import java.util.Base64;
+
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Access to credentials to access Google Cloud Storage buckets during integration tests. */
@@ -26,7 +29,8 @@ public class GSTestCredentials {
     @Nullable private static final String GS_TEST_BUCKET = System.getenv("IT_CASE_GS_BUCKET");
 
     @Nullable
-    private static final String GS_SERVICE_ACCOUNT_PATH = System.getenv("IT_CASE_GS_SERVICE_ACCOUNT_PATH");
+    private static final String GS_BASE64_SERVICE_ACCOUNT =
+            System.getenv("IT_CASE_GS_BASE64_SERVICE_ACCOUNT");
 
     // ------------------------------------------------------------------------
 
@@ -35,7 +39,7 @@ public class GSTestCredentials {
      * variables of this JVM.
      */
     private static boolean credentialsAvailable() {
-        return isNotEmpty(GS_TEST_BUCKET) && isNotEmpty(GS_SERVICE_ACCOUNT_PATH);
+        return isNotEmpty(GS_TEST_BUCKET) && isNotEmpty(GS_BASE64_SERVICE_ACCOUNT);
     }
 
     /** Checks if a String is not null and not empty. */
@@ -56,9 +60,19 @@ public class GSTestCredentials {
      * #assumeCredentialsAvailable()} to skip tests when credentials are not available.
      */
     public static String getServiceAccountPath() {
-        if (GS_SERVICE_ACCOUNT_PATH != null) {
-            return GS_SERVICE_ACCOUNT_PATH;
-        } else {
+        try {
+            if (GS_BASE64_SERVICE_ACCOUNT == null) {
+                throw new IllegalStateException("Service account configuration not available");
+            }
+
+            byte[] saDecoded = Base64.getDecoder().decode(GS_BASE64_SERVICE_ACCOUNT);
+            File saFile = File.createTempFile("service_account", ".json");
+            try (FileOutputStream out = new FileOutputStream(saFile)) {
+                out.write(saDecoded);
+            }
+
+            return saFile.getAbsolutePath();
+        } catch (IOException e) {
             throw new IllegalStateException("Service account configuration not available");
         }
     }
