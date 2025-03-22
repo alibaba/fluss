@@ -63,7 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Unit tests for {@link FlinkSourceSplitReader}. */
-class FlinkSourceSplitReaderTest extends FlinkTestBase {
+class FlussSourceSplitReaderTest extends FlinkTestBase {
 
     @Test
     void testSanityCheck() throws Exception {

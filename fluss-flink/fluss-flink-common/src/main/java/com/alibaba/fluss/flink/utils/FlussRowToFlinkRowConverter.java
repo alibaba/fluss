@@ -42,7 +42,7 @@ import static com.alibaba.fluss.flink.utils.FlinkConversions.toFlinkRowKind;
  * <p>Note: fluss-datalake-tiering also contains the same class, we need to keep them in sync if we
  * modify this class.
  */
-public class FlussRowToFlinkRowConverter {
+public class FlussRowToFlinkRowConverter implements Serializable {
 
     private final FlussDeserializationConverter[] toFlinkFieldConverters;
     private final InternalRow.FieldGetter[] flussFieldGetters;
