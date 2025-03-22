@@ -50,7 +50,7 @@
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-connector-spark-common</artifactId>
+            <artifactId>fluss-spark-common</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>
