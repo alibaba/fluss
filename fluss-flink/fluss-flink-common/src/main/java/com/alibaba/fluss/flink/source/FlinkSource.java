@@ -45,7 +45,6 @@ import javax.annotation.Nullable;
 /** Flink source for Fluss. */
 public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnumeratorState> {
     private static final long serialVersionUID = 1L;
-
     private final Configuration flussConf;
     private final TablePath tablePath;
     private final boolean hasPrimaryKey;
@@ -55,6 +54,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
     private final OffsetsInitializer offsetsInitializer;
     private final long scanPartitionDiscoveryIntervalMs;
     private final boolean streaming;
+    private boolean enableChangelog;
+    @Nullable private final int[] selectedMetadataFields;
 
     public FlinkSource(
             Configuration flussConf,
@@ -65,7 +66,9 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
             @Nullable int[] projectedFields,
             OffsetsInitializer offsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
-            boolean streaming) {
+            boolean streaming,
+            boolean enableChangelog,
+            @Nullable int[] selectedMetadataFields) {
         this.flussConf = flussConf;
         this.tablePath = tablePath;
         this.hasPrimaryKey = hasPrimaryKey;
@@ -75,6 +78,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
         this.offsetsInitializer = offsetsInitializer;
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.streaming = streaming;
+        this.enableChangelog = enableChangelog;
+        this.selectedMetadataFields = selectedMetadataFields;
     }
 
     @Override
@@ -136,6 +141,8 @@ public class FlinkSource implements Source<RowData, SourceSplitBase, SourceEnume
                 sourceOutputType,
                 context,
                 projectedFields,
-                flinkSourceReaderMetrics);
+                flinkSourceReaderMetrics,
+                enableChangelog,
+                selectedMetadataFields);
     }
 }

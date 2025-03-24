@@ -31,6 +31,8 @@ import com.alibaba.fluss.types.DataTypeRoot;
 import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -41,12 +43,22 @@ import static com.alibaba.fluss.utils.PartitionUtils.PARTITION_KEY_SUPPORTED_TYP
 /** Validator of {@link TableDescriptor}. */
 public class TableDescriptorValidation {
 
+    private static final List<String> RESERVED_COLUMN_NAMES =
+            Collections.unmodifiableList(
+                    Arrays.asList("_change_type", "_log_offset", "_commit_timestamp"));
+
     /** Validate table descriptor to create is valid and contain all necessary information. */
     public static void validateTableDescriptor(TableDescriptor tableDescriptor) {
         boolean hasPrimaryKey = tableDescriptor.getSchema().getPrimaryKey().isPresent();
         RowType schema = tableDescriptor.getSchema().getRowType();
         Configuration tableConf = Configuration.fromMap(tableDescriptor.getProperties());
-
+        // Validate column names against reserved names
+        for (String columnName : tableDescriptor.getSchema().getColumnNames()) {
+            if (RESERVED_COLUMN_NAMES.contains(columnName)) {
+                throw new InvalidTableException(
+                        String.format("Column name '%s' is reserved for system use.", columnName));
+            }
+        }
         // check properties should only contain table.* options,
         // and this cluster know it,
         // and value is valid
