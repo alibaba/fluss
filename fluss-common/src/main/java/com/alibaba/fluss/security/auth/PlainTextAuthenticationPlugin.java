@@ -17,7 +17,6 @@
 package com.alibaba.fluss.security.auth;
 
 import com.alibaba.fluss.config.Configuration;
-import com.alibaba.fluss.security.acl.FlussPrincipal;
 
 /** Authentication Plugin for PLAINTEXT which not need to do authentication. */
 public class PlainTextAuthenticationPlugin implements AuthenticationPlugin {
@@ -46,7 +45,7 @@ public class PlainTextAuthenticationPlugin implements AuthenticationPlugin {
 
         @Override
         public byte[] authenticate(byte[] data) {
-            return new byte[0];
+            return null;
         }
 
         @Override
@@ -65,11 +64,6 @@ public class PlainTextAuthenticationPlugin implements AuthenticationPlugin {
         @Override
         public byte[] evaluateResponse(byte[] token) {
             return new byte[0];
-        }
-
-        @Override
-        public FlussPrincipal createPrincipal() {
-            return FlussPrincipal.ANONYMOUS;
         }
 
         @Override

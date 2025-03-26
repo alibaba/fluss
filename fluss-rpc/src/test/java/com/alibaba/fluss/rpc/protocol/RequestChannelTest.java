@@ -21,7 +21,6 @@ import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
 import com.alibaba.fluss.rpc.netty.server.FlussRequest;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
 import com.alibaba.fluss.rpc.netty.server.RpcRequest;
-import com.alibaba.fluss.security.acl.FlussPrincipal;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.EmptyByteBuf;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.UnpooledByteBufAllocator;
 
@@ -52,7 +51,6 @@ public class RequestChannelTest {
                             new GetTableInfoRequest(),
                             new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                             "CLIENT",
-                            FlussPrincipal.ANONYMOUS,
                             null);
             channel.putRequest(rpcRequest);
             rpcRequests.add(rpcRequest);
@@ -73,7 +71,6 @@ public class RequestChannelTest {
                         new GetTableInfoRequest(),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                         "CLIENT",
-                        FlussPrincipal.ANONYMOUS,
                         null);
         RpcRequest rpcRequest2 =
                 new FlussRequest(
@@ -84,7 +81,6 @@ public class RequestChannelTest {
                         new FetchLogRequest().setMaxBytes(100).setFollowerServerId(2),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
                         "CLIENT",
-                        FlussPrincipal.ANONYMOUS,
                         null);
         channel.putRequest(rpcRequest1);
         channel.putRequest(rpcRequest2);

@@ -35,6 +35,7 @@ import java.util.function.Supplier;
 
 /** Build-in protocol plugin for Fluss. */
 public class FlussProtocolPlugin implements NetworkProtocolPlugin {
+    public static final String FLUSS_PROTOCOL_NAME = "FLUSS";
     private final Map<String, Supplier<ServerAuthenticator>> authenticatorSuppliers;
     private final ApiManager apiManager;
     private final long maxIdleTimeSeconds;
@@ -49,7 +50,7 @@ public class FlussProtocolPlugin implements NetworkProtocolPlugin {
 
     @Override
     public String name() {
-        return "FLUSS";
+        return FLUSS_PROTOCOL_NAME;
     }
 
     @Override

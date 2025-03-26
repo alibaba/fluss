@@ -366,7 +366,7 @@ final class ServerConnection {
         synchronized (lock) {
             serverApiVersions =
                     new ServerApiVersions(((ApiVersionsResponse) response).getApiVersionsList());
-            // todo: 修改为initial token
+            LOG.info("Begin to authenticate with protocol {}", authenticator.protocol());
             sendAuthenticate(new byte[0]);
         }
     }
@@ -376,7 +376,6 @@ final class ServerConnection {
         if (authenticator.isComplete() || (token = authenticator.authenticate(challenge)) == null) {
             switchState(ConnectionState.READY);
         } else {
-            LOG.info("Begin to authenticate with protocol {}", authenticator.protocol());
             switchState(ConnectionState.AUTHENTICATING);
             AuthenticateRequest request =
                     new AuthenticateRequest().setToken(token).setProtocol(authenticator.protocol());

@@ -19,7 +19,6 @@ package com.alibaba.fluss.rpc.netty.authenticate;
 import com.alibaba.fluss.config.ConfigOption;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.AuthenticationException;
-import com.alibaba.fluss.security.acl.FlussPrincipal;
 import com.alibaba.fluss.security.auth.AuthenticationPlugin;
 import com.alibaba.fluss.security.auth.ClientAuthenticator;
 import com.alibaba.fluss.security.auth.ServerAuthenticator;
@@ -98,11 +97,6 @@ public class UsernamePasswordAuthenticationPlugin implements AuthenticationPlugi
                 isComplete = true;
 
                 return new byte[0];
-            }
-
-            @Override
-            public FlussPrincipal createPrincipal() {
-                return new FlussPrincipal(expectedUsername, "USER");
             }
 
             @Override

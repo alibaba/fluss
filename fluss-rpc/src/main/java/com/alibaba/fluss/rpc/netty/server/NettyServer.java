@@ -46,7 +46,6 @@ import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +57,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.rpc.netty.NettyUtils.shutdownGroup;
+import static com.alibaba.fluss.rpc.netty.server.FlussProtocolPlugin.FLUSS_PROTOCOL_NAME;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 import static com.alibaba.fluss.utils.Preconditions.checkState;
 
@@ -218,7 +218,11 @@ public final class NettyServer implements RpcServer {
         for (NetworkProtocolPlugin protocol : protocols) {
             for (String listenerName : protocol.listenerNames(conf)) {
                 checkState(
-                        !protocolsByListenerName.containsKey(listenerName),
+                        !protocolsByListenerName.containsKey(listenerName)
+                                || protocolsByListenerName
+                                        .get(listenerName)
+                                        .name()
+                                        .equals(FLUSS_PROTOCOL_NAME),
                         "Multiple network protocols are bound to the same listener name %s",
                         listenerName);
                 protocolsByListenerName.put(listenerName, protocol);
@@ -234,8 +238,7 @@ public final class NettyServer implements RpcServer {
         // protocols if necessary
         protocolPlugins.add(new FlussProtocolPlugin(conf, serverType, listeners));
         if (conf.get(ConfigOptions.KAFKA_ENABLED)) {
-            return Collections.singletonList(
-                    loadProtocolPlugin(NetworkProtocolPlugin.KAFKA_PROTOCOL_NAME));
+            protocolPlugins.add(loadProtocolPlugin(NetworkProtocolPlugin.KAFKA_PROTOCOL_NAME));
         }
         return protocolPlugins;
     }

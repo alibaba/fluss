@@ -26,7 +26,6 @@ import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.ApiManager;
 import com.alibaba.fluss.rpc.protocol.ApiMethod;
 import com.alibaba.fluss.rpc.protocol.MessageCodec;
-import com.alibaba.fluss.security.acl.FlussPrincipal;
 import com.alibaba.fluss.security.auth.ServerAuthenticator;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBufAllocator;
@@ -107,10 +106,6 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
                 return;
             }
 
-            FlussPrincipal principal =
-                    authenticator.isComplete() ? authenticator.createPrincipal() : null;
-            LOG.debug("Received request {} from {}", requestId, principal);
-
             FlussRequest request =
                     new FlussRequest(
                             apiKey,
@@ -120,7 +115,6 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
                             requestMessage,
                             buffer,
                             listenerName,
-                            principal,
                             ctx);
             // TODO: we can introduce a smarter and dynamic strategy to distribute requests to
             //  channels
