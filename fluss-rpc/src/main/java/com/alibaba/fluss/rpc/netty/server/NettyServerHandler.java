@@ -16,12 +16,19 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.exception.AuthenticationException;
+import com.alibaba.fluss.record.send.Send;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
+import com.alibaba.fluss.rpc.messages.AuthenticateRequest;
+import com.alibaba.fluss.rpc.messages.AuthenticateResponse;
 import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.ApiManager;
 import com.alibaba.fluss.rpc.protocol.ApiMethod;
 import com.alibaba.fluss.rpc.protocol.MessageCodec;
+import com.alibaba.fluss.security.auth.ServerAuthenticator;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
+import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelFutureListener;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandler;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandlerContext;
@@ -36,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeErrorResponse;
 import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeServerFailure;
+import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeSuccessResponse;
 
 /** Implementation of the channel handler to process inbound requests for RPC server. */
 @ChannelHandler.Sharable
@@ -47,13 +55,22 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
     private final int numChannels;
     private final ApiManager apiManager;
     private final String listenerName;
+    private final ServerAuthenticator authenticator;
+
+    private ConnectionState state;
 
     public NettyServerHandler(
-            RequestChannel[] requestChannels, ApiManager apiManager, String listenerName) {
+            RequestChannel[] requestChannels,
+            ApiManager apiManager,
+            String listenerName,
+            ServerAuthenticator authenticator) {
         this.requestChannels = requestChannels;
         this.numChannels = requestChannels.length;
         this.apiManager = apiManager;
         this.listenerName = listenerName;
+        this.authenticator = authenticator;
+        this.state =
+                authenticator.isComplete() ? ConnectionState.READY : ConnectionState.AUTHENTICATING;
     }
 
     @Override
@@ -82,6 +99,11 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
             // cannot release the buffer early, but only when request processing is done.
             if (!requestMessage.isLazilyParsed()) {
                 needRelease = true;
+            }
+
+            if (state.isAuthenticating() && apiKey != ApiKeys.API_VERSIONS.id) {
+                handleAuthenticateRequest(apiKey, requestId, requestMessage, ctx);
+                return;
             }
 
             FlussRequest request =
@@ -144,7 +166,79 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
                     ctx.channel().remoteAddress(),
                     ExceptionUtils.stringifyException(cause));
         }
+
+        switchState(ConnectionState.FAIL);
         ByteBuf byteBuf = encodeServerFailure(ctx.alloc(), ApiError.fromThrowable(cause));
         ctx.writeAndFlush(byteBuf).addListener(ChannelFutureListener.CLOSE);
+    }
+
+    private void handleAuthenticateRequest(
+            short apiKey, int requestId, ApiMessage requestMessage, ChannelHandlerContext ctx) {
+        if (apiKey != ApiKeys.AUTHENTICATE.id) {
+            LOG.warn(
+                    "Connection is still in the authentication process. Unable to handle API key: {}.",
+                    apiKey);
+            throw new AuthenticationException(
+                    "The connection has not completed authentication yet.");
+        }
+
+        AuthenticateRequest authenticateRequest = (AuthenticateRequest) requestMessage;
+        if (!authenticator.protocol().equals(authenticateRequest.getProtocol())) {
+            throw new AuthenticationException(
+                    String.format(
+                            "Authenticate protocol not match: protocol of server is %s while protocol of client is %s",
+                            authenticator.protocol(), authenticateRequest.getProtocol()));
+        }
+
+        AuthenticateResponse authenticateResponse = new AuthenticateResponse();
+        if (!authenticator.isComplete()) {
+            byte[] token = authenticateRequest.getToken();
+            byte[] response =
+                    !authenticator.isComplete()
+                            ? authenticator.evaluateResponse(token)
+                            : new byte[0];
+            authenticateResponse.setChallenge(response);
+        }
+        sendAuthenticateResponse(requestId, ctx, authenticateResponse);
+
+        if (authenticator.isComplete()) {
+            switchState(ConnectionState.READY);
+        }
+    }
+
+    private void sendAuthenticateResponse(
+            int requestId, ChannelHandlerContext ctx, AuthenticateResponse authenticateResponse) {
+        ByteBufAllocator alloc = ctx.alloc();
+        try {
+            Send send = encodeSuccessResponse(alloc, requestId, authenticateResponse);
+            send.writeTo(ctx);
+            ctx.flush();
+        } catch (Throwable t) {
+            LOG.error("Failed to send response to client.", t);
+            ApiError error = ApiError.fromThrowable(t);
+            // TODO: use a memory managed allocator
+            alloc = ctx.alloc();
+            ByteBuf byteBuf = encodeErrorResponse(alloc, requestId, error);
+            ctx.writeAndFlush(byteBuf);
+        }
+    }
+
+    private void switchState(ConnectionState targetState) {
+        LOG.info("switch state form {} to {}", state, targetState);
+        state = targetState;
+    }
+
+    private enum ConnectionState {
+        AUTHENTICATING,
+        READY,
+        FAIL;
+
+        public boolean isReady() {
+            return this == READY;
+        }
+
+        public boolean isAuthenticating() {
+            return this == AUTHENTICATING;
+        }
     }
 }

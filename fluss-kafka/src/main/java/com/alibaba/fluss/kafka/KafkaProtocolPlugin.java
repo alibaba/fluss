@@ -22,6 +22,7 @@ import com.alibaba.fluss.rpc.RpcGatewayService;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
 import com.alibaba.fluss.rpc.netty.server.RequestHandler;
+import com.alibaba.fluss.rpc.netty.server.RequestsMetrics;
 import com.alibaba.fluss.rpc.protocol.NetworkProtocolPlugin;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandler;
 
@@ -47,7 +48,8 @@ public class KafkaProtocolPlugin implements NetworkProtocolPlugin {
     }
 
     @Override
-    public RequestHandler<?> createRequestHandler(RpcGatewayService service) {
+    public RequestHandler<?> createRequestHandler(
+            RpcGatewayService service, RequestsMetrics requestsMetrics) {
         if (!(service instanceof TabletServerGateway)) {
             throw new IllegalArgumentException(
                     "Kafka protocol endpoints can only be enabled on TabletServers, but the service is "
