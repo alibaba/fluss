@@ -38,6 +38,7 @@ import com.alibaba.fluss.exception.InvalidUpdateVersionException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
 import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.exception.LakeStorageNotConfiguredException;
+import com.alibaba.fluss.exception.LeaderNotAvailableException;
 import com.alibaba.fluss.exception.LogOffsetOutOfRangeException;
 import com.alibaba.fluss.exception.LogStorageException;
 import com.alibaba.fluss.exception.NetworkException;
@@ -182,7 +183,11 @@ public enum Errors {
     PARTITION_ALREADY_EXISTS(
             42, "The partition already exists.", PartitionAlreadyExistsException::new),
     PARTITION_SPEC_INVALID_EXCEPTION(
-            43, "The partition spec is invalid.", InvalidPartitionException::new);
+            43, "The partition spec is invalid.", InvalidPartitionException::new),
+    LEADER_NOT_AVAILABLE_EXCEPTION(
+            44,
+            "There is no currently available leader for the given partition.",
+            LeaderNotAvailableException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 

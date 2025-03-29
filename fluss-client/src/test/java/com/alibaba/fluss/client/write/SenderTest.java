@@ -18,6 +18,7 @@ package com.alibaba.fluss.client.write;
 
 import com.alibaba.fluss.client.metadata.TestingMetadataUpdater;
 import com.alibaba.fluss.client.metrics.TestingWriterMetricGroup;
+import com.alibaba.fluss.cluster.Cluster;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
@@ -42,6 +43,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -594,6 +596,53 @@ final class SenderTest {
         assertThat(idempotenceManager.lastAckedBatchSequence(tb1)).isEqualTo(Optional.of(0));
         assertThat(future1.isDone()).isTrue();
         assertThat(future1.get()).isNull();
+    }
+
+    @Test
+    void testSendWhenDestinationIsNullInMetadata() throws Exception {
+        long offset = 0;
+        CompletableFuture<Exception> future = new CompletableFuture<>();
+        appendToAccumulator(tb1, row(1, "a"), future::complete);
+
+        int leaderNode = metadataUpdater.leaderFor(tb1);
+        // now, remove leader node ,so that send destination
+        // server node is null
+        Cluster oldCluster = metadataUpdater.getCluster();
+        Map<Integer, ServerNode> aliveTabletServersById =
+                new HashMap<>(oldCluster.getAliveTabletServers());
+        aliveTabletServersById.remove(leaderNode);
+        Cluster newCluster =
+                new Cluster(
+                        aliveTabletServersById,
+                        oldCluster.getCoordinatorServer(),
+                        oldCluster.getBucketLocationsByPath(),
+                        oldCluster.getTableIdByPath(),
+                        oldCluster.getPartitionIdByPath(),
+                        oldCluster.getTableInfoByPath());
+
+        metadataUpdater.updateCluster(newCluster);
+
+        sender.runOnce();
+        // should be no inflight batches
+        assertThat(sender.numOfInFlightBatches(tb1)).isEqualTo(0);
+
+        // the bucket location should be empty for the bucket since we'll invalid it
+        // when send to a null destination
+        assertThat(metadataUpdater.getCluster().getBucketLocation(tb1)).isEmpty();
+
+        // update with old cluster to mock a metadata update
+        metadataUpdater.updateCluster(oldCluster);
+
+        // send again, should send successfully
+        sender.runOnce();
+        assertThat(sender.numOfInFlightBatches(tb1)).isEqualTo(1);
+
+        finishProduceLogRequest(tb1, 0, createProduceLogResponse(tb1, offset, 1));
+
+        // send again, should send nothing since no batch in queue
+        sender.runOnce();
+        assertThat(sender.numOfInFlightBatches(tb1)).isEqualTo(0);
+        assertThat(future.get()).isNull();
     }
 
     private TestingMetadataUpdater initializeMetadataUpdater() {
