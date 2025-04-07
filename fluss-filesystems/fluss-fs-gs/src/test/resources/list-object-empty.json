@@ -1,0 +1,8 @@
+{
+  "kind": "storage#objects",
+  "prefixes": [
+    "flusspath/test/"
+  ],
+  "items": [
+  ]
+}
