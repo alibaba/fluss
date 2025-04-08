@@ -18,7 +18,9 @@ package com.alibaba.fluss.fs.gs;
 
 import javax.annotation.Nullable;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;

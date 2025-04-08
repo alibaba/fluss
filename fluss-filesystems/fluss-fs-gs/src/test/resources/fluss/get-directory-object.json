@@ -1,8 +1,8 @@
 {
   "kind": "storage#object",
-  "id": "test-bucket/flusspath/test/1712284123000000",
-  "selfLink": "http://localhost:8080/storage/v1/b/test-bucket/o/test",
-  "name": "flusspath/test",
+  "id": "test-bucket/fluss/1712284123000000",
+  "selfLink": "http://localhost:8080/storage/v1/b/test-bucket/o/fluss",
+  "name": "fluss",
   "bucket": "test-bucket",
   "generation": "1712284123000000",
   "metageneration": "1",
@@ -12,7 +12,7 @@
   "storageClass": "STANDARD",
   "size": "5",
   "md5Hash": "123=",
-  "mediaLink": "https://storage.googleapis.com/download/storage/v1/b/your-bucket-name/o/example-object.txt?generation=1712284123000000&alt=media",
+  "mediaLink": "https://storage.googleapis.com/download/storage/v1/b/test-bucket/o/example-object.txt?generation=1712284123000000&alt=media",
   "crc32c": "123==",
   "etag": "123="
 }

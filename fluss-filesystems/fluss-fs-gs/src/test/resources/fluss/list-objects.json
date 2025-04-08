@@ -1,9 +1,9 @@
 {
   "kind": "storage#objects",
   "prefixes": [
-    "flusspath/test/"
+    "fluss/test/"
   ],
   "items": [
-    "flusspath/test"
+    "fluss/test"
   ]
 }
