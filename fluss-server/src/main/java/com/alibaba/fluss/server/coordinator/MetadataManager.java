@@ -409,6 +409,24 @@ public class MetadataManager {
         }
     }
 
+    public void dropAllPartitions(TableInfo tableInfo) {
+        TablePath tablePath = tableInfo.getTablePath();
+        try {
+            Map<String, Long> partitions = listPartitions(tablePath);
+            for (String partitionName : partitions.keySet()) {
+                dropPartition(
+                        tablePath,
+                        ResolvedPartitionSpec.fromPartitionName(
+                                tableInfo.getPartitionKeys(), partitionName),
+                        true);
+            }
+        } catch (TableNotExistException e) {
+            // May already be deleted, just ignore.
+        } catch (Exception e) {
+            LOG.error("Fail to drop partitions when drop table {}.", tablePath.getTableName());
+        }
+    }
+
     private Optional<TablePartition> getOptionalTablePartition(
             TablePath tablePath, String partitionName) {
         try {

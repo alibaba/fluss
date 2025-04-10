@@ -552,6 +552,14 @@ public class CoordinatorEventProcessor implements EventProcessor {
                     deleteTableBuckets);
         }
 
+        if (dropTableInfo.isPartitioned()) {
+            // Drop partitions to prevent inconsistency. For example,
+            // when a table is dropped immediately after created (see issue #712 on GitHub),
+            // partitions may still be retained. Then a following table create operation
+            // may suffer exception with incremental tableId.
+            metadataManager.dropAllPartitions(dropTableInfo);
+        }
+
         coordinatorContext.queueTableDeletion(Collections.singleton(dropTableEvent.getTableId()));
         tableManager.onDeleteTable(dropTableEvent.getTableId());
         if (dropTableEvent.isAutoPartitionTable()) {
