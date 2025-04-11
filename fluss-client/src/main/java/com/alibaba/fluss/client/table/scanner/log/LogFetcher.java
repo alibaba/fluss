@@ -36,7 +36,6 @@ import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.LogRecordReadContext;
 import com.alibaba.fluss.record.LogRecords;
-import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
@@ -327,21 +326,22 @@ public class LogFetcher implements Closeable {
                                     fetchResultForBucket.getHighWatermark());
                         } else {
                             LogRecords logRecords = fetchResultForBucket.recordsOrEmpty();
-                            if (!MemoryLogRecords.EMPTY.equals(logRecords)) {
-                                // In oder to not signal notEmptyCondition, add completed fetch to
-                                // buffer until log records is not empty.
-                                DefaultCompletedFetch completedFetch =
-                                        new DefaultCompletedFetch(
-                                                tb,
-                                                fetchResultForBucket,
-                                                readContext,
-                                                logScannerStatus,
-                                                // skipping CRC check if projection push downed as
-                                                // the data is pruned
-                                                isCheckCrcs,
-                                                fetchOffset);
-                                logFetchBuffer.add(completedFetch);
-                            }
+                            //                            if
+                            // (!MemoryLogRecords.EMPTY.equals(logRecords)) {
+                            // In oder to not signal notEmptyCondition, add completed fetch to
+                            // buffer until log records is not empty.
+                            DefaultCompletedFetch completedFetch =
+                                    new DefaultCompletedFetch(
+                                            tb,
+                                            fetchResultForBucket,
+                                            readContext,
+                                            logScannerStatus,
+                                            // skipping CRC check if projection push downed as
+                                            // the data is pruned
+                                            isCheckCrcs,
+                                            fetchOffset);
+                            logFetchBuffer.add(completedFetch);
+                            //                            }
                         }
                     }
                 }
