@@ -976,7 +976,7 @@ public class ConfigOptions {
     public static final ConfigOption<Boolean> CLIENT_METRICS_ENABLED =
             key("client.metrics.enabled")
                     .booleanType()
-                    .defaultValue(true)
+                    .defaultValue(false)
                     .withDescription(
                             "Enable metrics for client. When metrics is enabled, the client "
                                     + "will collect metrics and report by the JMX metrics reporter.");
