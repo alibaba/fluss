@@ -31,7 +31,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <fs.gcs.hadoop.version>3.0.5</fs.gcs.hadoop.version>
+        <fs.gcs.hadoop.version>1.9.4-hadoop3</fs.gcs.hadoop.version>
         <google-cloud-storage.version>2.49.0</google-cloud-storage.version>
     </properties>
 
@@ -257,16 +257,6 @@
                     <artifactId>javax.annotation-api</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>com.google.cloud.bigdataoss</groupId>
-            <artifactId>gcsio</artifactId>
-            <version>${fs.gcs.hadoop.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.cloud.bigdataoss</groupId>
-            <artifactId>util-hadoop</artifactId>
-            <version>${fs.gcs.hadoop.version}</version>
         </dependency>
 
 
