@@ -25,13 +25,10 @@ import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpMethod;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpObject;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpRequest;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
-import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.QueryStringDecoder;
 import com.alibaba.fluss.shaded.netty4.io.netty.util.AsciiString;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.List;
-import java.util.Map;
 
 import static com.alibaba.fluss.shaded.guava32.com.google.common.net.HttpHeaders.CONTENT_ENCODING;
 import static com.alibaba.fluss.shaded.guava32.com.google.common.net.HttpHeaders.CONTENT_LENGTH;
@@ -43,18 +40,6 @@ import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpRe
 import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject> {
-
-    private static volatile Boolean created = false;
-
-    private final String bucket;
-    private final String path;
-    private final String key;
-
-    public GSPathServerHandler(String bucket, String path, String key) {
-        this.bucket = bucket;
-        this.path = path;
-        this.key = key;
-    }
 
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
@@ -70,8 +55,6 @@ public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject>
                 URI url = URI.create(req.uri());
                 if (req.method().equals(HttpMethod.POST)) {
                     postRequest(ctx, url, req);
-                } else if (req.method().equals(HttpMethod.DELETE)) {
-                    deleteRequest(ctx, req);
                 } else {
                     getRequest(ctx, url, req);
                 }
@@ -81,47 +64,21 @@ public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject>
         }
     }
 
-    private void deleteRequest(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
-        created = false;
-        jsonResponse(ctx, req, path + "/delete-object.json", OK);
-    }
-
     private void postRequest(ChannelHandlerContext ctx, URI url, HttpRequest req)
             throws IOException {
         if (url.getPath().endsWith("/token")) {
             jsonResponse(ctx, req, "create-token.json");
-        } else if (url.getPath().contains(path + "/")) {
-            jsonResponse(ctx, req, "fluss/get-directory-object.json", OK);
         } else {
-            Map<String, List<String>> params = new QueryStringDecoder(url.toString()).parameters();
-            if (url.toString().contains("multipart")) {
-                jsonResponse(ctx, req, path + "/get-directory-object.json", OK);
-            } else {
-                created = true;
-                jsonResponse(ctx, req, path + "/get-object.json", OK);
-            }
+            response(ctx, req, new byte[] {}, NOT_FOUND, APPLICATION_JSON);
         }
     }
 
     private void getRequest(ChannelHandlerContext ctx, URI url, HttpRequest req)
             throws IOException {
-        if (url.getPath().endsWith("/" + bucket + "/o")) {
-            if (created) {
-                jsonResponse(ctx, req, path + "/list-objects.json", OK);
-            } else {
-                jsonResponse(ctx, req, path + "/list-objects-empty.json", NOT_FOUND);
-            }
-        } else if (url.getPath().endsWith("/" + bucket + "/o/" + path + "/")) {
-            jsonResponse(ctx, req, path + "/list-objects-empty.json", NOT_FOUND);
-        } else if (url.getPath()
-                .endsWith("/download/storage/v1/b/" + bucket + "/o/" + path + "/" + key)) {
-            response(ctx, req, new byte[] {1, 2, 3, 4, 5}, OK, APPLICATION_JSON);
+        if (url.getPath().endsWith("/token")) {
+            jsonResponse(ctx, req, "create-token.json");
         } else {
-            if (!created) {
-                jsonResponse(ctx, req, path + "/get-object-not-found.json", NOT_FOUND);
-            } else {
-                jsonResponse(ctx, req, path + "/get-object.json");
-            }
+            response(ctx, req, new byte[] {}, NOT_FOUND, APPLICATION_JSON);
         }
     }
 
@@ -131,9 +88,12 @@ public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject>
     }
 
     private void jsonResponse(
-            ChannelHandlerContext ctx, HttpRequest req, String path, HttpResponseStatus ok)
+            ChannelHandlerContext ctx,
+            HttpRequest req,
+            String path,
+            HttpResponseStatus responseStatus)
             throws IOException {
-        response(ctx, req, readFromResources(path), ok, APPLICATION_JSON);
+        response(ctx, req, readFromResources(path), responseStatus, APPLICATION_JSON);
     }
 
     private static void response(

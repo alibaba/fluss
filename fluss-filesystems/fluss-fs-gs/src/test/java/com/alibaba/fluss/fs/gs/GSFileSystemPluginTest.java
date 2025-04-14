@@ -21,7 +21,11 @@ import com.alibaba.fluss.fs.FSDataInputStream;
 import com.alibaba.fluss.fs.FSDataOutputStream;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.FsPath;
+import com.alibaba.fluss.testutils.common.CommonTestUtils;
 
+import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
+import com.google.cloud.hadoop.gcsio.testing.InMemoryGoogleCloudStorage;
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,8 @@ import org.junit.jupiter.api.Test;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -83,6 +89,10 @@ class GSFileSystemPluginTest {
     }
 
     private static FileSystem createFileSystem() throws IOException {
+        Map<String, String> map = new HashMap<>();
+        map.put("GCE_METADATA_HOST", "localhost:8080");
+        CommonTestUtils.setEnv(map);
+
         String path =
                 GSFileSystemPlugin.class
                         .getClassLoader()
@@ -96,7 +106,26 @@ class GSFileSystemPluginTest {
         configuration.setString("fs.gs.auth.type", "SERVICE_ACCOUNT_JSON_KEYFILE");
         configuration.setString("fs.gs.auth.service.account.json.keyfile", path);
         configuration.setString("fs.gs.inputstream.support.gzip.encoding.enable", "false");
-        return gsFileSystemPlugin.create(URI.create("gs://test-bucket/flusspath"), configuration);
+
+        FileSystem fileSystem =
+                gsFileSystemPlugin.create(URI.create("gs://test-bucket/flusspath"), configuration);
+
+        applyInMemoryStorage(fileSystem);
+
+        return fileSystem;
+    }
+
+    private static void applyInMemoryStorage(FileSystem fileSystem) throws IOException {
+        try {
+            Object fs = FieldUtils.readField(fileSystem, "fs", true);
+            InMemoryGoogleCloudStorage inMemoryGoogleCloudStorage =
+                    new InMemoryGoogleCloudStorage();
+            GoogleCloudStorageFileSystem googleCloudStorageFileSystem =
+                    new GoogleCloudStorageFileSystem(inMemoryGoogleCloudStorage);
+            FieldUtils.writeField(fs, "gcsfs", googleCloudStorageFileSystem, true);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @AfterEach

@@ -65,7 +65,7 @@ public class MockGSServer implements Closeable {
                                     ChannelPipeline p = ch.pipeline();
                                     p.addLast(new HttpServerCodec());
                                     p.addLast(new HttpServerExpectContinueHandler());
-                                    p.addLast(new GSPathServerHandler(bucket, path, key));
+                                    p.addLast(new GSPathServerHandler());
                                 }
                             });
 

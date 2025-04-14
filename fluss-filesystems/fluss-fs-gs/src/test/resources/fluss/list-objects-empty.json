@@ -1,8 +1,0 @@
-{
-  "kind": "storage#objects",
-  "prefixes": [
-    "fluss/test/"
-  ],
-  "items": [
-  ]
-}
