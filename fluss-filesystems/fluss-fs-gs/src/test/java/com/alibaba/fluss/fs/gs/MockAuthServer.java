@@ -31,27 +31,21 @@ import com.alibaba.fluss.shaded.netty4.io.netty.handler.logging.LogLevel;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.logging.LoggingHandler;
 
 import java.io.Closeable;
-import java.io.IOException;
 
-public class MockGSServer implements Closeable {
+public class MockAuthServer implements Closeable {
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
     private ChannelFuture channelFuture;
 
-    MockGSServer(
-            EventLoopGroup bossGroup,
-            EventLoopGroup workerGroup,
-            String bucket,
-            String path,
-            String key) {
+    MockAuthServer(EventLoopGroup bossGroup, EventLoopGroup workerGroup) {
         this.bossGroup = bossGroup;
         this.workerGroup = workerGroup;
-        this.channelFuture = run(bucket, path, key);
+        this.channelFuture = run();
     }
 
-    public ChannelFuture run(String bucket, String path, String key) {
+    public ChannelFuture run() {
         try {
             ServerBootstrap b = new ServerBootstrap();
             b.option(ChannelOption.SO_BACKLOG, 1024);
@@ -76,13 +70,12 @@ public class MockGSServer implements Closeable {
         }
     }
 
-    public static MockGSServer create(String bucket, String path, String key) {
-        return new MockGSServer(
-                new NioEventLoopGroup(1), new NioEventLoopGroup(), bucket, path, key);
+    public static MockAuthServer create() {
+        return new MockAuthServer(new NioEventLoopGroup(1), new NioEventLoopGroup());
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         try {
             bossGroup.shutdownGracefully().sync();
             workerGroup.shutdownGracefully().sync();

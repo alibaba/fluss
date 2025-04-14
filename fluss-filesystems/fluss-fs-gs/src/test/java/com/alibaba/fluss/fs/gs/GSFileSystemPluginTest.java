@@ -41,11 +41,11 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 class GSFileSystemPluginTest {
 
-    private MockGSServer mockGSServer;
+    private MockAuthServer mockGSServer;
 
     @BeforeEach
     void setUp() {
-        mockGSServer = MockGSServer.create("test-bucket", "fluss", "test");
+        mockGSServer = MockAuthServer.create();
     }
 
     @Test
