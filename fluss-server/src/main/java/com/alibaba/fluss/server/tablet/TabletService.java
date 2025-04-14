@@ -17,7 +17,9 @@
 package com.alibaba.fluss.server.tablet;
 
 import com.alibaba.fluss.cluster.ServerType;
+import com.alibaba.fluss.exception.NotLeaderOrFollowerException;
 import com.alibaba.fluss.fs.FileSystem;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.record.KvRecordBatch;
 import com.alibaba.fluss.record.MemoryLogRecords;
@@ -48,15 +50,21 @@ import com.alibaba.fluss.rpc.messages.PutKvRequest;
 import com.alibaba.fluss.rpc.messages.PutKvResponse;
 import com.alibaba.fluss.rpc.messages.StopReplicaRequest;
 import com.alibaba.fluss.rpc.messages.StopReplicaResponse;
+import com.alibaba.fluss.security.acl.OperationType;
+import com.alibaba.fluss.security.acl.Resource;
 import com.alibaba.fluss.server.RpcServiceBase;
+import com.alibaba.fluss.server.authorizer.Authorizer;
 import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.entity.FetchData;
+import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.log.FetchParams;
 import com.alibaba.fluss.server.log.ListOffsetsParam;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.replica.ReplicaManager;
 import com.alibaba.fluss.server.utils.RpcMessageUtils;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
+
+import javax.annotation.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -84,8 +92,15 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
             ZooKeeperClient zkClient,
             ReplicaManager replicaManager,
             ServerMetadataCache metadataCache,
-            MetadataManager metadataManager) {
-        super(remoteFileSystem, ServerType.TABLET_SERVER, zkClient, metadataCache, metadataManager);
+            MetadataManager metadataManager,
+            @Nullable Authorizer authorizer) {
+        super(
+                remoteFileSystem,
+                ServerType.TABLET_SERVER,
+                zkClient,
+                metadataCache,
+                metadataManager,
+                authorizer);
         this.serviceName = "server-" + serverId;
         this.replicaManager = replicaManager;
     }
@@ -100,6 +115,8 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
 
     @Override
     public CompletableFuture<ProduceLogResponse> produceLog(ProduceLogRequest request) {
+
+        doAuthorizeTable(request.getTableId(), OperationType.WRITE);
         CompletableFuture<ProduceLogResponse> response = new CompletableFuture<>();
         Map<TableBucket, MemoryLogRecords> produceLogData =
                 RpcMessageUtils.getProduceLogData(request);
@@ -117,6 +134,10 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     public CompletableFuture<FetchLogResponse> fetchLog(FetchLogRequest request) {
         CompletableFuture<FetchLogResponse> response = new CompletableFuture<>();
         Map<TableBucket, FetchData> fetchLogData = getFetchLogData(request);
+        for (TableBucket tableBucket : fetchLogData.keySet()) {
+            doAuthorizeTable(tableBucket.getTableId(), OperationType.READ);
+        }
+
         FetchParams fetchParams;
         if (request.hasMinBytes()) {
             fetchParams =
@@ -142,6 +163,9 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     public CompletableFuture<PutKvResponse> putKv(PutKvRequest request) {
         CompletableFuture<PutKvResponse> response = new CompletableFuture<>();
         Map<TableBucket, KvRecordBatch> putKvData = RpcMessageUtils.getPutKvData(request);
+        for (TableBucket tableBucket : putKvData.keySet()) {
+            doAuthorizeTable(tableBucket.getTableId(), OperationType.WRITE);
+        }
         replicaManager.putRecordsToKv(
                 request.getTimeoutMs(),
                 request.getAcks(),
@@ -156,22 +180,30 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     public CompletableFuture<LookupResponse> lookup(LookupRequest request) {
         CompletableFuture<LookupResponse> response = new CompletableFuture<>();
         Map<TableBucket, List<byte[]>> lookupData = toLookupData(request);
+        for (TableBucket tableBucket : lookupData.keySet()) {
+            doAuthorizeTable(tableBucket.getTableId(), OperationType.READ);
+        }
         replicaManager.lookups(lookupData, value -> response.complete(makeLookupResponse(value)));
         return response;
     }
 
     @Override
     public CompletableFuture<PrefixLookupResponse> prefixLookup(PrefixLookupRequest request) {
+        Map<TableBucket, List<byte[]>> prefixLookupData = toPrefixLookupData(request);
+        for (TableBucket tableBucket : prefixLookupData.keySet()) {
+            doAuthorizeTable(tableBucket.getTableId(), OperationType.READ);
+        }
+
         CompletableFuture<PrefixLookupResponse> response = new CompletableFuture<>();
         replicaManager.prefixLookups(
-                toPrefixLookupData(request),
-                value -> response.complete(makePrefixLookupResponse(value)));
+                prefixLookupData, value -> response.complete(makePrefixLookupResponse(value)));
         return response;
     }
 
     @Override
     public CompletableFuture<LimitScanResponse> limitScan(LimitScanRequest request) {
         CompletableFuture<LimitScanResponse> response = new CompletableFuture<>();
+        doAuthorizeTable(request.getTableId(), OperationType.READ);
         replicaManager.limitScan(
                 new TableBucket(
                         request.getTableId(),
@@ -186,10 +218,13 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     public CompletableFuture<NotifyLeaderAndIsrResponse> notifyLeaderAndIsr(
             NotifyLeaderAndIsrRequest notifyLeaderAndIsrRequest) {
         CompletableFuture<NotifyLeaderAndIsrResponse> response = new CompletableFuture<>();
+        List<NotifyLeaderAndIsrData> notifyLeaderAndIsrRequestData =
+                getNotifyLeaderAndIsrRequestData(notifyLeaderAndIsrRequest);
         replicaManager.becomeLeaderOrFollower(
                 notifyLeaderAndIsrRequest.getCoordinatorEpoch(),
-                getNotifyLeaderAndIsrRequestData(notifyLeaderAndIsrRequest),
-                result -> response.complete(makeNotifyLeaderAndIsrResponse(result)));
+                notifyLeaderAndIsrRequestData,
+                result -> response.complete(makeNotifyLeaderAndIsrResponse(result)),
+                metadataCache::upsertTableBucketMetadata);
         return response;
     }
 
@@ -221,6 +256,7 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
 
     @Override
     public CompletableFuture<InitWriterResponse> initWriter(InitWriterRequest request) {
+        doAuthorize(OperationType.IDEMPOTENT_WRITE, Resource.cluster());
         CompletableFuture<InitWriterResponse> response = new CompletableFuture<>();
         response.complete(RpcMessageUtils.makeInitWriterResponse(metadataManager.initWriterId()));
         return response;
@@ -251,5 +287,14 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
         replicaManager.notifyLakeTableOffset(
                 RpcMessageUtils.getNotifyLakeTableOffset(request), response::complete);
         return response;
+    }
+
+    private void doAuthorizeTable(long tableId, OperationType operationType) {
+        PhysicalTablePath path = metadataCache.getTablePath(tableId);
+        if (path == null) {
+            throw new NotLeaderOrFollowerException(
+                    String.format("Leader bucket of %s is not ready.", tableId));
+        }
+        doAuthorize(operationType, Resource.table(path.getDatabaseName(), path.getTableName()));
     }
 }
