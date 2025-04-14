@@ -124,6 +124,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
     private final MetadataManager metadataManager;
     private final TableManager tableManager;
     private final AutoPartitionManager autoPartitionManager;
+    private final LakeTableTieringManager lakeTableTieringManager;
     private final TableChangeWatcher tableChangeWatcher;
     private final CoordinatorChannelManager coordinatorChannelManager;
     private final TabletServerChangeWatcher tabletServerChangeWatcher;
@@ -151,6 +152,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
             ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
             AutoPartitionManager autoPartitionManager,
+            LakeTableTieringManager lakeTableTieringManager,
             CoordinatorMetricGroup coordinatorMetricGroup,
             Configuration conf,
             ExecutorService ioExecutor) {
@@ -160,6 +162,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 coordinatorChannelManager,
                 new CoordinatorContext(),
                 autoPartitionManager,
+                lakeTableTieringManager,
                 coordinatorMetricGroup,
                 conf,
                 ioExecutor);
@@ -171,6 +174,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
             CoordinatorChannelManager coordinatorChannelManager,
             CoordinatorContext coordinatorContext,
             AutoPartitionManager autoPartitionManager,
+            LakeTableTieringManager lakeTableTieringManager,
             CoordinatorMetricGroup coordinatorMetricGroup,
             Configuration conf,
             ExecutorService ioExecutor) {
@@ -211,6 +215,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
                         ioExecutor,
                         zooKeeperClient);
         this.autoPartitionManager = autoPartitionManager;
+        this.lakeTableTieringManager = lakeTableTieringManager;
         this.coordinatorMetricGroup = coordinatorMetricGroup;
         this.internalListenerName = conf.getString(ConfigOptions.INTERNAL_LISTENER_NAME);
         registerMetrics();
@@ -326,13 +331,16 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
         // load all tables
         List<TableInfo> autoPartitionTables = new ArrayList<>();
+        List<TableInfo> lakeTables = new ArrayList<>();
         for (String database : metadataManager.listDatabases()) {
             for (String tableName : metadataManager.listTables(database)) {
                 TablePath tablePath = TablePath.of(database, tableName);
                 TableInfo tableInfo = metadataManager.getTable(tablePath);
                 coordinatorContext.putTablePath(tableInfo.getTableId(), tablePath);
                 coordinatorContext.putTableInfo(tableInfo);
-
+                if (tableInfo.getTableConfig().isDataLakeEnabled()) {
+                    lakeTables.add(tableInfo);
+                }
                 if (tableInfo.isPartitioned()) {
                     Map<String, Long> partitions =
                             zooKeeperClient.getPartitionNameAndIds(tablePath);
@@ -351,6 +359,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
             }
         }
         autoPartitionManager.initAutoPartitionTables(autoPartitionTables);
+        lakeTableTieringManager.initWithLakeTables(lakeTables);
 
         // load all assignment
         loadTableAssignment();
@@ -550,6 +559,9 @@ public class CoordinatorEventProcessor implements EventProcessor {
         if (createTableEvent.isAutoPartitionTable()) {
             autoPartitionManager.addAutoPartitionTable(tableInfo, true);
         }
+        if (tableInfo.getTableConfig().isDataLakeEnabled()) {
+            lakeTableTieringManager.addLakeTable(tableInfo);
+        }
     }
 
     private void processCreatePartition(CreatePartitionEvent createPartitionEvent) {
@@ -584,6 +596,9 @@ public class CoordinatorEventProcessor implements EventProcessor {
         tableManager.onDeleteTable(dropTableEvent.getTableId());
         if (dropTableEvent.isAutoPartitionTable()) {
             autoPartitionManager.removeAutoPartitionTable(dropTableEvent.getTableId());
+        }
+        if (dropTableEvent.isDataLakeEnabled()) {
+            lakeTableTieringManager.removeLakeTable(dropTableEvent.getTableId());
         }
     }
 

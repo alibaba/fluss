@@ -24,6 +24,7 @@ import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.MergeEngineType;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -82,6 +83,10 @@ public class TableConfig {
      */
     public Optional<DataLakeFormat> getDataLakeFormat() {
         return config.getOptional(ConfigOptions.TABLE_DATALAKE_FORMAT);
+    }
+
+    public Duration getDataLakeTieringInterval() {
+        return config.get(ConfigOptions.TABLE_DATALAKE_TIERING_INTERVAL);
     }
 
     /** Gets the optional merge engine type of the table. */
