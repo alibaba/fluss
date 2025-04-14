@@ -14,23 +14,15 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.security.auth;
+package com.alibaba.fluss.exception;
 
-import com.alibaba.fluss.exception.AuthenticationException;
-import com.alibaba.fluss.security.acl.FlussPrincipal;
-
-/** Authenticator for server side. */
-public interface ServerAuthenticator {
-
-    String protocol();
-
-    byte[] evaluateResponse(byte[] token) throws AuthenticationException;
-
-    boolean isComplete();
-
-    /**
-     * Create principal from authenticated token for later authorization.(this can only invoke if is
-     * complete).
-     */
-    FlussPrincipal createPrincipal();
+/**
+ * This exception is thrown if no authorization.
+ *
+ * @since 0.7
+ */
+public class AuthorizationException extends ApiException {
+    public AuthorizationException(String message) {
+        super(message);
+    }
 }
