@@ -31,6 +31,7 @@ import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -88,6 +89,7 @@ import com.alibaba.fluss.server.metadata.PartitionMetadataInfo;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.metadata.TableMetadataInfo;
 import com.alibaba.fluss.server.tablet.TabletService;
+import com.alibaba.fluss.server.utils.ServerRpcMessageUtils;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
@@ -465,7 +467,15 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     public CompletableFuture<ListPartitionInfosResponse> listPartitionInfos(
             ListPartitionInfosRequest request) {
         TablePath tablePath = toTablePath(request.getTablePath());
-        Map<String, Long> partitionNameAndIds = metadataManager.listPartitions(tablePath);
+        Map<String, Long> partitionNameAndIds;
+        if (request.hasPartitionSpec()) {
+            ResolvedPartitionSpec partitionSpecFromRequest =
+                    ServerRpcMessageUtils.toResolvedPartitionSpec(request.getPartitionSpec());
+            partitionNameAndIds =
+                    metadataManager.listPartitions(tablePath, partitionSpecFromRequest);
+        } else {
+            partitionNameAndIds = metadataManager.listPartitions(tablePath);
+        }
         TableInfo tableInfo = metadataManager.getTable(tablePath);
         List<String> partitionKeys = tableInfo.getPartitionKeys();
         return CompletableFuture.completedFuture(
