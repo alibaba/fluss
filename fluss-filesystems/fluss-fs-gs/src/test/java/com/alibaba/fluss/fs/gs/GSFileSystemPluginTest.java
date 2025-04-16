@@ -39,6 +39,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
+/** Tests that validate the behavior of the Google Cloud Storage File System Plugin. */
 class GSFileSystemPluginTest {
 
     private MockAuthServer mockGSServer;
