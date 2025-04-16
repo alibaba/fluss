@@ -19,7 +19,6 @@ package com.alibaba.fluss.server;
 import com.alibaba.fluss.cluster.BucketLocation;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
-import com.alibaba.fluss.exception.AuthenticationException;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
 import com.alibaba.fluss.exception.LakeTableSnapshotNotExistException;
@@ -73,7 +72,6 @@ import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
 import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
 import com.alibaba.fluss.rpc.messages.UpdateMetadataResponse;
-import com.alibaba.fluss.rpc.netty.server.Session;
 import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.ApiManager;
 import com.alibaba.fluss.rpc.util.CommonRpcMessageUtils;
@@ -81,8 +79,6 @@ import com.alibaba.fluss.security.acl.AclBinding;
 import com.alibaba.fluss.security.acl.AclBindingFilter;
 import com.alibaba.fluss.security.acl.OperationType;
 import com.alibaba.fluss.security.acl.Resource;
-import com.alibaba.fluss.security.acl.ResourceType;
-import com.alibaba.fluss.server.authorizer.Action;
 import com.alibaba.fluss.server.authorizer.Authorizer;
 import com.alibaba.fluss.server.coordinator.CoordinatorService;
 import com.alibaba.fluss.server.coordinator.MetadataManager;
@@ -109,7 +105,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -117,6 +112,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.security.acl.Resource.TABLE_SPLITTER;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeGetLatestKvSnapshotsResponse;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeKvSnapshotMetadataResponse;
 import static com.alibaba.fluss.server.utils.RpcMessageUtils.toTablePath;
@@ -183,19 +179,33 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     @Override
     public CompletableFuture<ListDatabasesResponse> listDatabases(ListDatabasesRequest request) {
         ListDatabasesResponse response = new ListDatabasesResponse();
-        List<String> databaseNames = metadataManager.listDatabases();
+        Collection<String> databaseNames = metadataManager.listDatabases();
 
-        Set<String> authorizedDatabaseNames =
-                filterByAuthorized(OperationType.DESCRIBE, ResourceType.DATABASE, databaseNames);
+        if (authorizer != null) {
+            Collection<Resource> authorizedDatabase =
+                    authorizer.filterByAuthorized(
+                            currentSession(),
+                            OperationType.DESCRIBE,
+                            databaseNames.stream()
+                                    .map(Resource::database)
+                                    .collect(Collectors.toList()));
+            databaseNames =
+                    authorizedDatabase.stream().map(Resource::getName).collect(Collectors.toList());
+        }
 
-        response.addAllDatabaseNames(authorizedDatabaseNames);
+        response.addAllDatabaseNames(databaseNames);
         return CompletableFuture.completedFuture(response);
     }
 
     @Override
     public CompletableFuture<GetDatabaseInfoResponse> getDatabaseInfo(
             GetDatabaseInfoRequest request) {
-        doAuthorize(OperationType.DESCRIBE, Resource.database(request.getDatabaseName()));
+        if (authorizer != null) {
+            authorizer.authorize(
+                    currentSession(),
+                    OperationType.DESCRIBE,
+                    Resource.database(request.getDatabaseName()));
+        }
 
         GetDatabaseInfoResponse response = new GetDatabaseInfoResponse();
         DatabaseInfo databaseInfo = metadataManager.getDatabase(request.getDatabaseName());
@@ -217,27 +227,33 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     public CompletableFuture<ListTablesResponse> listTables(ListTablesRequest request) {
         ListTablesResponse response = new ListTablesResponse();
         List<String> tableNames = metadataManager.listTables(request.getDatabaseName());
+        if (authorizer != null) {
+            List<Resource> resources =
+                    tableNames.stream()
+                            .map(t -> Resource.table(request.getDatabaseName(), t))
+                            .collect(Collectors.toList());
+            Collection<Resource> authorizedTable =
+                    authorizer.filterByAuthorized(
+                            currentSession(), OperationType.DESCRIBE, resources);
+            tableNames =
+                    authorizedTable.stream()
+                            .map(resource -> resource.getName().split(TABLE_SPLITTER)[1])
+                            .collect(Collectors.toList());
+        }
 
-        Set<String> authorizedTableNames =
-                filterByAuthorized(
-                        OperationType.DESCRIBE,
-                        ResourceType.TABLE,
-                        tableNames.stream()
-                                .map(t -> request.getDatabaseName() + "." + t)
-                                .collect(Collectors.toSet()));
-        response.addAllTableNames(
-                authorizedTableNames.stream()
-                        .map(t -> t.substring(t.indexOf(".") + 1))
-                        .collect(Collectors.toList()));
+        response.addAllTableNames(tableNames);
         return CompletableFuture.completedFuture(response);
     }
 
     @Override
     public CompletableFuture<GetTableInfoResponse> getTableInfo(GetTableInfoRequest request) {
         TablePath tablePath = toTablePath(request.getTablePath());
-        doAuthorize(
-                OperationType.DESCRIBE,
-                Resource.table(tablePath.getDatabaseName(), tablePath.getTableName()));
+        if (authorizer != null) {
+            authorizer.authorize(
+                    currentSession(),
+                    OperationType.DESCRIBE,
+                    Resource.table(tablePath.getDatabaseName(), tablePath.getTableName()));
+        }
 
         GetTableInfoResponse response = new GetTableInfoResponse();
         TableInfo tableInfo = metadataManager.getTable(tablePath);
@@ -287,9 +303,12 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         List<PartitionMetadataInfo> partitionMetadataInfos = new ArrayList<>();
 
         for (PbTablePath pbTablePath : pbTablePaths) {
-            if (isAuthorized(
-                    OperationType.DESCRIBE,
-                    Resource.table(pbTablePath.getDatabaseName(), pbTablePath.getTableName()))) {
+            if (authorizer == null
+                    || authorizer.isAuthorized(
+                            currentSession(),
+                            OperationType.DESCRIBE,
+                            Resource.table(
+                                    pbTablePath.getDatabaseName(), pbTablePath.getTableName()))) {
                 TablePath tablePath = toTablePath(pbTablePath);
                 tablePaths.add(tablePath);
                 tableMetadataInfos.add(getTableMetadata(tablePath, listenerName));
@@ -297,10 +316,13 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         }
 
         for (PbPhysicalTablePath partitionPath : partitions) {
-            if (isAuthorized(
-                    OperationType.DESCRIBE,
-                    Resource.table(
-                            partitionPath.getDatabaseName(), partitionPath.getTableName()))) {
+            if (authorizer == null
+                    || authorizer.isAuthorized(
+                            currentSession(),
+                            OperationType.DESCRIBE,
+                            Resource.table(
+                                    partitionPath.getDatabaseName(),
+                                    partitionPath.getTableName()))) {
                 partitionMetadataInfos.add(
                         getPartitionMetadata(
                                 RpcMessageUtils.toPhysicalTablePath(partitionPath), listenerName));
@@ -416,7 +438,10 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     @Override
     public CompletableFuture<GetFileSystemSecurityTokenResponse> getFileSystemSecurityToken(
             GetFileSystemSecurityTokenRequest request) {
-        doAuthorize(OperationType.FILESYSTEM_TOKEN, Resource.cluster());
+        if (authorizer != null) {
+            authorizer.authorize(
+                    currentSession(), OperationType.FILESYSTEM_TOKEN, Resource.cluster());
+        }
 
         try {
             // In order to avoid repeatedly obtaining security token, cache it for a while.
@@ -481,12 +506,15 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
 
     @Override
     public CompletableFuture<ListAclsResponse> listAcls(ListAclsRequest request) {
-        doAuthorize(OperationType.DESCRIBE, Resource.cluster());
+        if (authorizer == null) {
+            throw new IllegalStateException("No Authorizer is configured.");
+        }
 
         AclBindingFilter aclBindingFilter =
                 CommonRpcMessageUtils.toAclFilter(request.getAclFilter());
+
         try {
-            Collection<AclBinding> acls = authorizer.listAcls(aclBindingFilter);
+            Collection<AclBinding> acls = authorizer.listAcls(currentSession(), aclBindingFilter);
             return CompletableFuture.completedFuture(RpcMessageUtils.makeListAclsResponse(acls));
         } catch (Exception e) {
             throw new FlussRuntimeException(
@@ -679,59 +707,6 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
             return new AssignmentInfo(
                     tableId, zkClient.getTableAssignment(tableId).orElse(null), null);
         }
-    }
-
-    protected void doAuthorize(OperationType operationType, Resource resource) {
-        Session session = currentSession();
-        // internal request will not be authorized
-        if (!isAuthorized(operationType, resource)) {
-            LOG.warn(
-                    "Principal {} have no authorization to operate {} on resource {}",
-                    session.getPrincipal(),
-                    operationType,
-                    resource);
-            throw new AuthenticationException(
-                    String.format(
-                            "Principal %s have no authorization to operate %s on resource %s ",
-                            session.getPrincipal(), operationType, resource));
-        }
-    }
-
-    protected boolean isAuthorized(OperationType operationType, Resource resource) {
-        Session session = currentSession();
-        // internal request will not be authorized
-        return authorizer == null
-                || session.isInternal()
-                || authorizer.authorize(session, operationType, resource);
-    }
-
-    protected Set<String> filterByAuthorized(
-            OperationType operation, ResourceType resourceType, Collection<String> resourceNames) {
-
-        Set<String> resourceNameSet = new HashSet<>(resourceNames);
-
-        if (authorizer == null) {
-            return new HashSet<>(resourceNameSet);
-        }
-
-        List<Action> actions = new ArrayList<>();
-        for (String resourceName : resourceNameSet) {
-            actions.add(new Action(new Resource(resourceType, resourceName), operation));
-        }
-
-        List<Boolean> results = authorizer.authorize(currentSession(), actions);
-
-        Set<String> authorizedResource = new HashSet<>();
-        Iterator<String> resourceIterator = resourceNameSet.iterator();
-        for (Boolean result : results) {
-            if (result && resourceIterator.hasNext()) {
-                authorizedResource.add(resourceIterator.next());
-            } else if (resourceIterator.hasNext()) {
-                resourceIterator.next(); // Skip denied resources
-            }
-        }
-
-        return authorizedResource;
     }
 
     private static class AssignmentInfo {
