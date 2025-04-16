@@ -39,7 +39,7 @@ import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpHe
 import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
 
-/** Netty Handler for facilitating the Google auth token generation */
+/** Netty Handler for facilitating the Google auth token generation. */
 public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     @Override

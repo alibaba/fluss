@@ -32,7 +32,7 @@ import com.alibaba.fluss.shaded.netty4.io.netty.handler.logging.LoggingHandler;
 
 import java.io.Closeable;
 
-/** Mock Netty Auth Server for facilitating the Google auth token generation */
+/** Mock Netty Auth Server for facilitating the Google auth token generation. */
 public class MockAuthServer implements Closeable {
 
     private EventLoopGroup bossGroup;
