@@ -16,14 +16,9 @@
 #
 
 
-USAGE="Usage: $0 (start [args])|stop"
+USAGE="Usage: $0 start|stop"
 
 STARTSTOP=$1
-
-if [ -z $2 ] || [[ $2 == "-D" ]]; then
-    # start [-D ...]
-    args=("${@:2}")
-fi
 
 if [[ $STARTSTOP != "start" ]] && [[ $STARTSTOP != "stop" ]]; then
   echo $USAGE
