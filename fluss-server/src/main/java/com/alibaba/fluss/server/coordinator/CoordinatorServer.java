@@ -153,6 +153,8 @@ public class CoordinatorServer extends ServerBase {
             this.metadataCache = new ServerMetadataCacheImpl();
 
             MetadataManager metadataManager = new MetadataManager(zkClient, conf);
+            this.autoPartitionManager =
+                    new AutoPartitionManager(metadataCache, metadataManager, conf);
             this.coordinatorService =
                     new CoordinatorService(
                             conf,
@@ -160,7 +162,8 @@ public class CoordinatorServer extends ServerBase {
                             zkClient,
                             this::getCoordinatorEventManager,
                             metadataCache,
-                            metadataManager);
+                            metadataManager,
+                            autoPartitionManager);
 
             this.rpcServer =
                     RpcServer.create(
@@ -179,8 +182,6 @@ public class CoordinatorServer extends ServerBase {
 
             this.coordinatorChannelManager = new CoordinatorChannelManager(rpcClient);
 
-            this.autoPartitionManager =
-                    new AutoPartitionManager(metadataCache, metadataManager, conf);
             autoPartitionManager.start();
 
             int ioExecutorPoolSize = conf.get(ConfigOptions.COORDINATOR_IO_POOL_SIZE);
@@ -365,6 +366,11 @@ public class CoordinatorServer extends ServerBase {
     @VisibleForTesting
     public CoordinatorService getCoordinatorService() {
         return coordinatorService;
+    }
+
+    @VisibleForTesting
+    public AutoPartitionManager getAutoPartitionManager() {
+        return autoPartitionManager;
     }
 
     @Override

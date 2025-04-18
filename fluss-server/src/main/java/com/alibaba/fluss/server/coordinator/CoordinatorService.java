@@ -21,12 +21,14 @@ import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
+import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
+import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
@@ -66,12 +68,14 @@ import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.PartitionAssignment;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
+import com.alibaba.fluss.server.zk.data.TableRegistration;
 import com.alibaba.fluss.utils.concurrent.FutureUtils;
 
 import javax.annotation.Nullable;
 
 import java.io.UncheckedIOException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
@@ -88,6 +92,7 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
     private final int defaultBucketNumber;
     private final int defaultReplicationFactor;
     private final Supplier<EventManager> eventManagerSupplier;
+    private final AutoPartitionManager autoPartitionManager;
 
     // null if the cluster hasn't configured datalake format
     private final @Nullable DataLakeFormat dataLakeFormat;
@@ -98,12 +103,14 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
             ZooKeeperClient zkClient,
             Supplier<EventManager> eventManagerSupplier,
             ServerMetadataCache metadataCache,
-            MetadataManager metadataManager) {
+            MetadataManager metadataManager,
+            AutoPartitionManager autoPartitionManager) {
         super(remoteFileSystem, ServerType.COORDINATOR, zkClient, metadataCache, metadataManager);
         this.defaultBucketNumber = conf.getInt(ConfigOptions.DEFAULT_BUCKET_NUMBER);
         this.defaultReplicationFactor = conf.getInt(ConfigOptions.DEFAULT_REPLICATION_FACTOR);
         this.eventManagerSupplier = eventManagerSupplier;
         this.dataLakeFormat = conf.getOptional(ConfigOptions.DATALAKE_FORMAT).orElse(null);
+        this.autoPartitionManager = autoPartitionManager;
     }
 
     @Override
@@ -184,6 +191,21 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         metadataManager.createTable(
                 tablePath, tableDescriptor, tableAssignment, request.isIgnoreIfExists());
 
+        // add to autoPartitionManager for auto partition table
+        try {
+            Optional<TableRegistration> optionalTable = zkClient.getTable(tablePath);
+            if (optionalTable.isPresent()) {
+                TableRegistration tableRegistration = optionalTable.get();
+                SchemaInfo schemaInfo = metadataManager.getLatestSchema(tablePath);
+                TableInfo tableInfo = tableRegistration.toTableInfo(tablePath, schemaInfo);
+                if (tableInfo.isAutoPartitioned()) {
+                    autoPartitionManager.addAutoPartitionTable(tableInfo);
+                }
+            }
+        } catch (Exception e) {
+            throw new TableNotExistException(e.getMessage());
+        }
+
         return CompletableFuture.completedFuture(new CreateTableResponse());
     }
 
@@ -224,9 +246,20 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
 
     @Override
     public CompletableFuture<DropTableResponse> dropTable(DropTableRequest request) {
+        TablePath tablePath = toTablePath(request.getTablePath());
+
+        try {
+            Optional<TableRegistration> optionalTable = zkClient.getTable(tablePath);
+            if (optionalTable.isPresent()) {
+                TableRegistration tableRegistration = optionalTable.get();
+                autoPartitionManager.removeAutoPartitionTable(tableRegistration.tableId);
+            }
+        } catch (Exception e) {
+            throw new TableNotExistException(e.getMessage());
+        }
+
         DropTableResponse response = new DropTableResponse();
-        metadataManager.dropTable(
-                toTablePath(request.getTablePath()), request.isIgnoreIfNotExists());
+        metadataManager.dropTable(tablePath, request.isIgnoreIfNotExists());
         return CompletableFuture.completedFuture(response);
     }
 

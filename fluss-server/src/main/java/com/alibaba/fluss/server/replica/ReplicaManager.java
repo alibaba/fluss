@@ -322,7 +322,7 @@ public class ReplicaManager {
 
     /**
      * Receive a request to make these replicas to become leader or follower, if the replica doesn't
-     * exit, we will create it.
+     * exist, we will create it.
      */
     public void becomeLeaderOrFollower(
             int requestCoordinatorEpoch,

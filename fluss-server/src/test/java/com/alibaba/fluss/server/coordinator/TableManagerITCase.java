@@ -108,6 +108,7 @@ class TableManagerITCase {
 
     private ZooKeeperClient zkClient;
     private Configuration clientConf;
+    private AutoPartitionManager autoPartitionManager;
 
     @RegisterExtension
     public static final FlussClusterExtension FLUSS_CLUSTER_EXTENSION =
@@ -134,6 +135,8 @@ class TableManagerITCase {
     void setup() {
         zkClient = FLUSS_CLUSTER_EXTENSION.getZooKeeperClient();
         clientConf = FLUSS_CLUSTER_EXTENSION.getClientConfig();
+        autoPartitionManager =
+                FLUSS_CLUSTER_EXTENSION.getCoordinatorServer().getAutoPartitionManager();
     }
 
     @Test
@@ -373,6 +376,12 @@ class TableManagerITCase {
         TableDescriptor tableDescriptor = newPartitionedTable().withProperties(options);
         adminGateway.createTable(newCreateTableRequest(tablePath, tableDescriptor, false)).get();
 
+        GetTableInfoResponse response =
+                adminGateway.getTableInfo(newGetTableInfoRequest(tablePath)).get();
+        // AutoPartitionManager adds the table immediately
+        assertThat(autoPartitionManager.getAutoPartitionTables().containsKey(response.getTableId()))
+                .isTrue();
+
         // wait util partition is created
         Map<String, Long> partitions =
                 waitValue(
@@ -394,6 +403,10 @@ class TableManagerITCase {
 
         // let's drop the table
         adminGateway.dropTable(newDropTableRequest(db1, tb1, false)).get();
+
+        // AutoPartitionManager remove the table immediately
+        assertThat(autoPartitionManager.getAutoPartitionTables().containsKey(response.getTableId()))
+                .isFalse();
 
         // verify the partition assignment is deleted
         for (Long partitionId : partitions.values()) {

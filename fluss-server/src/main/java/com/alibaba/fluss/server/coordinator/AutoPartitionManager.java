@@ -353,4 +353,9 @@ public class AutoPartitionManager implements AutoCloseable {
             periodicExecutor.shutdownNow();
         }
     }
+
+    @VisibleForTesting
+    public Map<Long, TableInfo> getAutoPartitionTables() {
+        return autoPartitionTables;
+    }
 }

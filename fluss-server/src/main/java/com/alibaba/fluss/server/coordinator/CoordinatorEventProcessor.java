@@ -519,9 +519,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 tableInfo.getTablePath(),
                 tableInfo.getTableId(),
                 createTableEvent.getTableAssignment());
-        if (createTableEvent.isAutoPartitionTable()) {
-            autoPartitionManager.addAutoPartitionTable(tableInfo);
-        }
     }
 
     private void processCreatePartition(CreatePartitionEvent createPartitionEvent) {
@@ -554,9 +551,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
         coordinatorContext.queueTableDeletion(Collections.singleton(dropTableEvent.getTableId()));
         tableManager.onDeleteTable(dropTableEvent.getTableId());
-        if (dropTableEvent.isAutoPartitionTable()) {
-            autoPartitionManager.removeAutoPartitionTable(dropTableEvent.getTableId());
-        }
     }
 
     private void processDropPartition(DropPartitionEvent dropPartitionEvent) {
