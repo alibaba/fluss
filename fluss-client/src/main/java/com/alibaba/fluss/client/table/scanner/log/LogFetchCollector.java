@@ -261,7 +261,7 @@ public class LogFetchCollector {
             LOG.warn("Received unknown table or bucket error in fetch for bucket {}", tb);
             metadataUpdater.checkAndUpdateMetadata(tablePath, tb);
         } else if (error == Errors.LOG_OFFSET_OUT_OF_RANGE_EXCEPTION) {
-            throw new LogOffsetOutOfRangeException(errorMessage);
+            throw new IllegalStateException(error.exception());
         } else if (error == Errors.UNKNOWN_SERVER_ERROR) {
             LOG.warn(
                     "Unknown server error while fetching offset {} for bucket {}: {}",
