@@ -45,7 +45,7 @@ public class GSFileSystemPlugin implements FileSystemPlugin {
     public FileSystem create(URI fsUri, Configuration flussConfig) throws IOException {
         org.apache.hadoop.conf.Configuration hadoopConfig = getHadoopConfiguration(flussConfig);
 
-        // create the Hadoop FileSystem
+        // create the Google Hadoop FileSystem
         org.apache.hadoop.fs.FileSystem fs = new GoogleHadoopFileSystem();
         fs.initialize(getInitURI(fsUri, hadoopConfig), hadoopConfig);
         return new GSFileSystem(getScheme(), fs, hadoopConfig);
