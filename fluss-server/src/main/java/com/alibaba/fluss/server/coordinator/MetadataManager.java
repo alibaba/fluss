@@ -267,8 +267,6 @@ public class MetadataManager {
                     // register the table
                     zookeeperClient.registerTable(
                             tablePath, TableRegistration.newTable(tableId, tableToCreate), false);
-                    // create partitions parent path
-                    zookeeperClient.createPartitionsPath(tablePath);
                     return tableId;
                 },
                 "Fail to create table " + tablePath);

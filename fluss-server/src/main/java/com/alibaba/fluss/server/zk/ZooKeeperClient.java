@@ -429,6 +429,7 @@ public class ZooKeeperClient implements AutoCloseable {
             throws Exception {
         String path = PartitionZNode.path(tablePath, partitionName);
         zkClient.create()
+                .creatingParentsIfNeeded()
                 .withMode(CreateMode.PERSISTENT)
                 .forPath(path, PartitionZNode.encode(new TablePartition(tableId, partitionId)));
     }
