@@ -93,10 +93,19 @@ public class MetadataManager {
         }
 
         DatabaseRegistration databaseRegistration = DatabaseRegistration.of(databaseDescriptor);
-
-        uncheck(
-                () -> zookeeperClient.registerDatabase(databaseName, databaseRegistration),
-                "Fail to create database: " + databaseName);
+        try {
+            zookeeperClient.registerDatabase(databaseName, databaseRegistration);
+        } catch (Exception e) {
+            if (e instanceof KeeperException.NodeExistsException) {
+                if (ignoreIfExists) {
+                    return;
+                }
+                throw new DatabaseAlreadyExistException(
+                        "Database " + databaseName + " already exists.");
+            } else {
+                throw new FlussRuntimeException("Failed to create database: " + databaseName, e);
+            }
+        }
     }
 
     public DatabaseInfo getDatabase(String databaseName) throws DatabaseNotExistException {
@@ -258,6 +267,8 @@ public class MetadataManager {
                     // register the table
                     zookeeperClient.registerTable(
                             tablePath, TableRegistration.newTable(tableId, tableToCreate), false);
+                    // create partitions parent path
+                    zookeeperClient.createPartitionsPath(tablePath);
                     return tableId;
                 },
                 "Fail to create table " + tablePath);
@@ -276,6 +287,19 @@ public class MetadataManager {
         TableRegistration tableReg = optionalTable.get();
         SchemaInfo schemaInfo = getLatestSchema(tablePath);
         return tableReg.toTableInfo(tablePath, schemaInfo, defaultTableLakeOptions);
+    }
+
+    public TableRegistration getTableRegistration(TablePath tablePath) {
+        Optional<TableRegistration> optionalTable;
+        try {
+            optionalTable = zookeeperClient.getTable(tablePath);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        if (!optionalTable.isPresent()) {
+            throw new TableNotExistException("Table '" + tablePath + "' does not exist.");
+        }
+        return optionalTable.get();
     }
 
     public SchemaInfo getLatestSchema(TablePath tablePath) throws SchemaNotExistException {

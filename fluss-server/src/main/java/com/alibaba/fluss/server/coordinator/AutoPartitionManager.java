@@ -30,6 +30,7 @@ import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.server.utils.TableAssignmentUtils;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.PartitionAssignment;
+import com.alibaba.fluss.server.zk.data.TableRegistration;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 import com.alibaba.fluss.utils.clock.Clock;
 import com.alibaba.fluss.utils.clock.SystemClock;
@@ -136,16 +137,27 @@ public class AutoPartitionManager implements AutoCloseable {
 
         // schedule auto partition for this table immediately
         periodicExecutor.schedule(() -> doAutoPartition(tableId), 0, TimeUnit.MILLISECONDS);
+        LOG.info(
+                "Added auto partition table [{}] (id={}) into scheduler",
+                tableInfo.getTablePath(),
+                tableInfo.getTableId());
     }
 
     public void removeAutoPartitionTable(long tableId) {
         checkNotClosed();
-        inLock(
-                lock,
-                () -> {
-                    autoPartitionTables.remove(tableId);
-                    partitionsByTable.remove(tableId);
-                });
+        TableInfo tableInfo =
+                inLock(
+                        lock,
+                        () -> {
+                            partitionsByTable.remove(tableId);
+                            return autoPartitionTables.remove(tableId);
+                        });
+        if (tableInfo != null) {
+            LOG.info(
+                    "Removed auto partition table [{}] (id={}) from scheduler",
+                    tableInfo.getTablePath(),
+                    tableInfo.getTableId());
+        }
     }
 
     /**
@@ -193,23 +205,41 @@ public class AutoPartitionManager implements AutoCloseable {
 
     private void doAutoPartition() {
         Instant now = clock.instant();
-        LOG.info("Start auto partitioning for all tables at {}.", now);
         inLock(lock, () -> doAutoPartition(now, autoPartitionTables.keySet()));
     }
 
     private void doAutoPartition(long tableId) {
         Instant now = clock.instant();
-        LOG.info("Start auto partitioning for table {} at {}.", tableId, now);
         inLock(lock, () -> doAutoPartition(now, Collections.singleton(tableId)));
     }
 
     private void doAutoPartition(Instant now, Set<Long> tableIds) {
+        LOG.info("Start auto partitioning for {} tables at {}.", tableIds.size(), now);
         for (Long tableId : tableIds) {
             TreeSet<String> currentPartitions =
                     partitionsByTable.computeIfAbsent(tableId, k -> new TreeSet<>());
             TableInfo tableInfo = autoPartitionTables.get(tableId);
+            TablePath tablePath = tableInfo.getTablePath();
+            TableRegistration table;
+            try {
+                table = metadataManager.getTableRegistration(tablePath);
+            } catch (Exception e) {
+                LOG.warn(
+                        "Skipping auto partitioning for table [{}] (id={}) as failed to get table information.",
+                        tablePath,
+                        tableId,
+                        e);
+                continue;
+            }
+            if (table.tableId != tableId) {
+                LOG.warn(
+                        "Skipping auto partitioning for table [{}] (id={}) as the table has been dropped.",
+                        tablePath,
+                        tableId);
+                continue;
+            }
             dropPartitions(
-                    tableInfo.getTablePath(),
+                    tablePath,
                     tableInfo.getPartitionKeys(),
                     now,
                     tableInfo.getTableConfig().getAutoPartitionStrategy(),

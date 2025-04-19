@@ -418,13 +418,17 @@ public class ZooKeeperClient implements AutoCloseable {
         return stat.getNumChildren();
     }
 
+    public void createPartitionsPath(TablePath tablePath) throws Exception {
+        String path = PartitionsZNode.path(tablePath);
+        zkClient.create().withMode(CreateMode.PERSISTENT).forPath(path);
+    }
+
     /** Create a partition for a table in ZK. */
     public void registerPartition(
             TablePath tablePath, long tableId, String partitionName, long partitionId)
             throws Exception {
         String path = PartitionZNode.path(tablePath, partitionName);
         zkClient.create()
-                .creatingParentsIfNeeded()
                 .withMode(CreateMode.PERSISTENT)
                 .forPath(path, PartitionZNode.encode(new TablePartition(tableId, partitionId)));
     }
