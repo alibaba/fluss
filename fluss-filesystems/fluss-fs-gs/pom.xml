@@ -31,7 +31,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <fs.gcs.hadoop.version>1.9.4-hadoop3</fs.gcs.hadoop.version>
+        <fs.gcs.hadoop.version>hadoop3-2.2.18</fs.gcs.hadoop.version>
         <google-cloud-storage.version>2.49.0</google-cloud-storage.version>
     </properties>
 

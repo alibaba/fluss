@@ -24,6 +24,7 @@ import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.testutils.common.CommonTestUtils;
 
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
+import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystemOptions;
 import com.google.cloud.hadoop.gcsio.testing.InMemoryGoogleCloudStorage;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -35,6 +36,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -119,11 +121,20 @@ class GSFileSystemPluginTest {
     private static void applyInMemoryStorage(FileSystem fileSystem) throws IOException {
         try {
             Object fs = FieldUtils.readField(fileSystem, "fs", true);
-            InMemoryGoogleCloudStorage inMemoryGoogleCloudStorage =
+            final InMemoryGoogleCloudStorage inMemoryGoogleCloudStorage =
                     new InMemoryGoogleCloudStorage();
             GoogleCloudStorageFileSystem googleCloudStorageFileSystem =
-                    new GoogleCloudStorageFileSystem(inMemoryGoogleCloudStorage);
-            FieldUtils.writeField(fs, "gcsfs", googleCloudStorageFileSystem, true);
+                    new GoogleCloudStorageFileSystem(
+                            googleCloudStorageOptions -> inMemoryGoogleCloudStorage,
+                            GoogleCloudStorageFileSystemOptions.DEFAULT
+                                    .toBuilder()
+                                    .setCloudStorageOptions(inMemoryGoogleCloudStorage.getOptions())
+                                    .build());
+
+            inMemoryGoogleCloudStorage.createBucket("test-bucket");
+            Supplier<GoogleCloudStorageFileSystem> gsFs = () -> googleCloudStorageFileSystem;
+
+            FieldUtils.writeField(fs, "gcsFsSupplier", gsFs, true);
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
