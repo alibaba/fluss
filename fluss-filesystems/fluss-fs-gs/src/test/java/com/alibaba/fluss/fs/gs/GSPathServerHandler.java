@@ -26,8 +26,11 @@ import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpObject;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpRequest;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus;
 import com.alibaba.fluss.shaded.netty4.io.netty.util.AsciiString;
+import com.alibaba.fluss.utils.IOUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 
 import static com.alibaba.fluss.shaded.guava32.com.google.common.net.HttpHeaders.CONTENT_ENCODING;
@@ -122,6 +125,10 @@ public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject>
     }
 
     private byte[] readFromResources(String path) throws IOException {
-        return GSPathServerHandler.class.getClassLoader().getResourceAsStream(path).readAllBytes();
+        InputStream inputStream =
+                GSPathServerHandler.class.getClassLoader().getResourceAsStream(path);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        IOUtils.copyBytes(inputStream, out, true);
+        return out.toByteArray();
     }
 }
