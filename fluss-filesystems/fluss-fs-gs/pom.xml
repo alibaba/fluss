@@ -226,7 +226,7 @@
             <artifactId>gcs-connector</artifactId>
             <version>${fs.gcs.hadoop.version}</version>
             <exclusions>
-                <!-- the following conflict with flink-fs-hadoop-shaded so exclude here -->
+                <!-- the following conflict with fluss-fs-hadoop so exclude here -->
                 <exclusion>
                     <groupId>commons-logging</groupId>
                     <artifactId>commons-logging</artifactId>
