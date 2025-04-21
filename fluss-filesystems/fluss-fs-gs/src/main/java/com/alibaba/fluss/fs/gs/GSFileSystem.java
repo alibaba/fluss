@@ -21,6 +21,8 @@ import com.alibaba.fluss.fs.hdfs.HadoopFileSystem;
 
 import org.apache.hadoop.conf.Configuration;
 
+// TODO: implement obtainSecurityToken to enable clients access the Google File System
+//  through the FileSystem security token receiver API.
 /**
  * Implementation of the Fluss {@link FileSystem} interface for Google Cloud Storage. This class
  * implements the common behavior implemented directly by Fluss and delegates common calls to an
