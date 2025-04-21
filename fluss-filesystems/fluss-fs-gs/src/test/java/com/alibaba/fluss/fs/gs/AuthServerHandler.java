@@ -43,7 +43,7 @@ import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpRe
 import static com.alibaba.fluss.shaded.netty4.io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 /** Netty Handler for facilitating the Google auth token generation. */
-public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject> {
+public class AuthServerHandler extends SimpleChannelInboundHandler<HttpObject> {
 
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
@@ -126,7 +126,7 @@ public class GSPathServerHandler extends SimpleChannelInboundHandler<HttpObject>
 
     private byte[] readFromResources(String path) throws IOException {
         InputStream inputStream =
-                GSPathServerHandler.class.getClassLoader().getResourceAsStream(path);
+                AuthServerHandler.class.getClassLoader().getResourceAsStream(path);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         IOUtils.copyBytes(inputStream, out, true);
         return out.toByteArray();

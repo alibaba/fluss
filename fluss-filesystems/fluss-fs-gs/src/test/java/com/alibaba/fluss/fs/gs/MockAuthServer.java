@@ -60,7 +60,7 @@ public class MockAuthServer implements Closeable {
                                     ChannelPipeline p = ch.pipeline();
                                     p.addLast(new HttpServerCodec());
                                     p.addLast(new HttpServerExpectContinueHandler());
-                                    p.addLast(new GSPathServerHandler());
+                                    p.addLast(new AuthServerHandler());
                                 }
                             });
 
