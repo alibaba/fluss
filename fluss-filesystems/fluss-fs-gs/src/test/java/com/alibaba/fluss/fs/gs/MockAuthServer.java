@@ -35,8 +35,8 @@ import java.io.Closeable;
 /** Mock Netty Auth Server for facilitating the Google auth token generation. */
 public class MockAuthServer implements Closeable {
 
-    private EventLoopGroup bossGroup;
-    private EventLoopGroup workerGroup;
+    private final EventLoopGroup bossGroup;
+    private final EventLoopGroup workerGroup;
 
     private ChannelFuture channelFuture;
 
