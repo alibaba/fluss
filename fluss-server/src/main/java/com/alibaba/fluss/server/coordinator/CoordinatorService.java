@@ -17,6 +17,7 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.cluster.ServerType;
+import com.alibaba.fluss.cluster.TabletServerInfo;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
@@ -74,7 +75,6 @@ import com.alibaba.fluss.server.entity.CommitKvSnapshotData;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshotJsonSerde;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
-import com.alibaba.fluss.server.utils.TableAssignmentUtils;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.PartitionAssignment;
@@ -100,6 +100,7 @@ import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getPartitionS
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeCreateAclsResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeDropAclsResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toTablePath;
+import static com.alibaba.fluss.server.utils.TableAssignmentUtils.generateAssignment;
 import static com.alibaba.fluss.utils.PartitionUtils.validatePartitionSpec;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 import static com.alibaba.fluss.utils.Preconditions.checkState;
@@ -229,9 +230,8 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
         if (!tableDescriptor.isPartitioned()) {
             // the replication factor must be set now
             int replicaFactor = tableDescriptor.getReplicationFactor();
-            int[] servers = metadataCache.getLiveServerIds();
-            tableAssignment =
-                    TableAssignmentUtils.generateAssignment(bucketCount, replicaFactor, servers);
+            TabletServerInfo[] servers = metadataCache.getLiveServers();
+            tableAssignment = generateAssignment(bucketCount, replicaFactor, servers);
         }
 
         // TODO: should tolerate if the lake exist but matches our schema. This ensures eventually
@@ -336,9 +336,9 @@ public final class CoordinatorService extends RpcServiceBase implements Coordina
 
         // second, generate the PartitionAssignment.
         int replicaFactor = table.getTableConfig().getReplicationFactor();
-        int[] servers = metadataCache.getLiveServerIds();
+        TabletServerInfo[] servers = metadataCache.getLiveServers();
         Map<Integer, BucketAssignment> bucketAssignments =
-                TableAssignmentUtils.generateAssignment(table.bucketCount, replicaFactor, servers)
+                generateAssignment(table.bucketCount, replicaFactor, servers)
                         .getBucketAssignments();
         PartitionAssignment partitionAssignment =
                 new PartitionAssignment(table.tableId, bucketAssignments);

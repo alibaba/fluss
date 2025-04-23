@@ -237,6 +237,7 @@ public final class FlussClusterExtension
                     // TODO, Currently, we use 0 as coordinator server id.
                     new ServerInfo(
                             0,
+                            null,
                             coordinatorServer.getRpcServer().getBindEndpoints(),
                             ServerType.COORDINATOR);
         } else {
@@ -245,6 +246,7 @@ public final class FlussClusterExtension
             coordinatorServerInfo =
                     new ServerInfo(
                             0,
+                            null,
                             coordinatorServer.getRpcServer().getBindEndpoints(),
                             ServerType.COORDINATOR);
         }
@@ -276,6 +278,7 @@ public final class FlussClusterExtension
         String dataDir = getDataDir(serverId);
         Configuration tabletServerConf = new Configuration(clusterConf);
         tabletServerConf.set(ConfigOptions.TABLET_SERVER_ID, serverId);
+        tabletServerConf.set(ConfigOptions.TABLET_SERVER_RACK, "rack" + serverId);
         tabletServerConf.set(ConfigOptions.DATA_DIR, dataDir);
         tabletServerConf.setString(
                 ConfigOptions.ZOOKEEPER_ADDRESS, zooKeeperServer.getConnectString());
@@ -288,6 +291,7 @@ public final class FlussClusterExtension
         ServerInfo serverInfo =
                 new ServerInfo(
                         serverId,
+                        "rack" + serverId,
                         tabletServer.getRpcServer().getBindEndpoints(),
                         ServerType.TABLET_SERVER);
 
@@ -404,7 +408,8 @@ public final class FlussClusterExtension
                                     node.id(),
                                     endpoint.getHost(),
                                     endpoint.getPort(),
-                                    ServerType.TABLET_SERVER);
+                                    ServerType.TABLET_SERVER,
+                                    node.rack());
                         })
                 .collect(Collectors.toList());
     }
