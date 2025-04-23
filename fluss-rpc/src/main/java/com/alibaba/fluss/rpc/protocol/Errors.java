@@ -32,6 +32,7 @@ import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidPartitionException;
 import com.alibaba.fluss.exception.InvalidReplicationFactorException;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
+import com.alibaba.fluss.exception.InvalidServerRackInfoException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.InvalidTargetColumnException;
 import com.alibaba.fluss.exception.InvalidTimestampException;
@@ -192,7 +193,9 @@ public enum Errors {
             LeaderNotAvailableException::new),
     PARTITION_MAX_NUM_EXCEPTION(
             45, "Exceed the maximum number of partitions.", TooManyPartitionsException::new),
-    AUTHENTICATE_EXCEPTION(46, "The authentication failed.", AuthenticationException::new);
+    AUTHENTICATE_EXCEPTION(46, "The authentication failed.", AuthenticationException::new),
+    INVALID_SERVER_RACK_INFO_EXCEPTION(
+            47, "The server rack info is invalid.", InvalidServerRackInfoException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 
