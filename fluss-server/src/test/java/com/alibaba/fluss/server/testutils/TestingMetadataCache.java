@@ -18,20 +18,24 @@ package com.alibaba.fluss.server.testutils;
 
 import com.alibaba.fluss.cluster.MetadataCache;
 import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.cluster.TabletServerInfo;
 
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.IntStream;
 
 /** An implement of {@link MetadataCache} for testing purpose. */
 public class TestingMetadataCache implements MetadataCache {
 
-    private final int[] serverIds;
+    private final TabletServerInfo[] tabletServerInfos;
 
     public TestingMetadataCache(int serverNums) {
-        this.serverIds = IntStream.range(0, serverNums).toArray();
+        TabletServerInfo[] tabletServerInfos = new TabletServerInfo[serverNums];
+        for (int i = 0; i < serverNums; i++) {
+            tabletServerInfos[i] = new TabletServerInfo(i, "rack" + i);
+        }
+        this.tabletServerInfos = tabletServerInfos;
     }
 
     @Override
@@ -55,11 +59,11 @@ public class TestingMetadataCache implements MetadataCache {
     }
 
     @Override
-    public Set<Integer> getAliveTabletServerIds() {
+    public Set<TabletServerInfo> getAliveTabletServerInfos() {
         return Collections.emptySet();
     }
 
-    public int[] getLiveServerIds() {
-        return serverIds;
+    public TabletServerInfo[] getLiveServers() {
+        return tabletServerInfos;
     }
 }
