@@ -36,6 +36,7 @@ import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.remote.RemoteLogFetchInfo;
 import com.alibaba.fluss.remote.RemoteLogSegment;
+import com.alibaba.fluss.rpc.entity.EpochAndLogEndOffsetForBucket;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
 import com.alibaba.fluss.rpc.entity.LimitScanResultForBucket;
 import com.alibaba.fluss.rpc.entity.ListOffsetsResultForBucket;
@@ -66,6 +67,8 @@ import com.alibaba.fluss.rpc.messages.NotifyLakeTableOffsetRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrResponse;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsRequest;
+import com.alibaba.fluss.rpc.messages.OffsetForLeaderEpochRequest;
+import com.alibaba.fluss.rpc.messages.OffsetForLeaderEpochResponse;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrReqForTable;
 import com.alibaba.fluss.rpc.messages.PbAdjustIsrRespForBucket;
@@ -85,6 +88,10 @@ import com.alibaba.fluss.rpc.messages.PbLookupRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbNotifyLakeTableOffsetReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbNotifyLeaderAndIsrReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbNotifyLeaderAndIsrRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbOffsetForLeaderEpochReqForBucket;
+import com.alibaba.fluss.rpc.messages.PbOffsetForLeaderEpochReqForTable;
+import com.alibaba.fluss.rpc.messages.PbOffsetForLeaderEpochRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbOffsetForLeaderEpochRespForTable;
 import com.alibaba.fluss.rpc.messages.PbPartitionSpec;
 import com.alibaba.fluss.rpc.messages.PbPhysicalTablePath;
 import com.alibaba.fluss.rpc.messages.PbPrefixLookupReqForBucket;
@@ -122,6 +129,7 @@ import com.alibaba.fluss.server.entity.NotifyLakeTableOffsetData;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrResultForBucket;
 import com.alibaba.fluss.server.entity.NotifyRemoteLogOffsetsData;
+import com.alibaba.fluss.server.entity.OffsetForLeaderEpochData;
 import com.alibaba.fluss.server.entity.StopReplicaData;
 import com.alibaba.fluss.server.entity.StopReplicaResultForBucket;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
@@ -1263,5 +1271,134 @@ public class ServerRpcMessageUtils {
             partitionKeyAndValues.put(pbKeyValue.getKey(), pbKeyValue.getValue());
         }
         return new PartitionSpec(partitionKeyAndValues);
+    }
+
+    public static OffsetForLeaderEpochRequest makeOffsetForLeaderEpochRequest(
+            int followerServerId, Map<TableBucket, OffsetForLeaderEpochData> leaderEpochDataMap) {
+        OffsetForLeaderEpochRequest request =
+                new OffsetForLeaderEpochRequest().setFollowerServerId(followerServerId);
+        Map<Long, List<PbOffsetForLeaderEpochReqForBucket>> reqForBuckets = new HashMap<>();
+        for (Map.Entry<TableBucket, OffsetForLeaderEpochData> entry :
+                leaderEpochDataMap.entrySet()) {
+            TableBucket tb = entry.getKey();
+            OffsetForLeaderEpochData epochData = entry.getValue();
+            PbOffsetForLeaderEpochReqForBucket reqForBucket =
+                    new PbOffsetForLeaderEpochReqForBucket()
+                            .setBucketId(tb.getBucket())
+                            .setCurrentLeaderEpoch(epochData.getCurrentLeaderEpoch())
+                            .setLeaderEpoch(epochData.getLeaderEpoch());
+            if (tb.getPartitionId() != null) {
+                reqForBucket.setPartitionId(tb.getPartitionId());
+            }
+            reqForBuckets
+                    .computeIfAbsent(tb.getTableId(), key -> new ArrayList<>())
+                    .add(reqForBucket);
+        }
+
+        reqForBuckets.forEach(
+                (tableId, buckets) ->
+                        request.addTablesReq().setTableId(tableId).addAllBucketsReqs(buckets));
+        return request;
+    }
+
+    public static Map<TableBucket, EpochAndLogEndOffsetForBucket> getOffsetForLeaderEpochData(
+            OffsetForLeaderEpochResponse response) {
+        Map<TableBucket, EpochAndLogEndOffsetForBucket> epochDataMap = new HashMap<>();
+        for (PbOffsetForLeaderEpochRespForTable pbEpochDataForTable :
+                response.getTablesRespsList()) {
+            long tableId = pbEpochDataForTable.getTableId();
+            for (PbOffsetForLeaderEpochRespForBucket pbEpochDataForBucket :
+                    pbEpochDataForTable.getBucketsRespsList()) {
+                TableBucket tb =
+                        new TableBucket(
+                                tableId,
+                                pbEpochDataForBucket.hasPartitionId()
+                                        ? pbEpochDataForBucket.getPartitionId()
+                                        : null,
+                                pbEpochDataForBucket.getBucketId());
+                if (pbEpochDataForBucket.hasErrorCode()) {
+                    epochDataMap.put(
+                            tb,
+                            new EpochAndLogEndOffsetForBucket(
+                                    tb, ApiError.fromErrorMessage(pbEpochDataForBucket)));
+                } else {
+                    epochDataMap.put(
+                            tb,
+                            new EpochAndLogEndOffsetForBucket(
+                                    tb,
+                                    pbEpochDataForBucket.getLeaderEpoch(),
+                                    pbEpochDataForBucket.getLogEndOffset()));
+                }
+            }
+        }
+        return epochDataMap;
+    }
+
+    public static List<OffsetForLeaderEpochData> getOffsetForLeaderEpochData(
+            OffsetForLeaderEpochRequest request) {
+        List<OffsetForLeaderEpochData> epochDataList = new ArrayList<>();
+        for (PbOffsetForLeaderEpochReqForTable pbEpochDataForTable : request.getTablesReqsList()) {
+            long tableId = pbEpochDataForTable.getTableId();
+            for (PbOffsetForLeaderEpochReqForBucket pbEpochDataForBucket :
+                    pbEpochDataForTable.getBucketsReqsList()) {
+                int bucketId = pbEpochDataForBucket.getBucketId();
+                TableBucket tb =
+                        new TableBucket(
+                                tableId,
+                                pbEpochDataForBucket.hasPartitionId()
+                                        ? pbEpochDataForBucket.getPartitionId()
+                                        : null,
+                                bucketId);
+                epochDataList.add(
+                        new OffsetForLeaderEpochData(
+                                tb,
+                                pbEpochDataForBucket.getCurrentLeaderEpoch(),
+                                pbEpochDataForBucket.getLeaderEpoch()));
+            }
+        }
+        return epochDataList;
+    }
+
+    public static OffsetForLeaderEpochResponse makeOffsetForLeaderEpochResponse(
+            List<EpochAndLogEndOffsetForBucket> epochAndLogEndOffsetForBuckets) {
+        OffsetForLeaderEpochResponse response = new OffsetForLeaderEpochResponse();
+        Map<Long, List<PbOffsetForLeaderEpochRespForBucket>> respForTableMap = new HashMap<>();
+        for (EpochAndLogEndOffsetForBucket epochDataForBucket : epochAndLogEndOffsetForBuckets) {
+            TableBucket tb = epochDataForBucket.getTableBucket();
+            PbOffsetForLeaderEpochRespForBucket respForBucket =
+                    new PbOffsetForLeaderEpochRespForBucket().setBucketId(tb.getBucket());
+            if (tb.getPartitionId() != null) {
+                respForBucket.setPartitionId(tb.getPartitionId());
+            }
+
+            if (epochDataForBucket.failed()) {
+                respForBucket.setError(
+                        epochDataForBucket.getErrorCode(), epochDataForBucket.getErrorMessage());
+            } else {
+                respForBucket
+                        .setLeaderEpoch(epochDataForBucket.getLeaderEpoch())
+                        .setLogEndOffset(epochDataForBucket.getLogEndOffset());
+            }
+
+            if (respForTableMap.containsKey(tb.getTableId())) {
+                respForTableMap.get(tb.getTableId()).add(respForBucket);
+            } else {
+                List<PbOffsetForLeaderEpochRespForBucket> respForBuckets = new ArrayList<>();
+                respForBuckets.add(respForBucket);
+                respForTableMap.put(tb.getTableId(), respForBuckets);
+            }
+        }
+
+        List<PbOffsetForLeaderEpochRespForTable> respForTables = new ArrayList<>();
+        for (Map.Entry<Long, List<PbOffsetForLeaderEpochRespForBucket>> entry :
+                respForTableMap.entrySet()) {
+            PbOffsetForLeaderEpochRespForTable respForTable =
+                    new PbOffsetForLeaderEpochRespForTable().setTableId(entry.getKey());
+            respForTable.addAllBucketsResps(entry.getValue());
+            respForTables.add(respForTable);
+        }
+
+        response.addAllTablesResps(respForTables);
+        return response;
     }
 }

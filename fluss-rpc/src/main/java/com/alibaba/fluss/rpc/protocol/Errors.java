@@ -60,6 +60,7 @@ import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.exception.TimeoutException;
 import com.alibaba.fluss.exception.TooManyPartitionsException;
+import com.alibaba.fluss.exception.UnknownLeaderEpochException;
 import com.alibaba.fluss.exception.UnknownServerException;
 import com.alibaba.fluss.exception.UnknownTableOrBucketException;
 import com.alibaba.fluss.exception.UnknownWriterIdException;
@@ -192,7 +193,11 @@ public enum Errors {
             LeaderNotAvailableException::new),
     PARTITION_MAX_NUM_EXCEPTION(
             45, "Exceed the maximum number of partitions.", TooManyPartitionsException::new),
-    AUTHENTICATE_EXCEPTION(46, "The authentication failed.", AuthenticationException::new);
+    AUTHENTICATE_EXCEPTION(46, "The authentication failed.", AuthenticationException::new),
+    UNKNOWN_LEADER_EPOCH_EXCEPTION(
+            47,
+            "The leaderEpoch in the request is newer than the leaderEpoch on the tabletServer.",
+            UnknownLeaderEpochException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 

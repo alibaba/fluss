@@ -40,6 +40,8 @@ import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrResponse;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsRequest;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsResponse;
+import com.alibaba.fluss.rpc.messages.OffsetForLeaderEpochRequest;
+import com.alibaba.fluss.rpc.messages.OffsetForLeaderEpochResponse;
 import com.alibaba.fluss.rpc.messages.PrefixLookupRequest;
 import com.alibaba.fluss.rpc.messages.PrefixLookupResponse;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
@@ -69,6 +71,7 @@ import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifyLake
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifyLeaderAndIsrRequestData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifyRemoteLogOffsetsData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifySnapshotOffsetData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getOffsetForLeaderEpochData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getProduceLogData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getPutKvData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getStopReplicaData;
@@ -79,6 +82,7 @@ import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeLimitScan
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeListOffsetsResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeLookupResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeNotifyLeaderAndIsrResponse;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeOffsetForLeaderEpochResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makePrefixLookupResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeProduceLogResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makePutKvResponse;
@@ -257,6 +261,17 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
             NotifyLakeTableOffsetRequest request) {
         CompletableFuture<NotifyLakeTableOffsetResponse> response = new CompletableFuture<>();
         replicaManager.notifyLakeTableOffset(getNotifyLakeTableOffset(request), response::complete);
+        return response;
+    }
+
+    @Override
+    public CompletableFuture<OffsetForLeaderEpochResponse> offsetForLeaderEpoch(
+            OffsetForLeaderEpochRequest request) {
+        CompletableFuture<OffsetForLeaderEpochResponse> response = new CompletableFuture<>();
+        replicaManager.lastLogOffsetForLeaderEpoch(
+                getOffsetForLeaderEpochData(request),
+                (responseList) ->
+                        response.complete(makeOffsetForLeaderEpochResponse(responseList)));
         return response;
     }
 }
