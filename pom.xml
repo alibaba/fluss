@@ -76,6 +76,7 @@
         <!-- fluss-lakehouse module is deprecated, will be removed once fluss-lake ready -->
         <module>fluss-lakehouse</module>
         <module>fluss-kafka</module>
+        <module>fluss-spark</module>
     </modules>
 
     <properties>
@@ -942,6 +943,14 @@
 
                             <removeUnusedImports/>
                         </java>
+                        <scala>
+                            <toggleOffOn />
+
+                            <scalafmt>
+                                <version>${spotless.scalafmt.version}</version>
+                                <file>${maven.multiModuleProjectDirectory}/.scalafmt.conf</file>
+                            </scalafmt>
+                        </scala>
                     </configuration>
                     <executions>
                         <execution>

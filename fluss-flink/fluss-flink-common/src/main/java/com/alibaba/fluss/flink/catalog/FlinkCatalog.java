@@ -23,7 +23,6 @@ import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.flink.lakehouse.LakeCatalog;
-import com.alibaba.fluss.flink.utils.CatalogExceptionUtils;
 import com.alibaba.fluss.flink.utils.DataLakeUtils;
 import com.alibaba.fluss.flink.utils.FlinkConversions;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
@@ -32,6 +31,7 @@ import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.utils.CatalogExceptionUtils;
 import com.alibaba.fluss.utils.ExceptionUtils;
 import com.alibaba.fluss.utils.IOUtils;
 
@@ -74,12 +74,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.alibaba.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS;
-import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isPartitionAlreadyExists;
-import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isPartitionInvalid;
-import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isPartitionNotExist;
-import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isTableNotExist;
-import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isTableNotPartitioned;
 import static com.alibaba.fluss.flink.utils.FlinkConversions.toFlussDatabase;
+import static com.alibaba.fluss.utils.CatalogExceptionUtils.isPartitionAlreadyExists;
+import static com.alibaba.fluss.utils.CatalogExceptionUtils.isPartitionInvalid;
+import static com.alibaba.fluss.utils.CatalogExceptionUtils.isPartitionNotExist;
+import static com.alibaba.fluss.utils.CatalogExceptionUtils.isTableNotExist;
+import static com.alibaba.fluss.utils.CatalogExceptionUtils.isTableNotPartitioned;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
 /** A Flink Catalog for fluss. */
