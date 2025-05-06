@@ -1,9 +1,14 @@
 <p align="center">
-  <img src="website/static/img/banner.png" alt="Fluss - Streaming Storage for Real-Time Analytics" />
+  <img src="website/static/img/fluss_mascot_nbg.png" alt="Fluss - Streaming Storage for Real-Time Analytics" />
 </p>
 
 <p align="center">
   <a href="https://alibaba.github.io/fluss-docs/docs/intro/">Documentation</a> | <a href="https://alibaba.github.io/fluss-docs/docs/quickstart/flink/">QuickStart</a> | <a href="https://alibaba.github.io/fluss-docs/community/dev/ide-setup/">Development</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/alibaba/fluss/actions/workflows/ci.yaml"><img src="https://github.com/alibaba/fluss/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/alibaba/fluss/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202-4EB1BA.svg" alt="License"></a>
 </p>
 
 ## What is Fluss?
