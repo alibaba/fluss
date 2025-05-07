@@ -48,6 +48,7 @@
             <artifactId>hadoop-hdfs</artifactId>
             <!-- to keep same to the haddop version of fluss-fs-hadoop-shaded -->
             <version>${fs.hadoopshaded.version}</version>
+            <optional>true</optional>
             <exclusions>
                 <exclusion>
                     <groupId>ch.qos.reload4j</groupId>
