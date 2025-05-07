@@ -560,7 +560,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
             autoPartitionManager.addAutoPartitionTable(tableInfo, true);
         }
         if (tableInfo.getTableConfig().isDataLakeEnabled()) {
-            lakeTableTieringManager.addLakeTable(tableInfo);
+            lakeTableTieringManager.addNewLakeTable(tableInfo);
         }
     }
 

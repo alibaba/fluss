@@ -52,7 +52,7 @@ class LakeTableTieringManagerTest {
 
     private LakeTableTieringManager createLakeTableTieringManager() {
         return new LakeTableTieringManager(
-                new DefaultTimer("delay lake tiering", 1_000, 20, manualClock));
+                new DefaultTimer("delay lake tiering", 1_000, 20, manualClock), manualClock);
     }
 
     @Test
@@ -64,7 +64,7 @@ class LakeTableTieringManagerTest {
         tableTieringManager.initWithLakeTables(lakeTables);
 
         // advance time to trigger the table tiering
-        manualClock.advanceTime(Duration.ofMinutes(3));
+        manualClock.advanceTime(Duration.ofMinutes(10));
         // retry, should be able to get the table to be tiered
         retry(Duration.ofSeconds(10), () -> assertRequestTable(tableId1, tablePath1));
 
@@ -75,22 +75,21 @@ class LakeTableTieringManagerTest {
         tableTieringManager = createLakeTableTieringManager();
         tableTieringManager.initWithLakeTables(lakeTables);
 
-        // mock tiering service send heartbeat to tiering manager that table1 has been
-        // tiering
-        tableTieringManager.renewTieringLiveness(tableId1);
+        // mock tiering service send heartbeat to tiering manager that table1 is tiering
+        tableTieringManager.renewTieringHeartbeat(tableId1);
         // advance time to trigger the table tiering
-        manualClock.advanceTime(Duration.ofMinutes(3));
+        manualClock.advanceTime(Duration.ofMinutes(10));
         // retry, should only get the table2 to be tiered
         retry(Duration.ofSeconds(10), () -> assertRequestTable(tableId2, tablePath2));
     }
 
     @Test
-    void testAddLakeTable() {
+    void testAddNewLakeTable() {
         long tableId1 = 1L;
         TablePath tablePath1 = TablePath.of("db", "table");
         TableInfo tableInfo1 =
                 createTableInfo(tableId1, tablePath1, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo1);
+        tableTieringManager.addNewLakeTable(tableInfo1);
 
         // advance time to trigger the table tiering
         manualClock.advanceTime(Duration.ofSeconds(10));
@@ -103,13 +102,13 @@ class LakeTableTieringManagerTest {
         TablePath tablePath1 = TablePath.of("db", "table");
         TableInfo tableInfo1 =
                 createTableInfo(tableId1, tablePath1, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo1);
+        tableTieringManager.addNewLakeTable(tableInfo1);
 
         long tableId2 = 2L;
         TablePath tablePath2 = TablePath.of("db", "table2");
         TableInfo tableInfo2 =
                 createTableInfo(tableId2, tablePath2, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo2);
+        tableTieringManager.addNewLakeTable(tableInfo2);
 
         // remove the tableId1
         tableTieringManager.removeLakeTable(tableId1);
@@ -126,7 +125,7 @@ class LakeTableTieringManagerTest {
         TablePath tablePath1 = TablePath.of("db", "table");
         TableInfo tableInfo1 =
                 createTableInfo(tableId1, tablePath1, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo1);
+        tableTieringManager.addNewLakeTable(tableInfo1);
 
         manualClock.advanceTime(Duration.ofSeconds(10));
         // check requested table
@@ -146,17 +145,17 @@ class LakeTableTieringManagerTest {
     }
 
     @Test
-    void testTieringServiceTimeOutReTriggerSchedule() {
+    void testTieringServiceTimeOutReTriggerPending() {
         long tableId1 = 1L;
         TablePath tablePath1 = TablePath.of("db", "table1");
         TableInfo tableInfo1 =
                 createTableInfo(tableId1, tablePath1, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo1);
+        tableTieringManager.addNewLakeTable(tableInfo1);
         long tableId2 = 2L;
         TablePath tablePath2 = TablePath.of("db", "table2");
         TableInfo tableInfo2 =
                 createTableInfo(tableId2, tablePath2, Duration.ofSeconds(10).toMillis());
-        tableTieringManager.addLakeTable(tableInfo2);
+        tableTieringManager.addNewLakeTable(tableInfo2);
 
         manualClock.advanceTime(Duration.ofSeconds(10));
         // check requested table
@@ -165,24 +164,17 @@ class LakeTableTieringManagerTest {
 
         // advance time and mock tiering service heartbeat
         manualClock.advanceTime(Duration.ofMillis(TIERING_SERVICE_TIMEOUT_MS - 1));
-        // tableid1 renew the livness, so that it won't be re-scheduled after heartbeat timeout
-        tableTieringManager.renewTieringLiveness(tableId1);
+        // tableid1 renew the tiering heartbeat, so that it won't be
+        // re-pending after heartbeat timeout
+        tableTieringManager.renewTieringHeartbeat(tableId1);
         // should only get table2
-        retry(
-                Duration.ofSeconds(10),
-                () -> {
-                    manualClock.advanceTime(Duration.ofSeconds(10));
-                    assertRequestTable(tableId2, tablePath2);
-                });
+        manualClock.advanceTime(Duration.ofSeconds(10));
+        retry(Duration.ofSeconds(10), () -> assertRequestTable(tableId2, tablePath2));
 
-        retry(
-                Duration.ofMinutes(1),
-                () -> {
-                    // advance a large time to mock tiering service heartbeat timeout
-                    // and check the request table, the table1 should be re-scheduled
-                    manualClock.advanceTime(Duration.ofMinutes(10));
-                    assertRequestTable(tableId1, tablePath1);
-                });
+        // advance a large time to mock tiering service heartbeat timeout
+        // and check the request table, the table1 should be re-scheduled
+        manualClock.advanceTime(Duration.ofMinutes(5));
+        retry(Duration.ofMinutes(1), () -> assertRequestTable(tableId1, tablePath1));
     }
 
     private TableInfo createTableInfo(long tableId, TablePath tablePath, long tieringIntervalMs) {
