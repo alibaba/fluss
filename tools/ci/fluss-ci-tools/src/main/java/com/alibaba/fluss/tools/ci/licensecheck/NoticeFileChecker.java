@@ -69,7 +69,7 @@ public class NoticeFileChecker {
     static int run(File buildResult, Path root) throws IOException {
         // parse included dependencies from build output
         final Map<String, Set<Dependency>> modulesWithBundledDependencies =
-                combineAndFilterFlussDependencies(
+                combineDependencies(
                         ShadeParser.parseShadeOutput(buildResult.toPath()),
                         DependencyParser.parseDependencyCopyOutput(buildResult.toPath()));
 
@@ -81,7 +81,7 @@ public class NoticeFileChecker {
                         + " modules that were deployed and "
                         + modulesWithBundledDependencies.keySet().size()
                         + " modules which bundle dependencies with a total of "
-                        + modulesWithBundledDependencies.values().size()
+                        + modulesWithBundledDependencies.values().stream().mapToInt(Set::size).sum()
                         + " dependencies");
 
         // find modules producing a shaded-jar
@@ -147,6 +147,9 @@ public class NoticeFileChecker {
             }
         }
 
+        // remove Fluss dependencies
+        modulesWithBundledDependencies = filterFlussDependencies(modulesWithBundledDependencies);
+
         // check that all required NOTICE files exists
         severeIssueCount +=
                 ensureRequiredNoticeFiles(modulesWithBundledDependencies, noticeFiles.keySet());
@@ -163,7 +166,7 @@ public class NoticeFileChecker {
         return severeIssueCount;
     }
 
-    private static Map<String, Set<Dependency>> combineAndFilterFlussDependencies(
+    private static Map<String, Set<Dependency>> combineDependencies(
             Map<String, Set<Dependency>> modulesWithBundledDependencies,
             Map<String, Set<Dependency>> modulesWithCopiedDependencies) {
 
@@ -178,14 +181,27 @@ public class NoticeFileChecker {
                                     combinedAndFiltered.computeIfAbsent(
                                             entry.getKey(), ignored -> new LinkedHashSet<>());
 
-                            for (Dependency dependency : entry.getValue()) {
-                                if (!dependency.getGroupId().contains("com.alibaba.fluss")) {
-                                    dependencies.add(dependency);
-                                }
-                            }
+                            dependencies.addAll(entry.getValue());
                         });
 
         return combinedAndFiltered;
+    }
+
+    private static Map<String, Set<Dependency>> filterFlussDependencies(
+            Map<String, Set<Dependency>> modulesWithBundledDependencies) {
+        return modulesWithBundledDependencies.entrySet().stream()
+                .collect(
+                        Collectors.toMap(
+                                Map.Entry::getKey,
+                                entry ->
+                                        entry.getValue().stream()
+                                                .filter(
+                                                        dependency ->
+                                                                !dependency
+                                                                        .getGroupId()
+                                                                        .equals(
+                                                                                "com.alibaba.fluss"))
+                                                .collect(Collectors.toSet())));
     }
 
     private static int ensureRequiredNoticeFiles(
@@ -344,6 +360,7 @@ public class NoticeFileChecker {
         return problems.isEmpty()
                 ? ""
                 : problems.stream()
+                        .sorted()
                         .map(s -> "\t\t\t" + s)
                         .collect(Collectors.joining("\n", "\t\t " + header + " \n", "\n"));
     }

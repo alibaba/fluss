@@ -46,9 +46,9 @@
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-hdfs</artifactId>
-            <!-- to keep same to the haddop version of fluss-fs-hadoop-shaded -->
+            <!-- to keep same to the hadoop version of fluss-fs-hadoop-shaded -->
             <version>${fs.hadoopshaded.version}</version>
-            <optional>true</optional>
+            <scope>provided</scope>
             <exclusions>
                 <exclusion>
                     <groupId>ch.qos.reload4j</groupId>
