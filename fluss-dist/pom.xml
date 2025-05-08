@@ -213,7 +213,7 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>shade-dist</id>
+                        <id>shade-fluss</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
