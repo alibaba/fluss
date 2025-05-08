@@ -226,6 +226,7 @@
                                 <includes>
                                     <!-- only include log4j-api to package source and javadoc to make sonatype happy -->
                                     <include>org.apache.logging.log4j:log4j-api</include>
+                                    <include>META-INF/*</include>
                                 </includes>
                             </artifactSet>
                         </configuration>

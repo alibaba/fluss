@@ -218,6 +218,7 @@ public class NoticeFileChecker {
                         moduleWithoutNotice,
                         modulesWithShadedDependencies.get(moduleWithoutNotice).stream()
                                 .map(Dependency::toString)
+                                .sorted()
                                 .collect(Collectors.joining("\n\t", "\n\t", "")));
                 severeIssueCount++;
             }

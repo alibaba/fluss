@@ -268,21 +268,17 @@ public class JarFileChecker {
                             // LICENSE in their name
                             .filter(
                                     path ->
-                                            !getFileName(path)
-                                                    .endsWith(".ftl")) // a false positive in
-                            // python
+                                            // a false positive in python
+                                            !getFileName(path).endsWith(".ftl"))
                             .map(Path::toString)
                             .filter(
                                     path ->
-                                            !path.contains(
-                                                    "META-INF")) // license files in META-INF are
-                            // expected
+                                            // license files in META-INF are expected
+                                            !path.contains("META-INF"))
                             .filter(
                                     path ->
-                                            !path.endsWith(
-                                                    "web/3rdpartylicenses.txt")) // a false positive
-                            // in
-                            // web
+                                            // a false positive in web
+                                            !path.endsWith("web/3rdpartylicenses.txt"))
                             .collect(Collectors.toList());
             for (String fileWithIssue : filesWithIssues) {
                 LOG.error(
