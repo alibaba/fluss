@@ -175,6 +175,10 @@
                                 <includes>
                                     <include>*:*</include>
                                 </includes>
+                                <excludes>
+                                    <exclude>javax.servlet:servlet-api</exclude>
+                                    <exclude>xmlenc:xmlenc</exclude>
+                                </excludes>
                             </artifactSet>
                             <filters>
                                 <filter>
