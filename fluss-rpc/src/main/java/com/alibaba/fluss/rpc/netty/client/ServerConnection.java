@@ -24,7 +24,6 @@ import com.alibaba.fluss.rpc.messages.ApiMessage;
 import com.alibaba.fluss.rpc.messages.ApiVersionsRequest;
 import com.alibaba.fluss.rpc.messages.ApiVersionsResponse;
 import com.alibaba.fluss.rpc.messages.AuthenticateRequest;
-import com.alibaba.fluss.rpc.messages.AuthenticateResponse;
 import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import com.alibaba.fluss.rpc.metrics.ConnectionMetricGroup;
 import com.alibaba.fluss.rpc.protocol.ApiKeys;
@@ -245,6 +244,24 @@ final class ServerConnection {
         }
     }
 
+    public final class AuthenticationCallback implements AuthenticatorHandlerCallback {
+        @Override
+        public CompletableFuture<ApiMessage> onAuthenticating(AuthenticateRequest request) {
+            switchState(ConnectionState.AUTHENTICATING);
+            return doSend(ApiKeys.AUTHENTICATE, request, new CompletableFuture<>(), true);
+        }
+
+        @Override
+        public void onAuthenticateFailure(Throwable cause) {
+            close(cause);
+        }
+
+        @Override
+        public void onAuthenticateSuccess() {
+            switchState(ConnectionState.READY);
+        }
+    }
+
     // ------------------------------------------------------------------------------------------
 
     private void establishConnection(ChannelFuture future) {
@@ -366,63 +383,11 @@ final class ServerConnection {
         synchronized (lock) {
             serverApiVersions =
                     new ServerApiVersions(((ApiVersionsResponse) response).getApiVersionsList());
-            LOG.debug("Begin to authenticate with protocol {}", authenticator.protocol());
-            // send initial token
-            sendAuthenticate(new byte[0]);
-        }
-    }
-
-    private void sendAuthenticate(byte[] challenge) {
-        try {
-            if (!authenticator.isCompleted()) {
-                byte[] token = authenticator.authenticate(challenge);
-                if (token != null) {
-                    switchState(ConnectionState.AUTHENTICATING);
-                    AuthenticateRequest request =
-                            new AuthenticateRequest()
-                                    .setToken(token)
-                                    .setProtocol(authenticator.protocol());
-                    doSend(ApiKeys.AUTHENTICATE, request, new CompletableFuture<>(), true)
-                            .whenComplete(this::handleAuthenticateResponse);
-                    return;
-                }
-            }
-
-            assert authenticator.isCompleted();
-            switchState(ConnectionState.READY);
-
-        } catch (Exception e) {
-            LOG.error(
-                    "Authentication failed when authenticating challenge: {}",
-                    new String(challenge),
-                    e);
-            close(
-                    new FlussRuntimeException(
-                            "Authentication failed when authenticating challenge", e));
-        }
-    }
-
-    private void handleAuthenticateResponse(ApiMessage response, Throwable cause) {
-        if (cause != null) {
-            close(cause);
-            return;
-        }
-        if (!(response instanceof AuthenticateResponse)) {
-            close(new IllegalStateException("Unexpected response type " + response.getClass()));
-            return;
-        }
-
-        synchronized (lock) {
-            AuthenticateResponse authenticateResponse = (AuthenticateResponse) response;
-            if (authenticateResponse.hasChallenge()) {
-                sendAuthenticate(((AuthenticateResponse) response).getChallenge());
-            } else if (authenticator.isCompleted()) {
-                switchState(ConnectionState.READY);
-            } else {
-                close(
-                        new IllegalStateException(
-                                "client authenticator is not completed while server generate no challenge."));
-            }
+            channel.pipeline()
+                    .addLast(
+                            "authenticator",
+                            new NettyAuthenticationHandler(
+                                    new AuthenticationCallback(), authenticator));
         }
     }
 
