@@ -38,10 +38,11 @@ import java.util.concurrent.TimeUnit;
 public class NettyAuthenticationHandler extends ChannelInboundHandlerAdapter {
     private static final Logger LOG = LoggerFactory.getLogger(NettyAuthenticationHandler.class);
     private static final Random RANDOM = new Random();
-    private static final long BASE_BACKOFF_MS = 1000L;
+    private static final long BASE_BACKOFF_MS = 500L;
     private static final long MAX_BACKOFF_MS = 60000L;
     // Jitter factor for randomization
     private static final double JITTER_FACTOR = 0.2;
+    private static final int MAX_RETRY_AUTH_NUM = 10;
 
     private final AuthenticatorHandlerCallback callback;
     private final ClientAuthenticator authenticator;
@@ -82,7 +83,7 @@ public class NettyAuthenticationHandler extends ChannelInboundHandlerAdapter {
             assert authenticator.isCompleted();
             callback.onAuthenticateSuccess();
         } catch (Exception e) {
-            LOG.error(
+            LOG.warn(
                     "Authentication failed when authenticating challenge: {}",
                     new String(challenge),
                     e);
@@ -98,7 +99,13 @@ public class NettyAuthenticationHandler extends ChannelInboundHandlerAdapter {
 
     private void handleAuthenticateResponse(ApiMessage response, Throwable cause) {
         if (cause != null) {
-            if (cause instanceof RetriableAuthenticationException && retryAuthNum < 10) {
+            if (cause instanceof RetriableAuthenticationException
+                    && retryAuthNum < MAX_RETRY_AUTH_NUM) {
+                LOG.warn(
+                        "Authentication failed, retrying {} of {} times",
+                        retryAuthNum,
+                        MAX_RETRY_AUTH_NUM,
+                        cause);
                 retryAuthNum++;
                 context.executor()
                         .schedule(
@@ -106,6 +113,7 @@ public class NettyAuthenticationHandler extends ChannelInboundHandlerAdapter {
                                 calculateBackOff(),
                                 TimeUnit.MILLISECONDS);
             } else {
+                LOG.warn("Authentication failed, and won't retry.", cause);
                 callback.onAuthenticateFailure(cause);
             }
             return;

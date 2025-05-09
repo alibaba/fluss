@@ -21,12 +21,22 @@ import com.alibaba.fluss.rpc.messages.AuthenticateRequest;
 
 import java.util.concurrent.CompletableFuture;
 
-/** Callback for {@link NettyAuthenticationHandler}. */
+/**
+ * A callback interface used by {@link NettyAuthenticationHandler} to notify authentication events.
+ */
 public interface AuthenticatorHandlerCallback {
 
+    /** Called when an authentication token is generated. */
     CompletableFuture<ApiMessage> onAuthenticating(AuthenticateRequest request);
 
+    /** Called when authentication failed, this will close the connection. */
     void onAuthenticateFailure(Throwable cause);
 
+    /**
+     * Called when the authentication process is successfully completed.
+     *
+     * <p>After this method is invoked, the connection is considered authenticated, and subsequent
+     * user requests can be safely sent over the channel.
+     */
     void onAuthenticateSuccess();
 }
