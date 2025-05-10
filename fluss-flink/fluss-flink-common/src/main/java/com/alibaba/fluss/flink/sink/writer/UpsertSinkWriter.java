@@ -20,6 +20,7 @@ import com.alibaba.fluss.client.table.writer.TableWriter;
 import com.alibaba.fluss.client.table.writer.Upsert;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.flink.sink.serializer.FlussSerializationSchema;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
 
@@ -34,7 +35,7 @@ import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
 /** An upsert sink writer or fluss primary key table. */
-public class UpsertSinkWriter extends FlinkSinkWriter {
+public class UpsertSinkWriter<InputT> extends FlinkSinkWriter<InputT> {
 
     private transient UpsertWriter upsertWriter;
 
@@ -44,14 +45,16 @@ public class UpsertSinkWriter extends FlinkSinkWriter {
             RowType tableRowType,
             @Nullable int[] targetColumnIndexes,
             boolean ignoreDelete,
-            MailboxExecutor mailboxExecutor) {
+            MailboxExecutor mailboxExecutor,
+            FlussSerializationSchema flussSerializationSchema) {
         super(
                 tablePath,
                 flussConfig,
                 tableRowType,
                 targetColumnIndexes,
                 ignoreDelete,
-                mailboxExecutor);
+                mailboxExecutor,
+                flussSerializationSchema);
     }
 
     @Override

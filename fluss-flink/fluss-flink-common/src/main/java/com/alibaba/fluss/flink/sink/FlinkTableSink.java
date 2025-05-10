@@ -17,6 +17,7 @@
 package com.alibaba.fluss.flink.sink;
 
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.flink.sink.serializer.RowSerializationSchema;
 import com.alibaba.fluss.flink.sink.writer.FlinkSinkWriter;
 import com.alibaba.fluss.flink.utils.PushdownUtils;
 import com.alibaba.fluss.flink.utils.PushdownUtils.FieldEqual;
@@ -36,6 +37,7 @@ import org.apache.flink.table.connector.sink.abilities.SupportsDeletePushDown;
 import org.apache.flink.table.connector.sink.abilities.SupportsPartitioning;
 import org.apache.flink.table.connector.sink.abilities.SupportsRowLevelDelete;
 import org.apache.flink.table.connector.sink.abilities.SupportsRowLevelUpdate;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
@@ -177,9 +179,20 @@ public class FlinkTableSink
             // else, it's full update, ignore the given target columns as we don't care the order
         }
 
-        FlinkSink.SinkWriterBuilder<? extends FlinkSinkWriter> flinkSinkWriterBuilder =
+        FlinkSink<RowData> flinkSink = null;
+        try {
+            flinkSink = getFlinkSink(targetColumnIndexes);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        return SinkV2Provider.of(flinkSink);
+    }
+
+    private FlinkSink<RowData> getFlinkSink(int[] targetColumnIndexes) throws Exception {
+        FlinkSink.SinkWriterBuilder<? extends FlinkSinkWriter, RowData> flinkSinkWriterBuilder =
                 (primaryKeyIndexes.length > 0)
-                        ? new FlinkSink.UpsertSinkWriterBuilder(
+                        ? new FlinkSink.UpsertSinkWriterBuilder<>(
                                 tablePath,
                                 flussConfig,
                                 tableRowType,
@@ -189,8 +202,9 @@ public class FlinkTableSink
                                 bucketKeys,
                                 partitionKeys,
                                 lakeFormat,
-                                shuffleByBucketId)
-                        : new FlinkSink.AppendSinkWriterBuilder(
+                                shuffleByBucketId,
+                                new RowSerializationSchema())
+                        : new FlinkSink.AppendSinkWriterBuilder<>(
                                 tablePath,
                                 flussConfig,
                                 tableRowType,
@@ -199,11 +213,10 @@ public class FlinkTableSink
                                 bucketKeys,
                                 partitionKeys,
                                 lakeFormat,
-                                shuffleByBucketId);
+                                shuffleByBucketId,
+                                new RowSerializationSchema());
 
-        FlinkSink flinkSink = new FlinkSink(flinkSinkWriterBuilder);
-
-        return SinkV2Provider.of(flinkSink);
+        return new FlinkSink<>(flinkSinkWriterBuilder);
     }
 
     private List<String> columns(int[] columnIndexes) {

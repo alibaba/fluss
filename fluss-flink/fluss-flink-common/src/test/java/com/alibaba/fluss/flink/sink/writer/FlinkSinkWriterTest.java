@@ -22,11 +22,14 @@ import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.NetworkException;
+import com.alibaba.fluss.flink.sink.serializer.FlussSerializationSchema;
+import com.alibaba.fluss.flink.sink.serializer.RowSerializationSchema;
 import com.alibaba.fluss.flink.source.testutils.FlinkTestBase;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metrics.groups.MetricGroup;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 
 import org.apache.flink.api.common.operators.MailboxExecutor;
@@ -42,6 +45,7 @@ import org.apache.flink.table.types.logical.CharType;
 import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.UserCodeClassLoader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -198,7 +202,25 @@ public class FlinkSinkWriterTest extends FlinkTestBase {
     }
 
     private FlinkSinkWriter createSinkWriter(
-            Configuration configuration, MailboxExecutor mailboxExecutor) {
+            Configuration configuration, MailboxExecutor mailboxExecutor) throws Exception {
+        FlussSerializationSchema serializationSchema = new RowSerializationSchema();
+        serializationSchema.open(
+                new FlussSerializationSchema.InitializationContext() {
+                    @Override
+                    public MetricGroup getMetricGroup() {
+                        return null;
+                    }
+
+                    @Override
+                    public UserCodeClassLoader getUserCodeClassLoader() {
+                        return null;
+                    }
+
+                    @Override
+                    public com.alibaba.fluss.types.RowType getRowSchema() {
+                        return null;
+                    }
+                });
         return new AppendSinkWriter(
                 DEFAULT_SINK_TABLE_PATH,
                 configuration,
@@ -206,7 +228,8 @@ public class FlinkSinkWriterTest extends FlinkTestBase {
                         new LogicalType[] {new IntType(), new CharType(10)},
                         new String[] {"id", "name"}),
                 false,
-                mailboxExecutor);
+                mailboxExecutor,
+                serializationSchema);
     }
 
     static class MockSinkWriterContext implements SinkWriter.Context {

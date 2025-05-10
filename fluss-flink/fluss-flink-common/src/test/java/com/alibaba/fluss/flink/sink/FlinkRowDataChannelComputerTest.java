@@ -16,8 +16,16 @@
 
 package com.alibaba.fluss.flink.sink;
 
+import com.alibaba.fluss.flink.sink.serializer.FlussSerializationSchema;
+import com.alibaba.fluss.flink.sink.serializer.RowSerializationSchema;
+import com.alibaba.fluss.metrics.groups.MetricGroup;
+import com.alibaba.fluss.types.RowType;
+
 import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
+import org.apache.flink.util.UserCodeClassLoader;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -28,15 +36,41 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Test for {@link FlinkRowDataChannelComputer}. */
 class FlinkRowDataChannelComputerTest {
 
+    private static final FlussSerializationSchema<RowData> serializationSchema =
+            new RowSerializationSchema();
+
+    @BeforeAll
+    static void init() throws Exception {
+        serializationSchema.open(
+                new FlussSerializationSchema.InitializationContext() {
+                    @Override
+                    public MetricGroup getMetricGroup() {
+                        return null;
+                    }
+
+                    @Override
+                    public UserCodeClassLoader getUserCodeClassLoader() {
+                        return null;
+                    }
+
+                    @Override
+                    public RowType getRowSchema() {
+                        return null;
+                    }
+                });
+    }
+
     @Test
     void testSelectChanel() {
+
         FlinkRowDataChannelComputer channelComputer =
                 new FlinkRowDataChannelComputer(
                         DATA1_ROW_TYPE,
                         Collections.singletonList("a"),
                         Collections.emptyList(),
                         null,
-                        10);
+                        10,
+                        serializationSchema);
 
         for (int numChannel = 1; numChannel <= 10; numChannel++) {
             channelComputer.setup(numChannel);
@@ -65,7 +99,8 @@ class FlinkRowDataChannelComputerTest {
                         Collections.singletonList("a"),
                         Collections.singletonList("b"),
                         null,
-                        10);
+                        10,
+                        serializationSchema);
 
         for (int numChannel = 1; numChannel <= 10; numChannel++) {
             channelComputer.setup(numChannel);

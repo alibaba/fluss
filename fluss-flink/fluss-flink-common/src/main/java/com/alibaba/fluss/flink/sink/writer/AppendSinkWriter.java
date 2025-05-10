@@ -19,6 +19,7 @@ package com.alibaba.fluss.flink.sink.writer;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.TableWriter;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.flink.sink.serializer.FlussSerializationSchema;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
 
@@ -31,22 +32,32 @@ import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
 /** An append only sink writer for fluss log table. */
-public class AppendSinkWriter extends FlinkSinkWriter {
+public class AppendSinkWriter<InputT> extends FlinkSinkWriter<InputT> {
 
     private transient AppendWriter appendWriter;
+    private FlussSerializationSchema<InputT> serializationSchema;
 
     public AppendSinkWriter(
             TablePath tablePath,
             Configuration flussConfig,
             RowType tableRowType,
             boolean ignoreDelete,
-            MailboxExecutor mailboxExecutor) {
-        super(tablePath, flussConfig, tableRowType, ignoreDelete, mailboxExecutor);
+            MailboxExecutor mailboxExecutor,
+            FlussSerializationSchema serializationSchema) {
+        super(
+                tablePath,
+                flussConfig,
+                tableRowType,
+                ignoreDelete,
+                mailboxExecutor,
+                serializationSchema);
+        this.serializationSchema = serializationSchema;
     }
 
     @Override
     public void initialize(SinkWriterMetricGroup metricGroup) {
         super.initialize(metricGroup);
+
         appendWriter = table.newAppend().createWriter();
         LOG.info("Finished opening Fluss {}.", this.getClass().getSimpleName());
     }
