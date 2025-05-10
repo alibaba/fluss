@@ -1190,6 +1190,14 @@ public class ConfigOptions {
                                     + "The `table.datalake.format` can be pre-defined before enabling `table.datalake.enabled`. This allows the data lake feature to be dynamically enabled on the table without requiring table recreation. "
                                     + "If `table.datalake.format` is not explicitly set during table creation, the table will default to the format specified by the `datalake.format` configuration in the Fluss cluster.");
 
+    public static final ConfigOption<Duration> TABLE_DATALAKE_TIERING_INTERVAL =
+            key("table.datalake.tiering.interval")
+                    .durationType()
+                    .defaultValue(Duration.ofMinutes(3))
+                    .withDescription(
+                            "The tiering interval to wait to be scheduled to tier to datalake again after one round of tiering. "
+                                    + "The less, more fresh data in datalake but with more cost.");
+
     public static final ConfigOption<MergeEngineType> TABLE_MERGE_ENGINE =
             key("table.merge-engine")
                     .enumType(MergeEngineType.class)
