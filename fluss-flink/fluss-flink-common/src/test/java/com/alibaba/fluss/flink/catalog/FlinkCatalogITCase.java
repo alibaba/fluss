@@ -31,6 +31,7 @@ import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.table.catalog.Catalog;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.ObjectPath;
+import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.flink.util.CollectionUtil;
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -194,27 +196,32 @@ abstract class FlinkCatalogITCase {
         ObjectPath objectPath = new ObjectPath(DEFAULT_DB, "test_partitioned_table");
 
         // 1. first create.
-        tEnv.executeSql("create table test_partitioned_table (a int, b string) partitioned by (b)");
+        tEnv.executeSql(
+                "create table test_partitioned_table (a int, b string, dt string) partitioned by (b,dt)");
         Schema.Builder schemaBuilder = Schema.newBuilder();
-        schemaBuilder.column("a", DataTypes.INT()).column("b", DataTypes.STRING());
+        schemaBuilder
+                .column("a", DataTypes.INT())
+                .column("b", DataTypes.STRING())
+                .column("dt", DataTypes.STRING());
         Schema expectedSchema = schemaBuilder.build();
         CatalogTable table = (CatalogTable) catalog.getTable(objectPath);
         assertThat(table.getUnresolvedSchema()).isEqualTo(expectedSchema);
         List<String> partitionKeys = table.getPartitionKeys();
-        assertThat(partitionKeys).isEqualTo(Collections.singletonList("b"));
+        assertThat(partitionKeys).isEqualTo(Arrays.asList("b", "dt"));
 
         // 2. add partitions.
-        tEnv.executeSql("alter table test_partitioned_table add partition (b = 1)");
-        tEnv.executeSql("alter table test_partitioned_table add partition (b = 2)");
-        tEnv.executeSql("alter table test_partitioned_table add partition (b = 3)");
-        List<String> expectedShowPartitionsResult = Arrays.asList("+I[b=1]", "+I[b=2]", "+I[b=3]");
+        tEnv.executeSql("alter table test_partitioned_table add partition (b = 1,dt = 1)");
+        tEnv.executeSql("alter table test_partitioned_table add partition (b = 2,dt = 1)");
+        tEnv.executeSql("alter table test_partitioned_table add partition (b = 3,dt = 1)");
+        List<String> expectedShowPartitionsResult =
+                Arrays.asList("+I[dt=1/b=1]", "+I[dt=1/b=2]", "+I[dt=1/b=3]");
         CloseableIterator<Row> showPartitionIterator =
                 tEnv.executeSql("show partitions test_partitioned_table").collect();
         assertResultsIgnoreOrder(showPartitionIterator, expectedShowPartitionsResult, true);
 
         // 3. drop partitions.
-        tEnv.executeSql("alter table test_partitioned_table drop partition (b = 1)");
-        expectedShowPartitionsResult = Arrays.asList("+I[b=2]", "+I[b=3]");
+        tEnv.executeSql("alter table test_partitioned_table drop partition (b = 1,dt = 1)");
+        expectedShowPartitionsResult = Arrays.asList("+I[dt=1/b=2]", "+I[dt=1/b=3]");
         showPartitionIterator = tEnv.executeSql("show partitions test_partitioned_table").collect();
         assertResultsIgnoreOrder(showPartitionIterator, expectedShowPartitionsResult, true);
 
@@ -222,7 +229,7 @@ abstract class FlinkCatalogITCase {
         assertThatThrownBy(
                         () ->
                                 tEnv.executeSql(
-                                                "show partitions test_partitioned_table partition (b=2)")
+                                                "show partitions test_partitioned_table partition (b=2,dt=1)")
                                         .collect())
                 .rootCause()
                 .isInstanceOf(UnsupportedOperationException.class);
@@ -246,7 +253,7 @@ abstract class FlinkCatalogITCase {
         assertThat(partitionKeys).isEqualTo(Collections.singletonList("b"));
 
         TablePath tablePath = new TablePath(DEFAULT_DB, "test_auto_partitioned_table");
-        FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
         int currentYear = LocalDate.now().getYear();
         List<String> expectedShowPartitionsResult =
                 Arrays.asList("+I[b=" + currentYear + "]", "+I[b=" + (currentYear + 1) + "]");
@@ -280,6 +287,124 @@ abstract class FlinkCatalogITCase {
         expectedShowPartitionsResult = Collections.singletonList("+I[b=" + currentYear + "]");
         showPartitionIterator =
                 tEnv.executeSql("show partitions test_auto_partitioned_table").collect();
+        assertResultsIgnoreOrder(showPartitionIterator, expectedShowPartitionsResult, true);
+    }
+
+    @Test
+    void testAutoPartitionedTableWithMultiPartitionKeys() throws Exception {
+        ObjectPath objectPath =
+                new ObjectPath(DEFAULT_DB, "test_auto_partitioned_table_with_multi_partition_keys");
+
+        // 1. test invalid auto partition table.
+        // not specify auto partition key
+        assertThatThrownBy(
+                        () ->
+                                tEnv.executeSql(
+                                        "create table test_auto_partitioned_table_with_multi_partition_keys (a int, b string, c string, dt string) partitioned by (b,c,dt) "
+                                                + "with ('table.auto-partition.enabled' = 'true',"
+                                                + " 'table.auto-partition.time-unit' = 'day',"
+                                                + " 'table.auto-partition.num-precreate' = '0'"
+                                                + ")"))
+                .cause()
+                .isInstanceOf(CatalogException.class)
+                .hasMessage(
+                        "Failed to create table fluss.test_auto_partitioned_table_with_multi_partition_keys in testcatalog");
+
+        // specified auto partition key not in partition keys
+        assertThatThrownBy(
+                        () ->
+                                tEnv.executeSql(
+                                        "create table test_auto_partitioned_table_with_multi_partition_keys (a int, b string, c string, dt string) partitioned by (b,c,dt) "
+                                                + "with ('table.auto-partition.enabled' = 'true',"
+                                                + " 'table.auto-partition.time-unit' = 'day',"
+                                                + " 'table.auto-partition.key' = 'a',"
+                                                + " 'table.auto-partition.num-precreate' = '0'"
+                                                + ")"))
+                .cause()
+                .isInstanceOf(CatalogException.class)
+                .hasMessage(
+                        "Failed to create table fluss.test_auto_partitioned_table_with_multi_partition_keys in testcatalog");
+
+        // table.auto-partition.num-precreate should be 0 or less
+        assertThatThrownBy(
+                        () ->
+                                tEnv.executeSql(
+                                        "create table test_auto_partitioned_table_with_multi_partition_keys (a int, b string, c string, dt string) partitioned by (b,c,dt) "
+                                                + "with ('table.auto-partition.enabled' = 'true',"
+                                                + " 'table.auto-partition.time-unit' = 'day',"
+                                                + " 'table.auto-partition.key' = 'dt',"
+                                                + " 'table.auto-partition.num-precreate' = '2'"
+                                                + ")"))
+                .cause()
+                .isInstanceOf(CatalogException.class)
+                .hasMessage(
+                        "Failed to create table fluss.test_auto_partitioned_table_with_multi_partition_keys in testcatalog");
+
+        // 2. test add table.
+        tEnv.executeSql(
+                "create table test_auto_partitioned_table_with_multi_partition_keys (a int, b string, c string, dt string) partitioned by (b,c,dt) "
+                        + "with ('table.auto-partition.enabled' = 'true',"
+                        + " 'table.auto-partition.key' = 'dt',"
+                        + " 'table.auto-partition.num-precreate' = '0',"
+                        + " 'table.auto-partition.num-retention' = '2',"
+                        + " 'table.auto-partition.time-unit' = 'day')");
+        Schema.Builder schemaBuilder = Schema.newBuilder();
+        schemaBuilder
+                .column("a", DataTypes.INT())
+                .column("b", DataTypes.STRING())
+                .column("c", DataTypes.STRING())
+                .column("dt", DataTypes.STRING());
+        Schema expectedSchema = schemaBuilder.build();
+        CatalogTable table = (CatalogTable) catalog.getTable(objectPath);
+        assertThat(table.getUnresolvedSchema()).isEqualTo(expectedSchema);
+        List<String> partitionKeys = table.getPartitionKeys();
+        assertThat(partitionKeys).isEqualTo(Arrays.asList("b", "c", "dt"));
+
+        TablePath tablePath =
+                new TablePath(DEFAULT_DB, "test_auto_partitioned_table_with_multi_partition_keys");
+
+        String minus3day = LocalDate.now().minusDays(3).format(DateTimeFormatter.BASIC_ISO_DATE);
+        String minus2day = LocalDate.now().minusDays(2).format(DateTimeFormatter.BASIC_ISO_DATE);
+        String minus1day = LocalDate.now().minusDays(1).format(DateTimeFormatter.BASIC_ISO_DATE);
+
+        // 3. test add partitions.
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 1,dt = %s)",
+                        minus3day));
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 2,dt = %s)",
+                        minus3day));
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 1,dt = %s)",
+                        minus2day));
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 2,dt = %s)",
+                        minus2day));
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 1,dt = %s)",
+                        minus1day));
+        tEnv.executeSql(
+                String.format(
+                        "alter table test_auto_partitioned_table_with_multi_partition_keys add partition (b = 1,c = 2,dt = %s)",
+                        minus1day));
+        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionsDrop(tablePath, 4);
+
+        List<String> expectedShowPartitionsResult =
+                Arrays.asList(
+                        "+I[dt=" + minus1day + "/b=1/c=1]",
+                        "+I[dt=" + minus1day + "/b=1/c=2]",
+                        "+I[dt=" + minus2day + "/b=1/c=1]",
+                        "+I[dt=" + minus2day + "/b=1/c=2]");
+
+        CloseableIterator<Row> showPartitionIterator =
+                tEnv.executeSql(
+                                "show partitions test_auto_partitioned_table_with_multi_partition_keys")
+                        .collect();
         assertResultsIgnoreOrder(showPartitionIterator, expectedShowPartitionsResult, true);
     }
 

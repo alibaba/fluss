@@ -677,13 +677,13 @@ public final class FlussClusterExtension
         }
     }
 
-    public Map<String, Long> waitUtilPartitionAllReady(TablePath tablePath) {
+    public Map<String, Long> waitUntilPartitionAllReady(TablePath tablePath) {
         int preCreatePartitions = ConfigOptions.TABLE_AUTO_PARTITION_NUM_PRECREATE.defaultValue();
         // wait util table partition is created
         return waitUntilPartitionsCreated(tablePath, preCreatePartitions);
     }
 
-    public Map<String, Long> waitUtilPartitionAllReady(TablePath tablePath, int expectCount) {
+    public Map<String, Long> waitUntilPartitionAllReady(TablePath tablePath, int expectCount) {
         return waitUntilPartitionsCreated(tablePath, expectCount);
     }
 
@@ -700,6 +700,21 @@ public final class FlussClusterExtension
                 },
                 Duration.ofMinutes(1),
                 "Fail to wait " + expectCount + " partitions created");
+    }
+
+    public Map<String, Long> waitUntilPartitionsDrop(TablePath tablePath, int expectCount) {
+        return waitValue(
+                () -> {
+                    Map<String, Long> partitions =
+                            zooKeeperClient.getPartitionNameAndIds(tablePath);
+                    if (partitions.size() == expectCount) {
+                        return Optional.of(partitions);
+                    } else {
+                        return Optional.empty();
+                    }
+                },
+                Duration.ofMinutes(2),
+                "Fail to wait partitions dropped to " + expectCount);
     }
 
     public int waitAndGetLeader(TableBucket tb) {
@@ -742,6 +757,8 @@ public final class FlussClusterExtension
             // reduce testing resources
             clusterConf.set(ConfigOptions.NETTY_SERVER_NUM_NETWORK_THREADS, 1);
             clusterConf.set(ConfigOptions.NETTY_SERVER_NUM_WORKER_THREADS, 3);
+            // save wait time
+            clusterConf.set(ConfigOptions.AUTO_PARTITION_CHECK_INTERVAL, Duration.ofSeconds(30));
         }
 
         /** Sets the number of tablet servers. */
