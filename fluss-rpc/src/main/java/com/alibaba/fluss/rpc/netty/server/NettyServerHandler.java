@@ -319,7 +319,7 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
         if (!authenticator.isCompleted()) {
             byte[] token = authenticateRequest.getToken();
             byte[] challenge = authenticator.evaluateResponse(token);
-            if (!authenticator.isCompleted() && challenge != null) {
+            if (challenge != null) {
                 authenticateResponse.setChallenge(challenge);
             }
         }

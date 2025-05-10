@@ -53,6 +53,7 @@ import com.alibaba.fluss.exception.OutOfOrderSequenceException;
 import com.alibaba.fluss.exception.PartitionAlreadyExistsException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.RecordTooLargeException;
+import com.alibaba.fluss.exception.RetriableAuthenticationException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.SecurityDisabledException;
 import com.alibaba.fluss.exception.SecurityTokenException;
@@ -196,7 +197,11 @@ public enum Errors {
             45, "Exceed the maximum number of partitions.", TooManyPartitionsException::new),
     AUTHENTICATE_EXCEPTION(46, "Authentication failed.", AuthenticationException::new),
     SECURITY_DISABLED_EXCEPTION(47, "Security is disabled.", SecurityDisabledException::new),
-    AUTHORIZATION_EXCEPTION(48, "Authorization failed", AuthorizationException::new);
+    AUTHORIZATION_EXCEPTION(48, "Authorization failed", AuthorizationException::new),
+    RETRIABLE_AUTHENTICATE_EXCEPTION(
+            49,
+            "Authentication failed with retriable exception. ",
+            RetriableAuthenticationException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 
