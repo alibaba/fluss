@@ -455,7 +455,7 @@ public class MetadataManager {
         }
     }
 
-    private Optional<TablePartition> getOptionalTablePartition(
+    public Optional<TablePartition> getOptionalTablePartition(
             TablePath tablePath, String partitionName) {
         try {
             return zookeeperClient.getPartition(tablePath, partitionName);

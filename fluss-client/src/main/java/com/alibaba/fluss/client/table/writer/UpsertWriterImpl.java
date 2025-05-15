@@ -130,7 +130,7 @@ class UpsertWriterImpl extends AbstractTableWriter implements UpsertWriter {
                 bucketKeyEncoder == primaryKeyEncoder ? key : bucketKeyEncoder.encodeKey(row);
         WriteRecord record =
                 WriteRecord.forUpsert(
-                        getPhysicalPath(row), encodeRow(row), key, bucketKey, targetColumns);
+                        getPhysicalPath(row, true), encodeRow(row), key, bucketKey, targetColumns);
         return send(record).thenApply(ignored -> UPSERT_SUCCESS);
     }
 
@@ -147,7 +147,7 @@ class UpsertWriterImpl extends AbstractTableWriter implements UpsertWriter {
         byte[] bucketKey =
                 bucketKeyEncoder == primaryKeyEncoder ? key : bucketKeyEncoder.encodeKey(row);
         WriteRecord record =
-                WriteRecord.forDelete(getPhysicalPath(row), key, bucketKey, targetColumns);
+                WriteRecord.forDelete(getPhysicalPath(row, false), key, bucketKey, targetColumns);
         return send(record).thenApply(ignored -> DELETE_SUCCESS);
     }
 

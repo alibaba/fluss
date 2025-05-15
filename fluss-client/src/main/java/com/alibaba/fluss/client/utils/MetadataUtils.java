@@ -64,7 +64,8 @@ public class MetadataUtils {
     public static Cluster sendMetadataRequestAndRebuildCluster(
             AdminReadOnlyGateway gateway, Set<TablePath> tablePaths)
             throws ExecutionException, InterruptedException, TimeoutException {
-        return sendMetadataRequestAndRebuildCluster(gateway, false, null, tablePaths, null, null);
+        return sendMetadataRequestAndRebuildCluster(
+                gateway, false, null, tablePaths, null, null, null);
     }
 
     /**
@@ -78,7 +79,8 @@ public class MetadataUtils {
             RpcClient client,
             @Nullable Set<TablePath> tablePaths,
             @Nullable Collection<PhysicalTablePath> tablePartitionNames,
-            @Nullable Collection<Long> tablePartitionIds)
+            @Nullable Collection<Long> tablePartitionIds,
+            @Nullable Boolean isDynamicCreatePartition)
             throws ExecutionException, InterruptedException, TimeoutException {
         AdminReadOnlyGateway gateway =
                 GatewayClientProxy.createGatewayProxy(
@@ -86,7 +88,13 @@ public class MetadataUtils {
                         client,
                         AdminReadOnlyGateway.class);
         return sendMetadataRequestAndRebuildCluster(
-                gateway, true, cluster, tablePaths, tablePartitionNames, tablePartitionIds);
+                gateway,
+                true,
+                cluster,
+                tablePaths,
+                tablePartitionNames,
+                tablePartitionIds,
+                isDynamicCreatePartition);
     }
 
     /** maybe partial update cluster. */
@@ -96,11 +104,12 @@ public class MetadataUtils {
             Cluster originCluster,
             @Nullable Set<TablePath> tablePaths,
             @Nullable Collection<PhysicalTablePath> tablePartitions,
-            @Nullable Collection<Long> tablePartitionIds)
+            @Nullable Collection<Long> tablePartitionIds,
+            @Nullable Boolean isDynamicCreatePartition)
             throws ExecutionException, InterruptedException, TimeoutException {
         MetadataRequest metadataRequest =
                 ClientRpcMessageUtils.makeMetadataRequest(
-                        tablePaths, tablePartitions, tablePartitionIds);
+                        tablePaths, tablePartitions, tablePartitionIds, isDynamicCreatePartition);
         return gateway.metadata(metadataRequest)
                 .thenApply(
                         response -> {

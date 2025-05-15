@@ -398,7 +398,7 @@ public class FlussAuthorizationITCase {
     void testGetMetaInfo() throws Exception {
         MetadataRequest metadataRequest =
                 ClientRpcMessageUtils.makeMetadataRequest(
-                        Collections.singleton(DATA1_TABLE_PATH_PK), null, null);
+                        Collections.singleton(DATA1_TABLE_PATH_PK), null, null, null);
 
         try (RpcClient rpcClient =
                 RpcClient.create(guestConf, TestingClientMetricGroup.newInstance())) {

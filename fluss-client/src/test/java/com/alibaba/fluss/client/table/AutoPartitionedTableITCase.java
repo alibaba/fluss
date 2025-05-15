@@ -298,25 +298,23 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
     void testOperateNotExistPartitionShouldThrowException() throws Exception {
         Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
         Table table = conn.getTable(DATA1_TABLE_PATH_PK);
+        String partitionName = "notExistPartition";
         Lookuper lookuper = table.newLookup().createLookuper();
 
         // test get for a not exist partition
-        assertThatThrownBy(() -> lookuper.lookup(row(1, "notExistPartition")).get())
+        assertThatThrownBy(() -> lookuper.lookup(row(1, partitionName)).get())
                 .cause()
                 .isInstanceOf(PartitionNotExistException.class)
                 .hasMessageContaining(
                         "Table partition '%s' does not exist.",
-                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, "notExistPartition"));
+                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, partitionName));
 
         // test write to not exist partition
         UpsertWriter upsertWriter = table.newUpsert().createWriter();
-        GenericRow row = row(1, "a", "notExistPartition");
-        assertThatThrownBy(() -> upsertWriter.upsert(row).get())
-                .cause()
-                .isInstanceOf(PartitionNotExistException.class)
-                .hasMessageContaining(
-                        "Table partition '%s' does not exist.",
-                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, "notExistPartition"));
+        GenericRow row = row(1, "a", partitionName);
+        upsertWriter.upsert(row).get();
+        List<PartitionInfo> partitionInfos = admin.listPartitionInfos(DATA1_TABLE_PATH_PK).get();
+        assertThat(partitionInfos.get(0).getPartitionName()).isEqualTo(partitionName);
 
         // test scan a not exist partition's log
         LogScanner logScanner = table.newScan().createLogScanner();

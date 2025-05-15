@@ -244,7 +244,8 @@ public class ClientRpcMessageUtils {
     public static MetadataRequest makeMetadataRequest(
             @Nullable Set<TablePath> tablePaths,
             @Nullable Collection<PhysicalTablePath> tablePathPartitionNames,
-            @Nullable Collection<Long> tablePathPartitionIds) {
+            @Nullable Collection<Long> tablePathPartitionIds,
+            @Nullable Boolean isDynamicCreatePartition) {
         MetadataRequest metadataRequest = new MetadataRequest();
         if (tablePaths != null) {
             for (TablePath tablePath : tablePaths) {
@@ -266,6 +267,10 @@ public class ClientRpcMessageUtils {
 
         if (tablePathPartitionIds != null) {
             tablePathPartitionIds.forEach(metadataRequest::addPartitionsId);
+        }
+
+        if (isDynamicCreatePartition != null) {
+            metadataRequest.setDynamicCreatePartitions(isDynamicCreatePartition);
         }
 
         return metadataRequest;

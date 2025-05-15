@@ -607,6 +607,33 @@ class TableManagerITCase {
                 .isInstanceOf(PartitionNotExistException.class)
                 .hasMessage(
                         "Table partition 'db1.partitioned_tb(p=not_exist_partition)' does not exist.");
+
+        // test dynamic create partition which is not exist in zk when write data and enable dynamic
+        // create partition.
+        MetadataRequest metadataRequestWithDynamicPartitions = new MetadataRequest();
+        List<String> notExistPartitions = Arrays.asList("notExist1", "notExist2");
+        for (String partition : notExistPartitions) {
+            metadataRequestWithDynamicPartitions
+                    .addPartitionsPath()
+                    .setDatabaseName(db1)
+                    .setTableName(tb1)
+                    .setPartitionName(partition);
+        }
+        metadataRequestWithDynamicPartitions.setDynamicCreatePartitions(true);
+        MetadataResponse metadataResponseWithDynamicPartitions =
+                gateway.metadata(metadataRequestWithDynamicPartitions).get();
+
+        List<PbPartitionMetadata> dynamicPartitionMetadata =
+                metadataResponseWithDynamicPartitions.getPartitionMetadatasList();
+        List<String> actualPartitionList = new ArrayList<>(notExistPartitions);
+        partitionById.keySet().stream()
+                .forEach(partitionId -> actualPartitionList.add(partitionId));
+        assertThat(dynamicPartitionMetadata.size()).isEqualTo(notExistPartitions.size());
+
+        for (PbPartitionMetadata partition : dynamicPartitionMetadata) {
+            assertThat(partition.getPartitionName()).isIn(notExistPartitions);
+            assertThat(partition.getTableId()).isEqualTo(tableId);
+        }
     }
 
     @ParameterizedTest

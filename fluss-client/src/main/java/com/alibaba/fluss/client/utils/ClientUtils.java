@@ -127,7 +127,7 @@ public final class ClientUtils {
         checkNotNull(partitionGetter, "partitionGetter shouldn't be null.");
         String partitionName = partitionGetter.getPartition(row);
         PhysicalTablePath physicalTablePath = PhysicalTablePath.of(tablePath, partitionName);
-        metadataUpdater.checkAndUpdatePartitionMetadata(physicalTablePath);
+        metadataUpdater.checkAndUpdatePartitionMetadata(physicalTablePath, false);
         return metadataUpdater.getCluster().getPartitionIdOrElseThrow(physicalTablePath);
     }
 }

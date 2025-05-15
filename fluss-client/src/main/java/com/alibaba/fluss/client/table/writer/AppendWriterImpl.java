@@ -75,7 +75,7 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
     public CompletableFuture<AppendResult> append(InternalRow row) {
         checkFieldCount(row);
 
-        PhysicalTablePath physicalPath = getPhysicalPath(row);
+        PhysicalTablePath physicalPath = getPhysicalPath(row, true);
         byte[] bucketKey = bucketKeyEncoder != null ? bucketKeyEncoder.encodeKey(row) : null;
 
         final WriteRecord record;

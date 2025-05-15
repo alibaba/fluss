@@ -124,9 +124,10 @@ public class MetadataUpdater {
                     updateMetadata(
                             Collections.singleton(tablePath),
                             null,
-                            Collections.singleton(tableBucket.getPartitionId()));
+                            Collections.singleton(tableBucket.getPartitionId()),
+                            null);
                 } else {
-                    updateMetadata(Collections.singleton(tablePath), null, null);
+                    updateMetadata(Collections.singleton(tablePath), null, null, null);
                 }
                 serverNode = cluster.leaderFor(tableBucket);
                 if (serverNode != null) {
@@ -176,7 +177,7 @@ public class MetadataUpdater {
                         .filter(tablePath -> !cluster.getTable(tablePath).isPresent())
                         .collect(Collectors.toSet());
         if (!needUpdateTablePaths.isEmpty()) {
-            updateMetadata(needUpdateTablePaths, null, null);
+            updateMetadata(needUpdateTablePaths, null, null, null);
         }
     }
 
@@ -186,9 +187,11 @@ public class MetadataUpdater {
      *
      * <p>and update partition metadata .
      */
-    public void checkAndUpdatePartitionMetadata(PhysicalTablePath physicalTablePath) {
+    public void checkAndUpdatePartitionMetadata(
+            PhysicalTablePath physicalTablePath, Boolean isDynamicCreatePartition) {
         if (!cluster.getPartitionId(physicalTablePath).isPresent()) {
-            updateMetadata(null, Collections.singleton(physicalTablePath), null);
+            updateMetadata(
+                    null, Collections.singleton(physicalTablePath), null, isDynamicCreatePartition);
         }
     }
 
@@ -221,14 +224,14 @@ public class MetadataUpdater {
         }
 
         if (!needUpdatePartitionIds.isEmpty()) {
-            updateMetadata(Collections.singleton(tablePath), null, needUpdatePartitionIds);
+            updateMetadata(Collections.singleton(tablePath), null, needUpdatePartitionIds, null);
         }
     }
 
     public void updateTableOrPartitionMetadata(TablePath tablePath, @Nullable Long partitionId) {
         Collection<Long> partitionIds =
                 partitionId == null ? null : Collections.singleton(partitionId);
-        updateMetadata(Collections.singleton(tablePath), null, partitionIds);
+        updateMetadata(Collections.singleton(tablePath), null, partitionIds, null);
     }
 
     /** Update the table or partition metadata info. */
@@ -242,14 +245,15 @@ public class MetadataUpdater {
                 updatePartitionPath.add(physicalTablePath);
             }
         }
-        updateMetadata(updateTablePaths, updatePartitionPath, null);
+        updateMetadata(updateTablePaths, updatePartitionPath, null, null);
     }
 
     @VisibleForTesting
     protected void updateMetadata(
             @Nullable Set<TablePath> tablePaths,
             @Nullable Collection<PhysicalTablePath> tablePartitionNames,
-            @Nullable Collection<Long> tablePartitionIds) {
+            @Nullable Collection<Long> tablePartitionIds,
+            @Nullable Boolean isDynamicCreatePartition) {
         try {
             synchronized (this) {
                 cluster =
@@ -258,7 +262,27 @@ public class MetadataUpdater {
                                 rpcClient,
                                 tablePaths,
                                 tablePartitionNames,
-                                tablePartitionIds);
+                                tablePartitionIds,
+                                isDynamicCreatePartition);
+            }
+        } catch (Exception e) {
+            Throwable t = ExceptionUtils.stripExecutionException(e);
+            if (t instanceof RetriableException || t instanceof TimeoutException) {
+                LOG.warn("Failed to update metadata, but the exception is re-triable.", t);
+            } else {
+                throw new FlussRuntimeException("Failed to update metadata", t);
+            }
+        }
+        try {
+            synchronized (this) {
+                cluster =
+                        sendMetadataRequestAndRebuildCluster(
+                                cluster,
+                                rpcClient,
+                                tablePaths,
+                                tablePartitionNames,
+                                tablePartitionIds,
+                                isDynamicCreatePartition);
             }
         } catch (Exception e) {
             Throwable t = ExceptionUtils.stripExecutionException(e);
