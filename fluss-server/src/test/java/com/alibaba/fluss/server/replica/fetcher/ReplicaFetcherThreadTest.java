@@ -32,8 +32,7 @@ import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrResultForBucket;
 import com.alibaba.fluss.server.kv.KvManager;
 import com.alibaba.fluss.server.kv.snapshot.TestingCompletedKvSnapshotCommitter;
 import com.alibaba.fluss.server.log.LogManager;
-import com.alibaba.fluss.server.metadata.ServerMetadataCache;
-import com.alibaba.fluss.server.metadata.ServerMetadataCacheImpl;
+import com.alibaba.fluss.server.metadata.TabletServerMetadataCache;
 import com.alibaba.fluss.server.metrics.group.TabletServerMetricGroup;
 import com.alibaba.fluss.server.metrics.group.TestingMetricGroups;
 import com.alibaba.fluss.server.replica.Replica;
@@ -63,7 +62,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static com.alibaba.fluss.record.TestData.DATA1;
@@ -296,8 +294,7 @@ public class ReplicaFetcherThreadTest {
                                         Arrays.asList(leaderServerId, followerServerId),
                                         INITIAL_COORDINATOR_EPOCH,
                                         INITIAL_BUCKET_EPOCH))),
-                result -> {},
-                (tableId, path) -> {});
+                result -> {});
         followerRM.becomeLeaderOrFollower(
                 INITIAL_COORDINATOR_EPOCH,
                 Collections.singletonList(
@@ -311,8 +308,7 @@ public class ReplicaFetcherThreadTest {
                                         Arrays.asList(leaderServerId, followerServerId),
                                         INITIAL_COORDINATOR_EPOCH,
                                         INITIAL_BUCKET_EPOCH))),
-                result -> {},
-                (tableId, path) -> {});
+                result -> {});
     }
 
     private ReplicaManager createReplicaManager(int serverId) throws Exception {
@@ -332,7 +328,7 @@ public class ReplicaFetcherThreadTest {
                         null,
                         zkClient,
                         serverId,
-                        new ServerMetadataCacheImpl(),
+                        new TabletServerMetadataCache(),
                         RpcClient.create(conf, TestingClientMetricGroup.newInstance()),
                         TestingMetricGroups.TABLET_SERVER_METRICS,
                         SystemClock.getInstance());
@@ -352,7 +348,7 @@ public class ReplicaFetcherThreadTest {
                 KvManager kvManager,
                 ZooKeeperClient zkClient,
                 int serverId,
-                ServerMetadataCache metadataCache,
+                TabletServerMetadataCache metadataCache,
                 RpcClient rpcClient,
                 TabletServerMetricGroup serverMetricGroup,
                 Clock clock)
@@ -377,8 +373,7 @@ public class ReplicaFetcherThreadTest {
         public void becomeLeaderOrFollower(
                 int requestCoordinatorEpoch,
                 List<NotifyLeaderAndIsrData> notifyLeaderAndIsrDataList,
-                Consumer<List<NotifyLeaderAndIsrResultForBucket>> responseCallback,
-                BiConsumer<Long, PhysicalTablePath> leaderBucketCallback) {
+                Consumer<List<NotifyLeaderAndIsrResultForBucket>> responseCallback) {
             for (NotifyLeaderAndIsrData data : notifyLeaderAndIsrDataList) {
                 Optional<Replica> replicaOpt = maybeCreateReplica(data);
                 if (replicaOpt.isPresent() && data.getReplicas().contains(serverId)) {
