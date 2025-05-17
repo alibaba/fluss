@@ -23,9 +23,11 @@ import org.apache.flink.metrics.HistogramStatistics;
 public class FlinkHistogram implements Histogram {
 
     private final com.alibaba.fluss.metrics.Histogram wrapped;
+    private final FlinkHistogramStatistics statistics;
 
     public FlinkHistogram(com.alibaba.fluss.metrics.Histogram wrapped) {
         this.wrapped = wrapped;
+        this.statistics = new FlinkHistogramStatistics(wrapped.getStatistics());
     }
 
     @Override
@@ -40,10 +42,7 @@ public class FlinkHistogram implements Histogram {
 
     @Override
     public HistogramStatistics getStatistics() {
-
-        wrapped.getStatistics();
-
-        return null;
+        return statistics;
     }
 
     private static class FlinkHistogramStatistics extends HistogramStatistics {
