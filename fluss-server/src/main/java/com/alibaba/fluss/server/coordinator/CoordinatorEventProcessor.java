@@ -68,9 +68,7 @@ import com.alibaba.fluss.server.entity.DeleteReplicaResultForBucket;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrResultForBucket;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshotStore;
-import com.alibaba.fluss.server.metadata.ClusterMetadataInfo;
 import com.alibaba.fluss.server.metadata.ServerInfo;
-import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.metrics.group.CoordinatorMetricGroup;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
@@ -128,17 +126,11 @@ public class CoordinatorEventProcessor implements EventProcessor {
     private final TableChangeWatcher tableChangeWatcher;
     private final CoordinatorChannelManager coordinatorChannelManager;
     private final TabletServerChangeWatcher tabletServerChangeWatcher;
-    private final ServerMetadataCache serverMetadataCache;
     private final CoordinatorRequestBatch coordinatorRequestBatch;
     private final CoordinatorMetricGroup coordinatorMetricGroup;
     private final String internalListenerName;
 
     private final CompletedSnapshotStoreManager completedSnapshotStoreManager;
-
-    // in normal case, it won't be null, but from I can see, it'll only be null in unit test
-    // since the we won't register a coordinator node in zk.
-    // todo: may remove the nullable in the future
-    private @Nullable ServerInfo coordinatorServerInfo;
 
     // metrics
     private volatile int tabletServerCount;
@@ -149,28 +141,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
 
     public CoordinatorEventProcessor(
             ZooKeeperClient zooKeeperClient,
-            ServerMetadataCache serverMetadataCache,
-            CoordinatorChannelManager coordinatorChannelManager,
-            AutoPartitionManager autoPartitionManager,
-            LakeTableTieringManager lakeTableTieringManager,
-            CoordinatorMetricGroup coordinatorMetricGroup,
-            Configuration conf,
-            ExecutorService ioExecutor) {
-        this(
-                zooKeeperClient,
-                serverMetadataCache,
-                coordinatorChannelManager,
-                new CoordinatorContext(),
-                autoPartitionManager,
-                lakeTableTieringManager,
-                coordinatorMetricGroup,
-                conf,
-                ioExecutor);
-    }
-
-    public CoordinatorEventProcessor(
-            ZooKeeperClient zooKeeperClient,
-            ServerMetadataCache serverMetadataCache,
             CoordinatorChannelManager coordinatorChannelManager,
             CoordinatorContext coordinatorContext,
             AutoPartitionManager autoPartitionManager,
@@ -179,7 +149,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
             Configuration conf,
             ExecutorService ioExecutor) {
         this.zooKeeperClient = zooKeeperClient;
-        this.serverMetadataCache = serverMetadataCache;
         this.coordinatorChannelManager = coordinatorChannelManager;
         this.coordinatorContext = coordinatorContext;
         this.coordinatorEventManager = new CoordinatorEventManager(this, coordinatorMetricGroup);
@@ -187,13 +156,17 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 new ReplicaStateMachine(
                         coordinatorContext,
                         new CoordinatorRequestBatch(
-                                coordinatorChannelManager, coordinatorEventManager),
+                                coordinatorChannelManager,
+                                coordinatorEventManager,
+                                coordinatorContext),
                         zooKeeperClient);
         this.tableBucketStateMachine =
                 new TableBucketStateMachine(
                         coordinatorContext,
                         new CoordinatorRequestBatch(
-                                coordinatorChannelManager, coordinatorEventManager),
+                                coordinatorChannelManager,
+                                coordinatorEventManager,
+                                coordinatorContext),
                         zooKeeperClient);
         this.metadataManager = new MetadataManager(zooKeeperClient, conf);
 
@@ -208,7 +181,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
         this.tabletServerChangeWatcher =
                 new TabletServerChangeWatcher(zooKeeperClient, coordinatorEventManager);
         this.coordinatorRequestBatch =
-                new CoordinatorRequestBatch(coordinatorChannelManager, coordinatorEventManager);
+                new CoordinatorRequestBatch(
+                        coordinatorChannelManager, coordinatorEventManager, coordinatorContext);
         this.completedSnapshotStoreManager =
                 new CompletedSnapshotStoreManager(
                         conf.getInt(ConfigOptions.KV_MAX_RETAINED_SNAPSHOTS),
@@ -237,7 +211,7 @@ public class CoordinatorEventProcessor implements EventProcessor {
     }
 
     public void startup() {
-        coordinatorServerInfo = getCoordinatorServerInfo();
+        coordinatorContext.setCoordinatorServerInfo(getCoordinatorServerInfo());
         // start watchers first so that we won't miss node in zk;
         tabletServerChangeWatcher.start();
         tableChangeWatcher.start();
@@ -256,9 +230,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
         // replicaStateMachine.startup() and
         // partitionStateMachine.startup().
         LOG.info("Sending update metadata request.");
-        updateServerMetadataCache(
-                Optional.ofNullable(coordinatorServerInfo),
-                new HashSet<>(coordinatorContext.getLiveTabletServers().values()));
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()), null, null);
 
         // start table manager
         tableManager.startup();
@@ -448,9 +421,6 @@ public class CoordinatorEventProcessor implements EventProcessor {
         // first shutdown table manager
         tableManager.shutdown();
 
-        // then reset coordinatorContext
-        coordinatorContext.resetContext();
-
         // then stop watchers
         tableChangeWatcher.stop();
         tabletServerChangeWatcher.stop();
@@ -564,6 +534,9 @@ public class CoordinatorEventProcessor implements EventProcessor {
         if (tableInfo.getTableConfig().isDataLakeEnabled()) {
             lakeTableTieringManager.addNewLakeTable(tableInfo);
         }
+
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()), tableId, null);
     }
 
     private void processCreatePartition(CreatePartitionEvent createPartitionEvent) {
@@ -582,26 +555,35 @@ public class CoordinatorEventProcessor implements EventProcessor {
                 partitionName,
                 createPartitionEvent.getPartitionAssignment());
         autoPartitionManager.addPartition(tableId, partitionName);
+
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()),
+                tableId,
+                partitionId);
     }
 
     private void processDropTable(DropTableEvent dropTableEvent) {
         // If this is a primary key table, drop the kv snapshot store.
-        TableInfo dropTableInfo = coordinatorContext.getTableInfoById(dropTableEvent.getTableId());
+        long tableId = dropTableEvent.getTableId();
+        TableInfo dropTableInfo = coordinatorContext.getTableInfoById(tableId);
         if (dropTableInfo.hasPrimaryKey()) {
-            Set<TableBucket> deleteTableBuckets =
-                    coordinatorContext.getAllBucketsForTable(dropTableEvent.getTableId());
+            Set<TableBucket> deleteTableBuckets = coordinatorContext.getAllBucketsForTable(tableId);
             completedSnapshotStoreManager.removeCompletedSnapshotStoreByTableBuckets(
                     deleteTableBuckets);
         }
 
-        coordinatorContext.queueTableDeletion(Collections.singleton(dropTableEvent.getTableId()));
-        tableManager.onDeleteTable(dropTableEvent.getTableId());
+        coordinatorContext.queueTableDeletion(Collections.singleton(tableId));
+        tableManager.onDeleteTable(tableId);
         if (dropTableEvent.isAutoPartitionTable()) {
-            autoPartitionManager.removeAutoPartitionTable(dropTableEvent.getTableId());
+            autoPartitionManager.removeAutoPartitionTable(tableId);
         }
         if (dropTableEvent.isDataLakeEnabled()) {
-            lakeTableTieringManager.removeLakeTable(dropTableEvent.getTableId());
+            lakeTableTieringManager.removeLakeTable(tableId);
         }
+
+        // send update metadata request.
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()), tableId, null);
     }
 
     private void processDropPartition(DropPartitionEvent dropPartitionEvent) {
@@ -622,6 +604,12 @@ public class CoordinatorEventProcessor implements EventProcessor {
         coordinatorContext.queuePartitionDeletion(Collections.singleton(tablePartition));
         tableManager.onDeletePartition(tableId, dropPartitionEvent.getPartitionId());
         autoPartitionManager.removePartition(tableId, dropPartitionEvent.getPartitionName());
+
+        // send update metadata request.
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()),
+                tableId,
+                tablePartition.getPartitionId());
     }
 
     private void processDeleteReplicaResponseReceived(
@@ -756,9 +744,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
         coordinatorChannelManager.addTabletServer(serverNode);
 
         // update server metadata cache.
-        updateServerMetadataCache(
-                Optional.ofNullable(coordinatorServerInfo),
-                new HashSet<>(coordinatorContext.getLiveTabletServers().values()));
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()), null, null);
 
         // when a new tablet server comes up, we need to get all replicas of the server
         // and transmit them to online
@@ -794,9 +781,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
         coordinatorContext.removeLiveTabletServer(tabletServerId);
         coordinatorChannelManager.removeTabletServer(tabletServerId);
 
-        updateServerMetadataCache(
-                Optional.ofNullable(coordinatorServerInfo),
-                new HashSet<>(coordinatorContext.getLiveTabletServers().values()));
+        updateTabletServerMetadataCache(
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()), null, null);
 
         TableBucketStateMachine tableBucketStateMachine = tableManager.getTableBucketStateMachine();
         // get all table bucket whose leader is in this server and it not to be deleted
@@ -1090,19 +1076,15 @@ public class CoordinatorEventProcessor implements EventProcessor {
     }
 
     /** Update metadata cache for coordinator server and all remote tablet servers. */
-    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-    private void updateServerMetadataCache(
-            Optional<ServerInfo> coordinatorServer, Set<ServerInfo> aliveTabletServers) {
-        // 1. update local metadata cache.
-        serverMetadataCache.updateClusterMetadata(
-                new ClusterMetadataInfo(coordinatorServer, aliveTabletServers));
-
-        // 2. send update metadata request to all alive tablet servers
+    private void updateTabletServerMetadataCache(
+            Set<ServerInfo> aliveTabletServers,
+            @Nullable Long tableId,
+            @Nullable Long partitionId) {
         coordinatorRequestBatch.newBatch();
         Set<Integer> serverIds =
                 aliveTabletServers.stream().map(ServerInfo::id).collect(Collectors.toSet());
         coordinatorRequestBatch.addUpdateMetadataRequestForTabletServers(
-                serverIds, coordinatorServer, aliveTabletServers);
+                serverIds, tableId, partitionId);
         coordinatorRequestBatch.sendUpdateMetadataRequest();
     }
 

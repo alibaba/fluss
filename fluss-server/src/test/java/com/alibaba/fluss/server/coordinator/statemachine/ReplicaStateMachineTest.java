@@ -21,6 +21,7 @@ import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.server.coordinator.CoordinatorChannelManager;
@@ -50,6 +51,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.NewReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OfflineReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OnlineReplica;
@@ -192,6 +195,14 @@ class ReplicaStateMachineTest {
 
         // put the replica to online
         long tableId = 1;
+        coordinatorContext.putTableInfo(
+                TableInfo.of(
+                        DATA1_TABLE_PATH,
+                        tableId,
+                        0,
+                        DATA1_TABLE_DESCRIPTOR,
+                        System.currentTimeMillis(),
+                        System.currentTimeMillis()));
         TableBucket tableBucket = new TableBucket(tableId, 0);
         for (int i = 0; i < 3; i++) {
             TableBucketReplica replica = new TableBucketReplica(tableBucket, i);
@@ -242,7 +253,8 @@ class ReplicaStateMachineTest {
                                         TestingClientMetricGroup.newInstance())),
                         (event) -> {
                             // do nothing
-                        }),
+                        },
+                        coordinatorContext),
                 zookeeperClient);
     }
 
@@ -272,7 +284,8 @@ class ReplicaStateMachineTest {
                                             deleteReplicaResultForBucket.succeeded());
                                 }
                             }
-                        }),
+                        },
+                        coordinatorContext),
                 zookeeperClient);
     }
 

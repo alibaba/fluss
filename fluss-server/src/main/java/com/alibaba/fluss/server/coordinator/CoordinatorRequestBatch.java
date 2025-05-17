@@ -19,6 +19,8 @@ package com.alibaba.fluss.server.coordinator;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
+import com.alibaba.fluss.metadata.TableInfo;
+import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.rpc.messages.NotifyKvSnapshotOffsetRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLakeTableOffsetRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrRequest;
@@ -35,21 +37,29 @@ import com.alibaba.fluss.server.coordinator.event.EventManager;
 import com.alibaba.fluss.server.coordinator.event.NotifyLeaderAndIsrResponseReceivedEvent;
 import com.alibaba.fluss.server.entity.DeleteReplicaResultForBucket;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
-import com.alibaba.fluss.server.metadata.ServerInfo;
+import com.alibaba.fluss.server.metadata.BucketMetadata;
+import com.alibaba.fluss.server.metadata.PartitionMetadata;
+import com.alibaba.fluss.server.metadata.TableMetadata;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.server.metadata.PartitionMetadata.PARTITION_DURATION_DELETE_ID;
+import static com.alibaba.fluss.server.metadata.TableMetadata.TABLE_DURATION_DELETE_ID;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifyLeaderAndIsrResponseData;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeNotifyBucketLeaderAndIsr;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeNotifyKvSnapshotOffsetRequest;
@@ -59,6 +69,7 @@ import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeNotifyRem
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeStopBucketReplica;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeUpdateMetadataRequest;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toTableBucket;
+import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
 /** A request sender for coordinator server to request to tablet server by batch. */
 public class CoordinatorRequestBatch {
@@ -71,9 +82,15 @@ public class CoordinatorRequestBatch {
     // a map from tablet server to stop replica for each bucket.
     private final Map<Integer, Map<TableBucket, PbStopReplicaReqForBucket>> stopReplicaRequestMap =
             new HashMap<>();
-    // a map from tablet server to update metadata request
-    private final Map<Integer, UpdateMetadataRequest> updateMetadataRequestTabletServerSet =
+
+    // a set of tabletServers to send update metadata request.
+    private final Set<Integer> updateMetadataRequestTabletServerSet = new HashSet<>();
+    // a map from tableId to bucket metadata to update.
+    private final Map<Long, List<BucketMetadata>> updateMetadataRequestBucketMap = new HashMap<>();
+    // a map from tableId to (a map from partitionId to bucket metadata) to update.
+    private final Map<Long, Map<Long, List<BucketMetadata>>> updateMetadataRequestPartitionMap =
             new HashMap<>();
+
     // a map from tablet server to notify remote log offsets request.
     private final Map<Integer, NotifyRemoteLogOffsetsRequest> notifyRemoteLogOffsetsRequestMap =
             new HashMap<>();
@@ -86,11 +103,15 @@ public class CoordinatorRequestBatch {
 
     private final CoordinatorChannelManager coordinatorChannelManager;
     private final EventManager eventManager;
+    private final CoordinatorContext coordinatorContext;
 
     public CoordinatorRequestBatch(
-            CoordinatorChannelManager coordinatorChannelManager, EventManager eventManager) {
+            CoordinatorChannelManager coordinatorChannelManager,
+            EventManager eventManager,
+            CoordinatorContext coordinatorContext) {
         this.coordinatorChannelManager = coordinatorChannelManager;
         this.eventManager = eventManager;
+        this.coordinatorContext = coordinatorContext;
     }
 
     public void newBatch() {
@@ -198,6 +219,10 @@ public class CoordinatorRequestBatch {
                                                     leaderAndIsr));
                             notifyBucketLeaderAndIsr.put(tableBucket, notifyLeaderAndIsrForBucket);
                         });
+
+        addUpdateMetadataRequestForTabletServers(
+                coordinatorContext.getLiveTabletServers().keySet(),
+                Collections.singleton(tableBucket));
     }
 
     public void addStopReplicaRequestForTabletServers(
@@ -223,19 +248,60 @@ public class CoordinatorRequestBatch {
                         });
     }
 
-    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+    /**
+     * Add update metadata request for tablet servers when create/drop table or create/drop
+     * partition.
+     */
     public void addUpdateMetadataRequestForTabletServers(
-            Set<Integer> tabletServers,
-            Optional<ServerInfo> coordinatorServer,
-            Set<ServerInfo> aliveTabletServers) {
+            Set<Integer> tabletServers, @Nullable Long tableId, @Nullable Long partitionId) {
         tabletServers.stream()
                 .filter(s -> s >= 0)
-                .forEach(
-                        id ->
-                                updateMetadataRequestTabletServerSet.put(
-                                        id,
-                                        makeUpdateMetadataRequest(
-                                                coordinatorServer, aliveTabletServers)));
+                .forEach(updateMetadataRequestTabletServerSet::add);
+
+        if (tableId != null) {
+            updateMetadataRequestBucketMap.put(tableId, Collections.emptyList());
+        }
+
+        if (partitionId != null) {
+            updateMetadataRequestPartitionMap
+                    .computeIfAbsent(tableId, k -> new HashMap<>())
+                    .put(partitionId, Collections.emptyList());
+        }
+    }
+
+    /**
+     * Add update metadata request for tablet servers when table bucket leader and isr is changed.
+     */
+    private void addUpdateMetadataRequestForTabletServers(
+            Set<Integer> tabletServers, Set<TableBucket> tableBuckets) {
+        tabletServers.stream()
+                .filter(s -> s >= 0)
+                .forEach(updateMetadataRequestTabletServerSet::add);
+
+        for (TableBucket tableBucket : tableBuckets) {
+            long currentTableId = tableBucket.getTableId();
+            Optional<LeaderAndIsr> bucketLeaderAndIsr =
+                    coordinatorContext.getBucketLeaderAndIsr(tableBucket);
+            if (bucketLeaderAndIsr.isPresent()) {
+                LeaderAndIsr leaderAndIsr = bucketLeaderAndIsr.get();
+                BucketMetadata bucketMetadata =
+                        new BucketMetadata(
+                                tableBucket.getBucket(),
+                                leaderAndIsr.leader(),
+                                leaderAndIsr.leaderEpoch(),
+                                coordinatorContext.getAssignment(tableBucket));
+                if (tableBucket.getPartitionId() != null) {
+                    updateMetadataRequestPartitionMap
+                            .computeIfAbsent(currentTableId, k -> new HashMap<>())
+                            .computeIfAbsent(tableBucket.getPartitionId(), k -> new ArrayList<>())
+                            .add(bucketMetadata);
+                } else {
+                    updateMetadataRequestBucketMap
+                            .computeIfAbsent(currentTableId, k -> new ArrayList<>())
+                            .add(bucketMetadata);
+                }
+            }
+        }
     }
 
     public void addNotifyRemoteLogOffsetsRequestForTabletServers(
@@ -419,10 +485,9 @@ public class CoordinatorRequestBatch {
     }
 
     public void sendUpdateMetadataRequest() {
-        for (Map.Entry<Integer, UpdateMetadataRequest> updateMetadataRequestEntry :
-                updateMetadataRequestTabletServerSet.entrySet()) {
-            Integer serverId = updateMetadataRequestEntry.getKey();
-            UpdateMetadataRequest updateMetadataRequest = updateMetadataRequestEntry.getValue();
+        // Build updateMetadataRequest.
+        UpdateMetadataRequest updateMetadataRequest = buildUpdateMetadataRequest();
+        for (Integer serverId : updateMetadataRequestTabletServerSet) {
             coordinatorChannelManager.sendUpdateMetadataRequest(
                     serverId,
                     updateMetadataRequest,
@@ -435,6 +500,8 @@ public class CoordinatorRequestBatch {
                     });
         }
         updateMetadataRequestTabletServerSet.clear();
+        updateMetadataRequestBucketMap.clear();
+        updateMetadataRequestPartitionMap.clear();
     }
 
     public void sendNotifyRemoteLogOffsetsRequest(int coordinatorEpoch) {
@@ -504,5 +571,52 @@ public class CoordinatorRequestBatch {
                     });
         }
         notifyLakeTableOffsetRequestMap.clear();
+    }
+
+    private UpdateMetadataRequest buildUpdateMetadataRequest() {
+        List<TableMetadata> tableMetadataList = new ArrayList<>();
+        updateMetadataRequestBucketMap.forEach(
+                (tableId, bucketMetadataList) -> {
+                    TableInfo tableInfo = coordinatorContext.getTableInfoById(tableId);
+                    checkNotNull(tableInfo, "Table info is null.");
+                    TableInfo newTableInfo =
+                            coordinatorContext.isTableQueuedForDeletion(tableId)
+                                    ? TableInfo.of(
+                                            tableInfo.getTablePath(),
+                                            TABLE_DURATION_DELETE_ID,
+                                            tableInfo.getSchemaId(),
+                                            tableInfo.toTableDescriptor(),
+                                            tableInfo.getCreatedTime(),
+                                            tableInfo.getModifiedTime())
+                                    : tableInfo;
+                    tableMetadataList.add(new TableMetadata(newTableInfo, bucketMetadataList));
+                });
+
+        List<PartitionMetadata> partitionMetadataList = new ArrayList<>();
+        updateMetadataRequestPartitionMap.forEach(
+                (tableId, partitionIdToBucketMetadataMap) -> {
+                    for (Map.Entry<Long, List<BucketMetadata>> kvEntry :
+                            partitionIdToBucketMetadataMap.entrySet()) {
+                        Long partitionId = kvEntry.getKey();
+                        Long newPartitionId =
+                                coordinatorContext.isPartitionQueuedForDeletion(
+                                                new TablePartition(tableId, partitionId))
+                                        ? PARTITION_DURATION_DELETE_ID
+                                        : partitionId;
+                        String partitionName = coordinatorContext.getPartitionName(partitionId);
+                        checkNotNull(partitionName, "Partition name is null.");
+                        partitionMetadataList.add(
+                                new PartitionMetadata(
+                                        tableId,
+                                        partitionName,
+                                        newPartitionId,
+                                        kvEntry.getValue()));
+                    }
+                });
+        return makeUpdateMetadataRequest(
+                coordinatorContext.getCoordinatorServerInfo(),
+                new HashSet<>(coordinatorContext.getLiveTabletServers().values()),
+                tableMetadataList,
+                partitionMetadataList);
     }
 }
