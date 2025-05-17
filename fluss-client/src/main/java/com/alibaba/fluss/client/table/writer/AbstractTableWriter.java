@@ -16,12 +16,14 @@
 
 package com.alibaba.fluss.client.table.writer;
 
+import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.table.getter.PartitionGetter;
 import com.alibaba.fluss.client.write.WriteRecord;
 import com.alibaba.fluss.client.write.WriterClient;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.row.InternalRow;
@@ -80,16 +82,22 @@ public abstract class AbstractTableWriter implements TableWriter {
         return future;
     }
 
-    protected PhysicalTablePath getPhysicalPath(InternalRow row) {
+    protected PhysicalTablePath getPhysicalPath(
+            InternalRow row, Admin admin, boolean isDynamicCreatePartition) {
         // not partitioned table, return the original physical path
         if (partitionFieldGetter == null) {
             return PhysicalTablePath.of(tablePath);
         } else {
             // partitioned table, extract partition from the row
             String partition = partitionFieldGetter.getPartition(row);
+            ResolvedPartitionSpec resolvedPartitionSpec =
+                    partitionFieldGetter.getResolvedPartitionSpec(row);
             PhysicalTablePath partitionPath = PhysicalTablePath.of(tablePath, partition);
             // may update partition info
-            metadataUpdater.checkAndUpdatePartitionMetadata(partitionPath);
+            boolean isExists = metadataUpdater.checkAndUpdatePartitionMetadata(partitionPath);
+            if (!isExists && isDynamicCreatePartition) {
+                admin.createPartition(tablePath, resolvedPartitionSpec.toPartitionSpec(), true);
+            }
             return partitionPath;
         }
     }
