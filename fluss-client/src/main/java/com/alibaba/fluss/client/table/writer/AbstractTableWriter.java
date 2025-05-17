@@ -80,7 +80,7 @@ public abstract class AbstractTableWriter implements TableWriter {
         return future;
     }
 
-    protected PhysicalTablePath getPhysicalPath(InternalRow row, Boolean isDynamicCreatePartition) {
+    protected PhysicalTablePath getPhysicalPath(InternalRow row) {
         // not partitioned table, return the original physical path
         if (partitionFieldGetter == null) {
             return PhysicalTablePath.of(tablePath);
@@ -89,7 +89,7 @@ public abstract class AbstractTableWriter implements TableWriter {
             String partition = partitionFieldGetter.getPartition(row);
             PhysicalTablePath partitionPath = PhysicalTablePath.of(tablePath, partition);
             // may update partition info
-            metadataUpdater.checkAndUpdatePartitionMetadata(partitionPath, true);
+            metadataUpdater.checkAndUpdatePartitionMetadata(partitionPath);
             return partitionPath;
         }
     }

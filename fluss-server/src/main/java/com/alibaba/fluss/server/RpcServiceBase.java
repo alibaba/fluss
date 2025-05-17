@@ -31,7 +31,6 @@ import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
-import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -89,13 +88,11 @@ import com.alibaba.fluss.server.metadata.PartitionMetadataInfo;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.metadata.TableMetadataInfo;
 import com.alibaba.fluss.server.tablet.TabletService;
-import com.alibaba.fluss.server.utils.TableAssignmentUtils;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
-import com.alibaba.fluss.server.zk.data.PartitionAssignment;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 
 import org.slf4j.Logger;
@@ -331,38 +328,6 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
                             Resource.table(
                                     partitionPath.getDatabaseName(),
                                     partitionPath.getTableName()))) {
-
-                if (request.hasDynamicCreatePartitions() && request.isDynamicCreatePartitions()) {
-                    TablePath tablePath =
-                            new TablePath(
-                                    partitionPath.getDatabaseName(), partitionPath.getTableName());
-                    String partitionName = partitionPath.getPartitionName();
-                    Optional<TablePartition> optionalTablePartition =
-                            metadataManager.getOptionalTablePartition(tablePath, partitionName);
-                    if (!optionalTablePartition.isPresent()) {
-                        TableInfo table = metadataManager.getTable(tablePath);
-
-                        // first, get resolved partition spec.
-                        ResolvedPartitionSpec partitionToCreate =
-                                ResolvedPartitionSpec.fromPartitionName(
-                                        table.getPartitionKeys(), partitionName);
-                        // second, generate the PartitionAssignment
-                        int replicaFactor = table.getTableConfig().getReplicationFactor();
-                        int[] servers = metadataCache.getLiveServerIds();
-                        Map<Integer, BucketAssignment> bucketAssignments =
-                                TableAssignmentUtils.generateAssignment(
-                                                table.getNumBuckets(), replicaFactor, servers)
-                                        .getBucketAssignments();
-                        PartitionAssignment partitionAssignment =
-                                new PartitionAssignment(table.getTableId(), bucketAssignments);
-                        metadataManager.createPartition(
-                                tablePath,
-                                table.getTableId(),
-                                partitionAssignment,
-                                partitionToCreate,
-                                true);
-                    }
-                }
                 partitionMetadataInfos.add(
                         getPartitionMetadata(toPhysicalTablePath(partitionPath), listenerName));
             }

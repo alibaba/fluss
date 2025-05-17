@@ -156,7 +156,6 @@ message MetadataRequest {
   // metadata request
   // todo: we won't need the assumption after we introduce metadata cache in server
   repeated int64 partitions_id = 3 [packed = true];
-  optional bool dynamic_create_partitions = 4;
 }
 
 message MetadataResponse {

@@ -56,7 +56,7 @@ class MetadataUpdaterTest {
         RpcClient rpcClient = FLUSS_CLUSTER_EXTENSION.getRpcClient();
         MetadataUpdater metadataUpdater = new MetadataUpdater(clientConf, rpcClient);
         // update metadata
-        metadataUpdater.updateMetadata(Collections.singleton(tablePath), null, null, null);
+        metadataUpdater.updateMetadata(Collections.singleton(tablePath), null, null);
         Cluster cluster = metadataUpdater.getCluster();
 
         // repeat 20K times to reproduce StackOverflowError if there is
@@ -67,7 +67,6 @@ class MetadataUpdaterTest {
                             FLUSS_CLUSTER_EXTENSION.newCoordinatorClient(),
                             true,
                             cluster,
-                            null,
                             null,
                             null,
                             null);
@@ -81,7 +80,7 @@ class MetadataUpdaterTest {
                 new MetadataUpdater(FLUSS_CLUSTER_EXTENSION.getClientConfig(), rpcClient);
 
         // update metadata
-        metadataUpdater.updateMetadata(null, null, null, null);
+        metadataUpdater.updateMetadata(null, null, null);
         Cluster cluster = metadataUpdater.getCluster();
 
         List<ServerNode> expectedServerNodes = FLUSS_CLUSTER_EXTENSION.getTabletServerNodes();
@@ -90,7 +89,7 @@ class MetadataUpdaterTest {
 
         // then, stop coordinator server, can still update metadata
         FLUSS_CLUSTER_EXTENSION.stopCoordinatorServer();
-        metadataUpdater.updateMetadata(null, null, null, null);
+        metadataUpdater.updateMetadata(null, null, null);
         assertThat(cluster.getAliveTabletServerList()).isEqualTo(expectedServerNodes);
 
         // start a new tablet server, the tablet server will return empty metadata
@@ -113,7 +112,7 @@ class MetadataUpdaterTest {
 
         metadataUpdater = new MetadataUpdater(rpcClient, newCluster);
         // shouldn't update metadata to empty since the empty metadata will be ignored
-        metadataUpdater.updateMetadata(null, null, null, null);
+        metadataUpdater.updateMetadata(null, null, null);
         assertThat(metadataUpdater.getCluster().getAliveTabletServers())
                 .isEqualTo(newCluster.getAliveTabletServers())
                 .hasSize(1);

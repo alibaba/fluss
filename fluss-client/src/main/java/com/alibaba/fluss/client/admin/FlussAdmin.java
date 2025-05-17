@@ -120,7 +120,6 @@ public class FlussAdmin implements Admin {
                                         metadataUpdater.getCluster(),
                                         null,
                                         null,
-                                        null,
                                         null);
                         serverNodeList.add(cluster.getCoordinatorServer());
                         serverNodeList.addAll(cluster.getAliveTabletServerList());
@@ -367,7 +366,7 @@ public class FlussAdmin implements Admin {
         long tableId = metadataUpdater.getTableId(physicalTablePath.getTablePath());
         // if partition name is not null, we need to check and update partition metadata
         if (physicalTablePath.getPartitionName() != null) {
-            metadataUpdater.checkAndUpdatePartitionMetadata(physicalTablePath, false);
+            metadataUpdater.checkAndUpdatePartitionMetadata(physicalTablePath);
             partitionId = metadataUpdater.getPartitionIdOrElseThrow(physicalTablePath);
         }
         Map<Integer, ListOffsetsRequest> requestMap =
