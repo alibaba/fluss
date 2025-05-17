@@ -22,6 +22,7 @@ import com.alibaba.fluss.exception.UnknownTableOrBucketException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.record.KvRecordBatch;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
@@ -47,6 +48,7 @@ import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrRequest;
 import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrResponse;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsRequest;
 import com.alibaba.fluss.rpc.messages.NotifyRemoteLogOffsetsResponse;
+import com.alibaba.fluss.rpc.messages.PbTablePath;
 import com.alibaba.fluss.rpc.messages.PrefixLookupRequest;
 import com.alibaba.fluss.rpc.messages.PrefixLookupResponse;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
@@ -313,6 +315,14 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
     @Override
     public CompletableFuture<InitWriterResponse> initWriter(InitWriterRequest request) {
         // todo: add authorization for table acl until https://github.com/alibaba/fluss/issues/756.
+        List<PbTablePath> tablePathsList = request.getTablePathsList();
+        if (tablePathsList != null && !tablePathsList.isEmpty()) {
+            for (PbTablePath pbTablePath : tablePathsList) {
+                authorizeTable(
+                        WRITE,
+                        TablePath.of(pbTablePath.getDatabaseName(), pbTablePath.getTableName()));
+            }
+        }
         CompletableFuture<InitWriterResponse> response = new CompletableFuture<>();
         response.complete(makeInitWriterResponse(metadataManager.initWriterId()));
         return response;
@@ -350,11 +360,17 @@ public final class TabletService extends RpcServiceBase implements TabletServerG
             throw new UnknownTableOrBucketException(
                     String.format("This server does not host this table ID %s.", tableId));
         }
+        authorizeTable(operationType, tablePath.getTablePath());
+    }
+
+    private void authorizeTable(OperationType operationType, TablePath tablePath) {
+        if (tablePath == null) {
+            throw new UnknownTableOrBucketException(
+                    "The table path for authorization can not be null.");
+        }
         if (authorizer != null
                 && !authorizer.isAuthorized(
-                        currentSession(),
-                        operationType,
-                        Resource.table(tablePath.getTablePath()))) {
+                        currentSession(), operationType, Resource.table(tablePath))) {
             throw new AuthorizationException(
                     String.format(
                             "No permission to %s table %s in database %s",

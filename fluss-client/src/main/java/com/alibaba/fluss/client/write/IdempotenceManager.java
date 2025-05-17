@@ -277,11 +277,11 @@ public class IdempotenceManager {
         return false;
     }
 
-    void maybeWaitForWriterId() {
+    void maybeWaitForWriterId(InitWriterRequest initWriterRequest) {
         if (!isWriterIdValid()) {
             try {
                 tabletServerGateway
-                        .initWriter(new InitWriterRequest())
+                        .initWriter(initWriterRequest)
                         .thenAccept(response -> setWriterId(response.getWriterId()))
                         .exceptionally(
                                 e -> {
