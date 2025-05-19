@@ -34,6 +34,7 @@ import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidPartitionException;
 import com.alibaba.fluss.exception.InvalidReplicationFactorException;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
+import com.alibaba.fluss.exception.InvalidServerRackInfoException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.InvalidTargetColumnException;
 import com.alibaba.fluss.exception.InvalidTimestampException;
@@ -202,7 +203,9 @@ public enum Errors {
     BUCKET_MAX_NUM_EXCEPTION(
             49, "Exceed the maximum number of buckets", TooManyBucketsException::new),
     FENCED_TIERING_EPOCH_EXCEPTION(
-            50, "The tiering epoch is invalid.", FencedTieringEpochException::new);
+            50, "The tiering epoch is invalid.", FencedTieringEpochException::new),
+    INVALID_SERVER_RACK_INFO_EXCEPTION(
+            51, "The server rack info is invalid.", InvalidServerRackInfoException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 
