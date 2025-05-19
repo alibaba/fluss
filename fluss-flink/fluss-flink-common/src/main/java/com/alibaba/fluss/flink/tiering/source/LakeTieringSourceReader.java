@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
 import com.alibaba.fluss.annotation.Internal;
 import com.alibaba.fluss.config.Configuration;
-import com.alibaba.fluss.flink.source.split.LogSplit;
-import com.alibaba.fluss.flink.source.split.LogSplitState;
+import com.alibaba.fluss.flink.tiering.source.split.TieringSplit;
+import com.alibaba.fluss.flink.tiering.source.state.TieringSplitState;
 import com.alibaba.fluss.lakehouse.writer.LakeTieringFactory;
 
 import org.apache.flink.api.connector.source.SourceReader;
@@ -34,8 +34,8 @@ public final class LakeTieringSourceReader<WriteResult>
         extends SingleThreadMultiplexSourceReaderBase<
                 TableBucketWriteResult<WriteResult>,
                 TableBucketWriteResult<WriteResult>,
-                LogSplit,
-                LogSplitState> {
+                TieringSplit,
+                TieringSplitState> {
 
     public LakeTieringSourceReader(
             SourceReaderContext context,
@@ -57,17 +57,23 @@ public final class LakeTieringSourceReader<WriteResult>
     }
 
     @Override
-    protected void onSplitFinished(Map<String, LogSplitState> finishedSplitIds) {
+    protected void onSplitFinished(Map<String, TieringSplitState> finishedSplitIds) {
         context.sendSplitRequest();
     }
 
     @Override
-    protected LogSplitState initializedState(LogSplit logSplit) {
-        return new LogSplitState(logSplit);
+    protected TieringSplitState initializedState(TieringSplit split) {
+        if (split.isTieringSnapshotSplit()) {
+            return new TieringSplitState(split);
+        } else if (split.isTieringLogSplit()) {
+            return new TieringSplitState(split);
+        } else {
+            throw new UnsupportedOperationException("Unsupported split type: " + split);
+        }
     }
 
     @Override
-    protected LogSplit toSplitType(String splitId, LogSplitState splitState) {
+    protected TieringSplit toSplitType(String splitId, TieringSplitState splitState) {
         return splitState.toSourceSplit();
     }
 }

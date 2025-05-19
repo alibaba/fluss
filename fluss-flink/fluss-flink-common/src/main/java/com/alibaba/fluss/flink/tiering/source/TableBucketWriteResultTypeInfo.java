@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
 import com.alibaba.fluss.lakehouse.serializer.SimpleVersionedSerializer;
 
@@ -99,7 +99,7 @@ public class TableBucketWriteResultTypeInfo<WriteResult>
 
     @Override
     public String toString() {
-        return "TableBucketWriteResultTypoInfo";
+        return "TableBucketWriteResultTypeInfo";
     }
 
     @Override

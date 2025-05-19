@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
 import com.alibaba.fluss.lakehouse.writer.WriterInitContext;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -22,7 +22,7 @@ import com.alibaba.fluss.metadata.TablePath;
 
 import javax.annotation.Nullable;
 
-/** The implement of {@link WriterInitContext}. */
+/** The implementation of {@link WriterInitContext}. */
 public class LakeTieringWriterInitContext implements WriterInitContext {
 
     private final TablePath tablePath;

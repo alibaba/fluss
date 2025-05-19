@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
 import com.alibaba.fluss.lakehouse.writer.LakeWriter;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -25,9 +25,9 @@ import javax.annotation.Nullable;
 import java.io.Serializable;
 
 /**
- * Ths class contains the {@link WriteResult} of {@link LakeWriter} and the table path and the
- * bucket that the write result is for. It'll be passed to downstream operators to collect all the
- * write results of a table and do commit.
+ * This class contains the {@link WriteResult} of {@link LakeWriter}, the table path and the bucket
+ * that the write result is for, the end log offset of tiering. It'll be passed to downstream
+ * operators to collect all the write results of a table and do commit.
  */
 public class TableBucketWriteResult<WriteResult> implements Serializable {
 
@@ -39,11 +39,18 @@ public class TableBucketWriteResult<WriteResult> implements Serializable {
 
     @Nullable private final WriteResult writeResult;
 
+    // the end offset of tiering, should be the last tiered record's offset + 1
+    private final long logEndOffset;
+
     public TableBucketWriteResult(
-            TablePath tablePath, TableBucket tableBucket, WriteResult writeResult) {
+            TablePath tablePath,
+            TableBucket tableBucket,
+            @Nullable WriteResult writeResult,
+            long logEndOffset) {
         this.tablePath = tablePath;
         this.tableBucket = tableBucket;
         this.writeResult = writeResult;
+        this.logEndOffset = logEndOffset;
     }
 
     public TablePath tablePath() {
@@ -57,5 +64,9 @@ public class TableBucketWriteResult<WriteResult> implements Serializable {
     @Nullable
     public WriteResult writeResult() {
         return writeResult;
+    }
+
+    public long logEndOffset() {
+        return logEndOffset;
     }
 }

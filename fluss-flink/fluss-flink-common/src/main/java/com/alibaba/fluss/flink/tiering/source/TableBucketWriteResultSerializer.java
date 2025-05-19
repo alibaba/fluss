@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
@@ -53,7 +53,6 @@ public class TableBucketWriteResultSerializer<WriteResult>
             throws IOException {
         final DataOutputSerializer out = SERIALIZER_CACHE.get();
         // serialize table path
-        // serialize table path
         TablePath tablePath = tableBucketWriteResult.tablePath();
         out.writeUTF(tablePath.getDatabaseName());
         out.writeUTF(tablePath.getTableName());
@@ -80,6 +79,10 @@ public class TableBucketWriteResultSerializer<WriteResult>
             out.writeInt(serializeBytes.length);
             out.write(serializeBytes);
         }
+
+        // serialize log end offset
+        out.writeLong(tableBucketWriteResult.logEndOffset());
+
         final byte[] result = out.getCopyOfBuffer();
         out.clear();
         return result;
@@ -116,6 +119,9 @@ public class TableBucketWriteResultSerializer<WriteResult>
         } else {
             writeResult = null;
         }
-        return new TableBucketWriteResult<>(tablePath, tableBucket, writeResult);
+
+        // deserialize log end offset
+        long logEndOffset = in.readLong();
+        return new TableBucketWriteResult<>(tablePath, tableBucket, writeResult, logEndOffset);
     }
 }

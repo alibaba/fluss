@@ -14,25 +14,24 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.laketiering;
+package com.alibaba.fluss.flink.tiering.source;
 
-import com.alibaba.fluss.flink.source.split.LogSplitState;
+import com.alibaba.fluss.flink.tiering.source.state.TieringSplitState;
 
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
 
-/** The Flink emitter to emit {@link TableBucketWriteResult} to downstream operator. */
+/** The emitter to emit {@link TableBucketWriteResult} to downstream operator. */
 public class TableBucketWriteResultEmitter<WriteResult>
         implements RecordEmitter<
                 TableBucketWriteResult<WriteResult>,
                 TableBucketWriteResult<WriteResult>,
-                LogSplitState> {
+                TieringSplitState> {
     @Override
     public void emitRecord(
             TableBucketWriteResult<WriteResult> writeResult,
             SourceOutput<TableBucketWriteResult<WriteResult>> sourceOutput,
-            LogSplitState logSplitState)
-            throws Exception {
+            TieringSplitState splitState) {
         sourceOutput.collect(writeResult);
     }
 }
