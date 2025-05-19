@@ -17,8 +17,12 @@
 package com.alibaba.fluss.server.testutils;
 
 import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.server.metadata.PartitionMetadata;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
+import com.alibaba.fluss.server.metadata.TableMetadata;
 
 import java.util.Collections;
 import java.util.Map;
@@ -71,6 +75,21 @@ public class TestingServerMetadataCache implements ServerMetadataCache {
 
     @Override
     public Optional<String> getPartitionName(long partitionId) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<TableInfo> getTableInfo(long tableId) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<TableMetadata> getTableMetadata(TablePath tablePath) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<PartitionMetadata> getPartitionMetadata(PhysicalTablePath partitionPath) {
         return Optional.empty();
     }
 }
