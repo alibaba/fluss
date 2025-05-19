@@ -295,9 +295,6 @@
                                             com.alibaba.fluss.flink.catalog.FlinkCatalog
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.flink.catalog.FlinkCatalogOptions
-                                        </exclude>
-                                        <exclude>
                                             com.alibaba.fluss.flink.source.FlinkTableSource.*
                                         </exclude>
                                         <exclude>
