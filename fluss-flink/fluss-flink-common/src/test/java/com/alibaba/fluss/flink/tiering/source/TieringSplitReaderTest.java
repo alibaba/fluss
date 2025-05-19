@@ -21,6 +21,8 @@ import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.TableWriter;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.client.write.HashBucketAssigner;
+import com.alibaba.fluss.flink.tiering.TestingLakeTieringFactory;
+import com.alibaba.fluss.flink.tiering.TestingWriteResult;
 import com.alibaba.fluss.flink.tiering.source.split.TieringLogSplit;
 import com.alibaba.fluss.flink.tiering.source.split.TieringSnapshotSplit;
 import com.alibaba.fluss.flink.tiering.source.split.TieringSplit;

@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.flink.tiering.source;
 
+import com.alibaba.fluss.flink.tiering.TestingWriteResult;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
 
