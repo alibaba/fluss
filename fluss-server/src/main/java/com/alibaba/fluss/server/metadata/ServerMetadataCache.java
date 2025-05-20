@@ -16,23 +16,72 @@
 
 package com.alibaba.fluss.server.metadata;
 
-import com.alibaba.fluss.cluster.MetadataCache;
+import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.TableInfo;
+import com.alibaba.fluss.metadata.TablePath;
 
-/** Metadata cache for server. it only caches the cluster metadata. */
-public interface ServerMetadataCache extends MetadataCache {
+import javax.annotation.Nullable;
+
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/** Metadata cache for server. */
+public interface ServerMetadataCache {
 
     /**
-     * Update the cluster metadata by the remote update metadata request.
+     * Get the coordinator server node.
      *
-     * @param clusterMetadataInfo the metadata info.
+     * @return the coordinator server node
      */
-    void updateClusterMetadata(ClusterMetadataInfo clusterMetadataInfo);
+    @Nullable
+    ServerNode getCoordinatorServer(String listenerName);
 
     /**
-     * Update the table and database metadata by the remote update table leader and isr request.
-     * only leader server cache the table which it stored data. This metedata will used to get the
-     * table name and database name when consumer and produce.
+     * Check whether the tablet server id related tablet server node is alive.
+     *
+     * @param serverId the tablet server id
+     * @return true if the server is alive, false otherwise
      */
-    void upsertTableBucketMetadata(Long tableId, PhysicalTablePath physicalTablePath);
+    boolean isAliveTabletServer(int serverId);
+
+    /**
+     * Get the tablet server.
+     *
+     * @param serverId the tablet server id
+     * @return the tablet server node
+     */
+    Optional<ServerNode> getTabletServer(int serverId, String listenerName);
+
+    /**
+     * Get all alive tablet server nodes.
+     *
+     * @return all alive tablet server nodes
+     */
+    Map<Integer, ServerNode> getAllAliveTabletServers(String listenerName);
+
+    Set<Integer> getAliveTabletServerIds();
+
+    Optional<TablePath> getTablePath(long tableId);
+
+    Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId);
+
+    Optional<TableInfo> getTableInfo(long tableId);
+
+    Optional<TableMetadata> getTableMetadata(TablePath tablePath);
+
+    Optional<PartitionMetadata> getPartitionMetadata(PhysicalTablePath partitionPath);
+
+    /** Get ids of all alive tablet server nodes. */
+    default int[] getLiveServerIds() {
+        Set<Integer> aliveTabletServerIds = getAliveTabletServerIds();
+        int[] server = new int[aliveTabletServerIds.size()];
+        Iterator<Integer> iterator = aliveTabletServerIds.iterator();
+        for (int i = 0; i < aliveTabletServerIds.size(); i++) {
+            server[i] = iterator.next();
+        }
+        return server;
+    }
 }

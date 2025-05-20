@@ -287,10 +287,10 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
         String partitionName = null;
         Long partitionId = null;
         if (!isPartitioned) {
-            FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
+            FLUSS_CLUSTER_EXTENSION.waitUtilNonePartitionedTableReady(tableId, tablePath);
         } else {
             Map<String, Long> partitionNameAndIds =
-                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath);
             // just pick one partition
             Map.Entry<String, Long> partitionNameAndIdEntry =
                     partitionNameAndIds.entrySet().iterator().next();
@@ -389,10 +389,10 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
         String partitionName = null;
         Long partitionId = null;
         if (!isPartitioned) {
-            FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
+            FLUSS_CLUSTER_EXTENSION.waitUtilNonePartitionedTableReady(tableId, tablePath);
         } else {
             Map<String, Long> partitionNameAndIds =
-                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath);
             // just pick one partition
             partitionName = partitionNameAndIds.keySet().iterator().next();
             partitionId = partitionNameAndIds.get(partitionName);

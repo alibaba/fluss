@@ -22,7 +22,6 @@ import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.client.table.scanner.batch.BatchScanner;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
-import com.alibaba.fluss.client.utils.ClientRpcMessageUtils;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
@@ -61,6 +60,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeMetadataRequest;
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR_PK;
@@ -163,32 +163,31 @@ public class FlussAuthorizationITCase {
             conf.setString("client.security.username_password.password", "password");
             try (Connection connection = ConnectionFactory.createConnection(conf);
                     Admin admin = connection.getAdmin()) {
-                assertThatThrownBy(
-                                () -> {
-                                    admin.listAcls(AclBindingFilter.ANY).get();
-                                })
+                assertThatThrownBy(() -> admin.listAcls(AclBindingFilter.ANY).get())
                         .hasMessageContaining("No Authorizer is configured.");
                 assertThatThrownBy(
-                                () -> {
-                                    admin.createAcls(
-                                                    Collections.singletonList(
-                                                            new AclBinding(
-                                                                    Resource.cluster(),
-                                                                    new AccessControlEntry(
-                                                                            WILD_CARD_PRINCIPAL,
-                                                                            WILD_CARD_HOST,
-                                                                            OperationType.CREATE,
-                                                                            PermissionType.ALLOW))))
-                                            .all()
-                                            .get();
-                                })
+                                () ->
+                                        admin.createAcls(
+                                                        Collections.singletonList(
+                                                                new AclBinding(
+                                                                        Resource.cluster(),
+                                                                        new AccessControlEntry(
+                                                                                WILD_CARD_PRINCIPAL,
+                                                                                WILD_CARD_HOST,
+                                                                                OperationType
+                                                                                        .CREATE,
+                                                                                PermissionType
+                                                                                        .ALLOW))))
+                                                .all()
+                                                .get())
                         .hasMessageContaining("No Authorizer is configured.");
                 assertThatThrownBy(
-                                () -> {
-                                    admin.dropAcls(Collections.singletonList(AclBindingFilter.ANY))
-                                            .all()
-                                            .get();
-                                })
+                                () ->
+                                        admin.dropAcls(
+                                                        Collections.singletonList(
+                                                                AclBindingFilter.ANY))
+                                                .all()
+                                                .get())
                         .hasMessageContaining("No Authorizer is configured.");
             }
 
@@ -397,8 +396,7 @@ public class FlussAuthorizationITCase {
     @Test
     void testGetMetaInfo() throws Exception {
         MetadataRequest metadataRequest =
-                ClientRpcMessageUtils.makeMetadataRequest(
-                        Collections.singleton(DATA1_TABLE_PATH_PK), null, null);
+                makeMetadataRequest(Collections.singleton(DATA1_TABLE_PATH_PK), null, null);
 
         try (RpcClient rpcClient =
                 RpcClient.create(guestConf, TestingClientMetricGroup.newInstance())) {
@@ -448,8 +446,8 @@ public class FlussAuthorizationITCase {
                                                 PermissionType.ALLOW))))
                 .all()
                 .get();
-        FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(
-                rootAdmin.getTableInfo(DATA1_TABLE_PATH).get().getTableId());
+        FLUSS_CLUSTER_EXTENSION.waitUtilNonePartitionedTableReady(
+                rootAdmin.getTableInfo(DATA1_TABLE_PATH).get().getTableId(), DATA1_TABLE_PATH);
         try (Table table = guestConn.getTable(DATA1_TABLE_PATH)) {
             AppendWriter appendWriter = table.newAppend().createWriter();
             appendWriter.append(row(1, "a")).get();

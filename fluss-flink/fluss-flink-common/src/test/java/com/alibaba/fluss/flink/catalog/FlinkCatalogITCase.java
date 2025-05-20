@@ -16,6 +16,9 @@
 
 package com.alibaba.fluss.flink.catalog;
 
+import com.alibaba.fluss.client.Connection;
+import com.alibaba.fluss.client.ConnectionFactory;
+import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
@@ -82,6 +85,10 @@ abstract class FlinkCatalogITCase {
     static Catalog catalog;
     static TableEnvironment tEnv;
 
+    static Configuration clientConf;
+    static Connection conn;
+    static Admin admin;
+
     @BeforeAll
     static void beforeAll() {
         // open a catalog so that we can get table from the catalog
@@ -102,6 +109,10 @@ abstract class FlinkCatalogITCase {
                 String.format(
                         "create catalog %s with ('type' = 'fluss', '%s' = '%s')",
                         CATALOG_NAME, BOOTSTRAP_SERVERS.key(), bootstrapServers));
+
+        clientConf = FLUSS_CLUSTER_EXTENSION.getClientConfig();
+        conn = ConnectionFactory.createConnection(clientConf);
+        admin = conn.getAdmin();
     }
 
     @AfterAll
@@ -265,7 +276,8 @@ abstract class FlinkCatalogITCase {
         assertThat(partitionKeys).isEqualTo(Collections.singletonList("b"));
 
         TablePath tablePath = new TablePath(DEFAULT_DB, "test_auto_partitioned_table");
-        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(
+                admin.getTableInfo(tablePath).get().getTableId(), tablePath);
         int currentYear = LocalDate.now().getYear();
         List<String> expectedShowPartitionsResult =
                 Arrays.asList("+I[b=" + currentYear + "]", "+I[b=" + (currentYear + 1) + "]");

@@ -16,9 +16,13 @@
 
 package com.alibaba.fluss.server.testutils;
 
-import com.alibaba.fluss.cluster.MetadataCache;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.TableInfo;
+import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.server.metadata.PartitionMetadata;
+import com.alibaba.fluss.server.metadata.ServerMetadataCache;
+import com.alibaba.fluss.server.metadata.TableMetadata;
 
 import java.util.Collections;
 import java.util.Map;
@@ -26,18 +30,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
 
-/** An implement of {@link MetadataCache} for testing purpose. */
-public class TestingMetadataCache implements MetadataCache {
+/** An implement of {@link ServerMetadataCache} for testing purpose. */
+public class TestingServerMetadataCache implements ServerMetadataCache {
 
     private final int[] serverIds;
 
-    public TestingMetadataCache(int serverNums) {
+    public TestingServerMetadataCache(int serverNums) {
         this.serverIds = IntStream.range(0, serverNums).toArray();
     }
 
     @Override
-    public Optional<ServerNode> getCoordinatorServer(String listenerName) {
-        return Optional.empty();
+    public ServerNode getCoordinatorServer(String listenerName) {
+        return null;
     }
 
     @Override
@@ -65,7 +69,27 @@ public class TestingMetadataCache implements MetadataCache {
     }
 
     @Override
-    public PhysicalTablePath getTablePath(long tableId) {
-        return null;
+    public Optional<TablePath> getTablePath(long tableId) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<TableInfo> getTableInfo(long tableId) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<TableMetadata> getTableMetadata(TablePath tablePath) {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<PartitionMetadata> getPartitionMetadata(PhysicalTablePath partitionPath) {
+        return Optional.empty();
     }
 }

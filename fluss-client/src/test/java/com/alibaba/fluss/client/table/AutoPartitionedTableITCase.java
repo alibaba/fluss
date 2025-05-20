@@ -37,6 +37,7 @@ import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.types.DataTypes;
 import com.alibaba.fluss.types.RowType;
+import com.alibaba.fluss.utils.types.Tuple2;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -65,9 +66,11 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPartitionedPrimaryKeyTable() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        Tuple2<Schema, Long> schemaAndTableId = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        Schema schema = schemaAndTableId.f0;
+        long tableId = schemaAndTableId.f1;
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(DATA1_TABLE_PATH_PK);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, DATA1_TABLE_PATH_PK);
         Table table = conn.getTable(DATA1_TABLE_PATH_PK);
         UpsertWriter upsertWriter = table.newUpsert().createWriter();
         int recordsPerPartition = 5;
@@ -124,9 +127,9 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
                         .property(ConfigOptions.TABLE_DATALAKE_ENABLED, isDataLakeEnabled)
                         .build();
         RowType rowType = schema.getRowType();
-        createTable(tablePath, descriptor, false);
+        long tableId = createTable(tablePath, descriptor, false);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath);
 
         Table table = conn.getTable(tablePath);
         for (String partition : partitionIdByNames.keySet()) {
@@ -196,9 +199,11 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPartitionedLogTable() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH, false);
+        Tuple2<Schema, Long> schemaAndTableId = createPartitionedTable(DATA1_TABLE_PATH, false);
+        Schema schema = schemaAndTableId.f0;
+        long tableId = schemaAndTableId.f1;
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(DATA1_TABLE_PATH);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, DATA1_TABLE_PATH);
         Table table = conn.getTable(DATA1_TABLE_PATH);
         AppendWriter appendWriter = table.newAppend().createWriter();
         int recordsPerPartition = 5;
@@ -222,9 +227,11 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
     void testUnsubscribePartitionBucket() throws Exception {
         // write rows
         TablePath tablePath = TablePath.of("test_db_1", "unsubscribe_partition_bucket_table");
-        Schema schema = createPartitionedTable(tablePath, false);
+        Tuple2<Schema, Long> schemaAndTableId = createPartitionedTable(tablePath, false);
+        Schema schema = schemaAndTableId.f0;
+        long tableId = schemaAndTableId.f1;
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath);
         Table table = conn.getTable(tablePath);
 
         Map<Long, List<InternalRow>> expectPartitionAppendRows =
@@ -296,7 +303,8 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testOperateNotExistPartitionShouldThrowException() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        Tuple2<Schema, Long> schemaAndTableId = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        Schema schema = schemaAndTableId.f0;
         Table table = conn.getTable(DATA1_TABLE_PATH_PK);
         Lookuper lookuper = table.newLookup().createLookuper();
 
@@ -335,7 +343,9 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
     void testAddPartitionForAutoPartitionedTable() throws Exception {
         TablePath tablePath =
                 TablePath.of("test_db_1", "test_auto_partition_table_add_partition_1");
-        Schema schema = createPartitionedTable(tablePath, false);
+        Tuple2<Schema, Long> schemaAndTableId = createPartitionedTable(tablePath, false);
+        Schema schema = schemaAndTableId.f0;
+        long tableId = schemaAndTableId.f1;
         int currentYear = LocalDateTime.now().getYear();
 
         // create one partition.
@@ -343,7 +353,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
                         tablePath, newPartitionSpec("c", String.valueOf(currentYear + 10)), false)
                 .get();
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath, 3);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath, 3);
 
         List<PartitionInfo> partitionInfos = admin.listPartitionInfos(tablePath).get();
         List<String> expectedPartitions = new ArrayList<>(partitionIdByNames.keySet());
@@ -372,7 +382,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
         verifyPartitionLogs(table, schema.getRowType(), expectPartitionAppendRows);
     }
 
-    private Schema createPartitionedTable(TablePath tablePath, boolean isPrimaryTable)
+    private Tuple2<Schema, Long> createPartitionedTable(TablePath tablePath, boolean isPrimaryTable)
             throws Exception {
         Schema.Builder schemaBuilder =
                 Schema.newBuilder()
@@ -398,7 +408,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
                                 ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT,
                                 AutoPartitionTimeUnit.YEAR)
                         .build();
-        createTable(tablePath, partitionTableDescriptor, false);
-        return schema;
+        long tableId = createTable(tablePath, partitionTableDescriptor, false);
+        return Tuple2.of(schema, tableId);
     }
 }
