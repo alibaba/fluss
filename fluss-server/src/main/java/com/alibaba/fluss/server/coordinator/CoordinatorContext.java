@@ -17,6 +17,7 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.annotation.VisibleForTesting;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -79,10 +80,11 @@ public class CoordinatorContext {
             new HashMap<>();
     // a map from partition_id -> partition_name
     private final Map<Long, String> partitionNameById = new HashMap<>();
+    private final Map<PhysicalTablePath, Long> partitionIdByPath = new HashMap<>();
 
     // a map from table_id to the table path
     private final Map<Long, TablePath> tablePathById = new HashMap<>();
-    // TODO: will be used in the future metadata cache
+    private final Map<TablePath, Long> tableIdByPath = new HashMap<>();
     private final Map<Long, TableInfo> tableInfoById = new HashMap<>();
 
     private final Map<TableBucket, LeaderAndIsr> bucketLeaderAndIsr = new HashMap<>();
@@ -98,6 +100,10 @@ public class CoordinatorContext {
      */
     private final Map<Integer, Set<TableBucket>> replicasOnOffline = new HashMap<>();
 
+    // in normal case, it won't be null, but from I can see, it'll only be null in unit test
+    // since the we won't register a coordinator node in zk.
+    // todo: may remove the nullable in the future
+    private @Nullable ServerInfo coordinatorServerInfo = null;
     private int coordinatorEpoch = INITIAL_COORDINATOR_EPOCH;
 
     public CoordinatorContext() {}
@@ -114,6 +120,14 @@ public class CoordinatorContext {
     public void setLiveTabletServers(List<ServerInfo> servers) {
         liveTabletServers.clear();
         servers.forEach(server -> liveTabletServers.put(server.id(), server));
+    }
+
+    public @Nullable ServerInfo getCoordinatorServerInfo() {
+        return coordinatorServerInfo;
+    }
+
+    public void setCoordinatorServerInfo(@Nullable ServerInfo coordinatorServerInfo) {
+        this.coordinatorServerInfo = coordinatorServerInfo;
     }
 
     public void addLiveTabletServer(ServerInfo serverInfo) {
@@ -210,14 +224,16 @@ public class CoordinatorContext {
 
     public void putTablePath(long tableId, TablePath tablePath) {
         this.tablePathById.put(tableId, tablePath);
+        this.tableIdByPath.put(tablePath, tableId);
     }
 
     public void putTableInfo(TableInfo tableInfo) {
         this.tableInfoById.put(tableInfo.getTableId(), tableInfo);
     }
 
-    public void putPartition(long partitionId, String partitionName) {
-        this.partitionNameById.put(partitionId, partitionName);
+    public void putPartition(long partitionId, PhysicalTablePath physicalTablePath) {
+        this.partitionNameById.put(partitionId, physicalTablePath.getPartitionName());
+        this.partitionIdByPath.put(physicalTablePath, partitionId);
     }
 
     public TableInfo getTableInfoById(long tableId) {
@@ -226,6 +242,10 @@ public class CoordinatorContext {
 
     public TablePath getTablePathById(long tableId) {
         return this.tablePathById.get(tableId);
+    }
+
+    public Long getTableIdByPath(TablePath tablePath) {
+        return tableIdByPath.getOrDefault(tablePath, TableInfo.UNKNOWN_TABLE_ID);
     }
 
     public boolean containsTableId(long tableId) {
@@ -238,6 +258,18 @@ public class CoordinatorContext {
 
     public @Nullable String getPartitionName(long partitionId) {
         return this.partitionNameById.get(partitionId);
+    }
+
+    public Optional<Long> getPartitionId(PhysicalTablePath partitionId) {
+        return Optional.ofNullable(partitionIdByPath.get(partitionId));
+    }
+
+    public Map<Integer, List<Integer>> getTableAssignment(long tableId) {
+        return tableAssignments.getOrDefault(tableId, Collections.emptyMap());
+    }
+
+    public Map<Integer, List<Integer>> getPartitionAssignment(TablePartition tablePartition) {
+        return partitionAssignments.getOrDefault(tablePartition, Collections.emptyMap());
     }
 
     public void updateBucketReplicaAssignment(
@@ -406,11 +438,6 @@ public class CoordinatorContext {
     }
 
     @VisibleForTesting
-    protected Map<Integer, List<Integer>> getTableAssignment(long tableId) {
-        return tableAssignments.getOrDefault(tableId, Collections.emptyMap());
-    }
-
-    @VisibleForTesting
     protected int replicaCounts(long tableId) {
         return getTableAssignment(tableId).values().stream().mapToInt(List::size).sum();
     }
@@ -418,11 +445,6 @@ public class CoordinatorContext {
     @VisibleForTesting
     protected int replicaCounts(TablePartition tablePartition) {
         return getPartitionAssignment(tablePartition).values().stream().mapToInt(List::size).sum();
-    }
-
-    @VisibleForTesting
-    protected Map<Integer, List<Integer>> getPartitionAssignment(TablePartition tablePartition) {
-        return partitionAssignments.getOrDefault(tablePartition, Collections.emptyMap());
     }
 
     public boolean isAnyReplicaInState(long tableId, ReplicaState replicaState) {
@@ -556,7 +578,8 @@ public class CoordinatorContext {
                     .keySet()
                     .forEach(bucket -> bucketLeaderAndIsr.remove(new TableBucket(tableId, bucket)));
         }
-        tablePathById.remove(tableId);
+        TablePath tablePath = tablePathById.remove(tableId);
+        tableIdByPath.remove(tablePath);
         tableInfoById.remove(tableId);
     }
 
@@ -575,7 +598,12 @@ public class CoordinatorContext {
                                                     tablePartition.getPartitionId(),
                                                     bucket)));
         }
-        partitionNameById.remove(tablePartition.getPartitionId());
+
+        String partitionName = partitionNameById.remove(tablePartition.getPartitionId());
+        if (partitionName != null) {
+            TablePath tablePath = getTablePathById(tablePartition.getTableId());
+            partitionIdByPath.remove(PhysicalTablePath.of(tablePath, partitionName));
+        }
     }
 
     private void clearTablesState() {
@@ -586,8 +614,10 @@ public class CoordinatorContext {
         bucketStates.clear();
         replicaStates.clear();
         tablePathById.clear();
+        tableIdByPath.clear();
         tableInfoById.clear();
         partitionNameById.clear();
+        partitionIdByPath.clear();
     }
 
     public void resetContext() {

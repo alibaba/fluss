@@ -16,10 +16,48 @@
 
 package com.alibaba.fluss.server.metadata;
 
+import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.metadata.PartitionSpec;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.metadata.TableDescriptor;
+import com.alibaba.fluss.metadata.TableInfo;
+import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
+import com.alibaba.fluss.server.coordinator.MetadataManager;
+import com.alibaba.fluss.server.tablet.TabletServer;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
+import com.alibaba.fluss.server.zk.ZooKeeperClient;
+import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
+import com.alibaba.fluss.server.zk.data.TableAssignment;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+
+import javax.annotation.Nullable;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createPartition;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createTable;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDropPartitionRequest;
+import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDropTableRequest;
+import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** IT Case for metadata update. */
 class MetadataUpdateITCase {
@@ -28,21 +66,59 @@ class MetadataUpdateITCase {
     public static final FlussClusterExtension FLUSS_CLUSTER_EXTENSION =
             FlussClusterExtension.builder().setNumOfTabletServers(3).build();
 
-    @Test
-    void testMetadataUpdate() throws Exception {
-        // todo: need to test tables once coordinator server also send tables metadata
-        // to tablet servers;
+    private CoordinatorGateway coordinatorGateway;
+    private ZooKeeperClient zkClient;
+    private MetadataManager metadataManager;
 
+    @BeforeEach
+    void setup() {
+        coordinatorGateway = FLUSS_CLUSTER_EXTENSION.newCoordinatorClient();
+        zkClient = FLUSS_CLUSTER_EXTENSION.getZooKeeperClient();
+        metadataManager =
+                new MetadataManager(
+                        FLUSS_CLUSTER_EXTENSION.getZooKeeperClient(), new Configuration());
+    }
+
+    @Test
+    void testMetadataUpdateForServerStartAndStop() throws Exception {
         // get metadata and check it
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
 
+        Map<Long, TableContext> expectedTablePathById = new HashMap<>();
+        long tableId =
+                createTable(FLUSS_CLUSTER_EXTENSION, DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR);
+        expectedTablePathById.put(
+                tableId, new TableContext(false, false, DATA1_TABLE_PATH, tableId, null));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
         // now, start one tablet server and check it
         FLUSS_CLUSTER_EXTENSION.startTabletServer(3);
-        FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                4,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
 
         // now, kill one tablet server and check it
         FLUSS_CLUSTER_EXTENSION.stopTabletServer(1);
-        FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
 
         // check when coordinator start, it should send update metadata request
         // to all tablet servers
@@ -54,6 +130,399 @@ class MetadataUpdateITCase {
         // let's start the coordinator server again;
         FLUSS_CLUSTER_EXTENSION.startCoordinatorServer();
         // check the metadata again
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                2,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
+        // add back tablet server2
+        FLUSS_CLUSTER_EXTENSION.startTabletServer(2);
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+    }
+
+    @Test
+    void testMetadataUpdateForTableCreateAndDrop() throws Exception {
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
+        Map<Long, TableContext> expectedTablePathById = new HashMap<>();
+        assertUpdateMetadataEquals(
+                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                3,
+                expectedTablePathById,
+                Collections.emptyMap());
+
+        long tableId =
+                createTable(FLUSS_CLUSTER_EXTENSION, DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR);
+        expectedTablePathById.put(
+                tableId, new TableContext(false, false, DATA1_TABLE_PATH, tableId, null));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
+        // create a partitioned table.
+        TablePath partitionTablePath = TablePath.of("test_db_1", "test_partition_table_1");
+        TableDescriptor partitionTableDescriptor =
+                TableDescriptor.builder()
+                        .schema(DATA1_SCHEMA)
+                        .distributedBy(3)
+                        .partitionedBy("b")
+                        .property(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED, false)
+                        .build();
+        long partitionedTableId =
+                createTable(FLUSS_CLUSTER_EXTENSION, partitionTablePath, partitionTableDescriptor);
+        expectedTablePathById.put(
+                partitionedTableId,
+                new TableContext(false, true, partitionTablePath, partitionedTableId, null));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
+        // test drop table.
+        coordinatorGateway.dropTable(
+                newDropTableRequest(
+                        DATA1_TABLE_PATH.getDatabaseName(),
+                        DATA1_TABLE_PATH.getTableName(),
+                        false));
+        expectedTablePathById.put(
+                tableId, new TableContext(true, false, DATA1_TABLE_PATH, tableId, null));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
+        // test drop table.
+        // TODO, this is a bug, which will cause CoordinatorServer cache contains residual
+        // tablePath, trace by: https://github.com/alibaba/fluss/issues/898
+        //        coordinatorGateway.dropTable(
+        //                newDropTableRequest(
+        //                        partitionTablePath.getDatabaseName(),
+        //                        partitionTablePath.getTableName(),
+        //                        false));
+        //        expectedTablePathById.put(partitionedTableId, new TablePathTuple(true, true,
+        // partitionTablePath,
+        //        partitionedTableId, null));
+        //        retry(
+        //                Duration.ofMinutes(1),
+        //                () ->
+        //                        assertUpdateMetadataEquals(
+        //                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+        //                                3,
+        //                                expectedTablePathById,
+        //                                Collections.emptyMap()));
+    }
+
+    @Test
+    void testMetadataUpdateForPartitionCreateAndDrop() throws Exception {
+        FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
+        Map<Long, TableContext> expectedTablePathById = new HashMap<>();
+        Map<Long, TableContext> expectedPartitionNameById = new HashMap<>();
+        assertUpdateMetadataEquals(
+                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                3,
+                expectedTablePathById,
+                Collections.emptyMap());
+
+        // create a partitioned table.
+        TablePath partitionTablePath = TablePath.of("test_db_1", "test_partition_table_1");
+        TableDescriptor partitionTableDescriptor =
+                TableDescriptor.builder()
+                        .schema(DATA1_SCHEMA)
+                        .distributedBy(3)
+                        .partitionedBy("b")
+                        .property(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED, false)
+                        .build();
+        long partitionedTableId =
+                createTable(FLUSS_CLUSTER_EXTENSION, partitionTablePath, partitionTableDescriptor);
+        expectedTablePathById.put(
+                partitionedTableId,
+                new TableContext(false, true, partitionTablePath, partitionedTableId, null));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                Collections.emptyMap()));
+
+        // create two new partitions.
+        String partitionName1 = "b1";
+        String partitionName2 = "b2";
+        long partitionId1 =
+                createPartition(
+                        FLUSS_CLUSTER_EXTENSION,
+                        partitionTablePath,
+                        new PartitionSpec(Collections.singletonMap("b", partitionName1)),
+                        false);
+        long partitionId2 =
+                createPartition(
+                        FLUSS_CLUSTER_EXTENSION,
+                        partitionTablePath,
+                        new PartitionSpec(Collections.singletonMap("b", partitionName2)),
+                        false);
+        expectedPartitionNameById.put(
+                partitionId1,
+                new TableContext(
+                        false, true, partitionTablePath, partitionedTableId, partitionName1));
+        expectedPartitionNameById.put(
+                partitionId2,
+                new TableContext(
+                        false, true, partitionTablePath, partitionedTableId, partitionName2));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                expectedPartitionNameById));
+
+        // drop one partition.
+        coordinatorGateway
+                .dropPartition(
+                        newDropPartitionRequest(
+                                partitionTablePath,
+                                new PartitionSpec(Collections.singletonMap("b", partitionName1)),
+                                false))
+                .get();
+        expectedPartitionNameById.put(
+                partitionId1,
+                new TableContext(
+                        true, true, partitionTablePath, partitionedTableId, partitionName1));
+        retry(
+                Duration.ofMinutes(1),
+                () ->
+                        assertUpdateMetadataEquals(
+                                FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode("FLUSS"),
+                                3,
+                                expectedTablePathById,
+                                expectedPartitionNameById));
+    }
+
+    private void assertUpdateMetadataEquals(
+            ServerNode expectedCoordinatorServer,
+            int expectedTabletServerSize,
+            Map<Long, TableContext> expectedTablePathById,
+            Map<Long, TableContext> expectedPartitionNameById) {
+        ServerMetadataCache csMetadataCache =
+                FLUSS_CLUSTER_EXTENSION.getCoordinatorServer().getMetadataCache();
+        List<ServerMetadataCache> metadataCacheList =
+                FLUSS_CLUSTER_EXTENSION.getTabletServers().stream()
+                        .map(TabletServer::getMetadataCache)
+                        .collect(Collectors.toList());
+        metadataCacheList.add(csMetadataCache);
+
+        metadataCacheList.forEach(
+                serverMetadataCache -> {
+                    assertThat(serverMetadataCache.getCoordinatorServer("FLUSS"))
+                            .isEqualTo(expectedCoordinatorServer);
+
+                    assertThat(serverMetadataCache.getAliveTabletServerIds().size())
+                            .isEqualTo(expectedTabletServerSize);
+
+                    expectedTablePathById.forEach(
+                            (tableId, tableContext) -> {
+                                if (!tableContext.isDeleted) {
+                                    TablePath tablePath = tableContext.tablePath;
+                                    assertThat(serverMetadataCache.getTablePath(tableId))
+                                            .isPresent();
+                                    assertThat(serverMetadataCache.getTablePath(tableId).get())
+                                            .isEqualTo(tablePath);
+
+                                    // check table info and bucket location and leader only for
+                                    // non-partitioned table.
+                                    if (!tableContext.isPartitionedTable) {
+                                        assertThat(serverMetadataCache.getTableMetadata(tablePath))
+                                                .isPresent();
+                                        TableMetadata tableMetadataFromZk =
+                                                getTableMetadataFromZk(tablePath, tableId);
+                                        assertTableMetadataEquals(
+                                                tableMetadataFromZk,
+                                                serverMetadataCache
+                                                        .getTableMetadata(tablePath)
+                                                        .get());
+                                    }
+                                } else {
+                                    assertThat(serverMetadataCache.getTablePath(tableId))
+                                            .isNotPresent();
+                                    assertThat(serverMetadataCache.getTableInfo(tableId))
+                                            .isNotPresent();
+                                    assertThat(
+                                                    serverMetadataCache.getTableMetadata(
+                                                            tableContext.tablePath))
+                                            .isNotPresent();
+                                }
+                            });
+                    expectedPartitionNameById.forEach(
+                            (partitionId, tableContext) -> {
+                                if (!tableContext.isDeleted) {
+                                    assertThat(serverMetadataCache.getPartitionName(partitionId))
+                                            .isPresent();
+                                    assertThat(
+                                                    serverMetadataCache
+                                                            .getPartitionName(partitionId)
+                                                            .get())
+                                            .isEqualTo(tableContext.partitionName);
+
+                                    assertThat(
+                                                    serverMetadataCache.getPartitionMetadata(
+                                                            PhysicalTablePath.of(
+                                                                    tableContext.tablePath,
+                                                                    tableContext.partitionName)))
+                                            .isPresent();
+                                    PartitionMetadata partitionMetadataFromZk =
+                                            getPartitionMetadataFromZk(
+                                                    tableContext.tableId,
+                                                    tableContext.partitionName,
+                                                    partitionId);
+                                    assertPartitionMetadataEquals(
+                                            partitionMetadataFromZk,
+                                            serverMetadataCache
+                                                    .getPartitionMetadata(
+                                                            PhysicalTablePath.of(
+                                                                    tableContext.tablePath,
+                                                                    tableContext.partitionName))
+                                                    .get());
+                                } else {
+                                    assertThat(serverMetadataCache.getPartitionName(partitionId))
+                                            .isNotPresent();
+                                    assertThat(
+                                                    serverMetadataCache.getPartitionMetadata(
+                                                            PhysicalTablePath.of(
+                                                                    tableContext.tablePath,
+                                                                    tableContext.partitionName)))
+                                            .isNotPresent();
+                                }
+                            });
+                });
+    }
+
+    private TableMetadata getTableMetadataFromZk(TablePath tablePath, long tableId) {
+        TableInfo tableInfo = metadataManager.getTable(tablePath);
+        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
+        try {
+            TableAssignment tableAssignment = zkClient.getTableAssignment(tableId).get();
+            tableAssignment
+                    .getBucketAssignments()
+                    .forEach(
+                            (bucketId, assignment) -> {
+                                List<Integer> replicas = assignment.getReplicas();
+                                try {
+                                    LeaderAndIsr leaderAndIsr =
+                                            zkClient.getLeaderAndIsr(
+                                                            new TableBucket(tableId, bucketId))
+                                                    .get();
+                                    bucketMetadataList.add(
+                                            new BucketMetadata(
+                                                    bucketId,
+                                                    leaderAndIsr.leader(),
+                                                    leaderAndIsr.leaderEpoch(),
+                                                    replicas));
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return new TableMetadata(tableInfo, bucketMetadataList);
+    }
+
+    private PartitionMetadata getPartitionMetadataFromZk(
+            long tableId, String partitionName, long partitionId) {
+        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
+        try {
+            TableAssignment tableAssignment = zkClient.getPartitionAssignment(partitionId).get();
+            tableAssignment
+                    .getBucketAssignments()
+                    .forEach(
+                            (bucketId, assignment) -> {
+                                List<Integer> replicas = assignment.getReplicas();
+                                try {
+                                    LeaderAndIsr leaderAndIsr =
+                                            zkClient.getLeaderAndIsr(
+                                                            new TableBucket(
+                                                                    tableId, partitionId, bucketId))
+                                                    .get();
+                                    bucketMetadataList.add(
+                                            new BucketMetadata(
+                                                    bucketId,
+                                                    leaderAndIsr.leader(),
+                                                    leaderAndIsr.leaderEpoch(),
+                                                    replicas));
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+            return new PartitionMetadata(tableId, partitionName, partitionId, bucketMetadataList);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void assertTableMetadataEquals(TableMetadata expected, TableMetadata actual) {
+        assertThat(expected.getTableInfo()).isEqualTo(actual.getTableInfo());
+        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
+        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
+        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
+        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
+        actualBucketMetadataList.forEach(
+                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
+    }
+
+    private void assertPartitionMetadataEquals(
+            PartitionMetadata expected, PartitionMetadata actual) {
+        assertThat(expected.getPartitionName()).isEqualTo(actual.getPartitionName());
+        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
+        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
+        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
+        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
+        actualBucketMetadataList.forEach(
+                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
+    }
+
+    private static class TableContext {
+        final boolean isDeleted;
+        final boolean isPartitionedTable;
+        final TablePath tablePath;
+        final long tableId;
+        final @Nullable String partitionName;
+
+        public TableContext(
+                boolean isDeleted,
+                boolean isPartitionedTable,
+                TablePath tablePath,
+                long tableId,
+                @Nullable String partitionName) {
+            this.isDeleted = isDeleted;
+            this.isPartitionedTable = isPartitionedTable;
+            this.tablePath = tablePath;
+            this.tableId = tableId;
+            this.partitionName = partitionName;
+        }
     }
 }
