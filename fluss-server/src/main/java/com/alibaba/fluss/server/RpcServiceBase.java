@@ -16,7 +16,6 @@
 
 package com.alibaba.fluss.server;
 
-import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
@@ -26,6 +25,7 @@ import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.SecurityDisabledException;
 import com.alibaba.fluss.exception.SecurityTokenException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
+import com.alibaba.fluss.exception.UnknownTableOrBucketException;
 import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
 import com.alibaba.fluss.metadata.DatabaseInfo;
@@ -66,7 +66,6 @@ import com.alibaba.fluss.rpc.messages.ListTablesResponse;
 import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
 import com.alibaba.fluss.rpc.messages.PbApiVersion;
-import com.alibaba.fluss.rpc.messages.PbPhysicalTablePath;
 import com.alibaba.fluss.rpc.messages.PbTablePath;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
@@ -80,17 +79,13 @@ import com.alibaba.fluss.server.authorizer.Authorizer;
 import com.alibaba.fluss.server.coordinator.CoordinatorService;
 import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
-import com.alibaba.fluss.server.metadata.BucketMetadata;
 import com.alibaba.fluss.server.metadata.PartitionMetadata;
 import com.alibaba.fluss.server.metadata.ServerMetadataCache;
 import com.alibaba.fluss.server.metadata.TableMetadata;
 import com.alibaba.fluss.server.tablet.TabletService;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
-import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
-import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
-import com.alibaba.fluss.server.zk.data.TableAssignment;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,7 +93,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -119,8 +113,6 @@ import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toGetFileSyst
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toListPartitionInfosResponse;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toPhysicalTablePath;
 import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toTablePath;
-import static com.alibaba.fluss.server.zk.data.LeaderAndIsr.NO_LEADER;
-import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 import static com.alibaba.fluss.utils.Preconditions.checkState;
 
 /**
@@ -296,16 +288,8 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
     public CompletableFuture<MetadataResponse> metadata(MetadataRequest request) {
         String listenerName = currentListenerName();
 
-        Set<ServerNode> aliveTableServers = getAllTabletServerNodes(listenerName);
         List<PbTablePath> pbTablePaths = request.getTablePathsList();
-        List<TablePath> tablePaths = new ArrayList<>(pbTablePaths.size());
-
-        List<PbPhysicalTablePath> partitions = request.getPartitionsPathsList();
-        long[] partitionIds = request.getPartitionsIds();
-
         List<TableMetadata> tableMetadata = new ArrayList<>();
-        List<PartitionMetadata> partitionMetadata = new ArrayList<>();
-
         for (PbTablePath pbTablePath : pbTablePaths) {
             if (authorizer == null
                     || authorizer.isAuthorized(
@@ -313,13 +297,36 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
                             OperationType.DESCRIBE,
                             Resource.table(
                                     pbTablePath.getDatabaseName(), pbTablePath.getTableName()))) {
-                TablePath tablePath = toTablePath(pbTablePath);
-                tablePaths.add(tablePath);
-                tableMetadata.add(getTableMetadata(tablePath, listenerName));
+                tableMetadata.add(
+                        metadataCache
+                                .getTableMetadata(toTablePath(pbTablePath))
+                                .orElseThrow(
+                                        () ->
+                                                new UnknownTableOrBucketException(
+                                                        "Table not exist in server cache for table path: "
+                                                                + pbTablePath)));
             }
         }
 
-        for (PbPhysicalTablePath partitionPath : partitions) {
+        List<PartitionMetadata> partitionMetadata = new ArrayList<>();
+        List<PhysicalTablePath> partitions = new ArrayList<>();
+        request.getPartitionsPathsList()
+                .forEach(
+                        pbPhysicalTablePath ->
+                                partitions.add(toPhysicalTablePath(pbPhysicalTablePath)));
+        long[] partitionIds = request.getPartitionsIds();
+        for (long partitionId : partitionIds) {
+            partitions.add(
+                    metadataCache
+                            .getPhysicalTablePath(partitionId)
+                            .orElseThrow(
+                                    () ->
+                                            new UnknownTableOrBucketException(
+                                                    "Partition not exist in server cache for partition id: "
+                                                            + partitionId)));
+        }
+
+        for (PhysicalTablePath partitionPath : partitions) {
             if (authorizer == null
                     || authorizer.isAuthorized(
                             currentSession(),
@@ -328,17 +335,21 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
                                     partitionPath.getDatabaseName(),
                                     partitionPath.getTableName()))) {
                 partitionMetadata.add(
-                        getPartitionMetadata(toPhysicalTablePath(partitionPath), listenerName));
+                        metadataCache
+                                .getPartitionMetadata(partitionPath)
+                                .orElseThrow(
+                                        () ->
+                                                new UnknownTableOrBucketException(
+                                                        "Partition not exist in server cache for partition path: "
+                                                                + partitionPath)));
             }
         }
-
-        // get partition metadata from partition ids
-        partitionMetadata.addAll(getPartitionMetadata(tablePaths, partitionIds, listenerName));
 
         return CompletableFuture.completedFuture(
                 buildMetadataResponse(
                         metadataCache.getCoordinatorServer(listenerName),
-                        aliveTableServers,
+                        new HashSet<>(
+                                metadataCache.getAllAliveTabletServers(listenerName).values()),
                         tableMetadata,
                         partitionMetadata));
     }
@@ -508,178 +519,6 @@ public abstract class RpcServiceBase extends RpcGatewayService implements AdminR
         } catch (Exception e) {
             throw new FlussRuntimeException(
                     String.format("Failed to list acls for resource: ", aclBindingFilter), e);
-        }
-    }
-
-    private Set<ServerNode> getAllTabletServerNodes(String listenerName) {
-        return new HashSet<>(metadataCache.getAllAliveTabletServers(listenerName).values());
-    }
-
-    /**
-     * Returned a {@link TableMetadata} contains the table info for {@code tablePath} and the bucket
-     * locations for {@code physicalTablePaths}.
-     */
-    private TableMetadata getTableMetadata(TablePath tablePath, String listenerName) {
-        TableInfo tableInfo = metadataManager.getTable(tablePath);
-        long tableId = tableInfo.getTableId();
-        try {
-            AssignmentInfo assignmentInfo =
-                    getAssignmentInfo(tableId, PhysicalTablePath.of(tablePath));
-            List<BucketMetadata> bucketMetadataList = new ArrayList<>();
-            if (assignmentInfo.tableAssignment != null) {
-                TableAssignment tableAssignment = assignmentInfo.tableAssignment;
-                bucketMetadataList = toBucketMetadataList(tableId, null, tableAssignment, -1);
-            } else {
-                if (!tableInfo.isPartitioned()) {
-                    LOG.warn("No table assignment node found for table {}", tableId);
-                }
-            }
-            return new TableMetadata(tableInfo, bucketMetadataList);
-        } catch (Exception e) {
-            throw new FlussRuntimeException(
-                    String.format("Failed to get metadata for %s", tablePath), e);
-        }
-    }
-
-    private PartitionMetadata getPartitionMetadata(
-            PhysicalTablePath partitionPath, String listenerName) {
-        try {
-            checkNotNull(
-                    partitionPath.getPartitionName(),
-                    "partitionName must be not null, but get: " + partitionPath);
-            AssignmentInfo assignmentInfo = getAssignmentInfo(null, partitionPath);
-            List<BucketMetadata> bucketMetadataList = new ArrayList<>();
-            checkNotNull(
-                    assignmentInfo.partitionId,
-                    "partition id must be not null for " + partitionPath);
-            if (assignmentInfo.tableAssignment != null) {
-                TableAssignment tableAssignment = assignmentInfo.tableAssignment;
-                bucketMetadataList =
-                        toBucketMetadataList(
-                                assignmentInfo.tableId,
-                                assignmentInfo.partitionId,
-                                tableAssignment,
-                                -1);
-            } else {
-                LOG.warn("No partition assignment node found for partition {}", partitionPath);
-            }
-            return new PartitionMetadata(
-                    assignmentInfo.tableId,
-                    partitionPath.getPartitionName(),
-                    assignmentInfo.partitionId,
-                    bucketMetadataList);
-        } catch (PartitionNotExistException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new FlussRuntimeException(
-                    String.format("Failed to get metadata for partition %s", partitionPath), e);
-        }
-    }
-
-    private List<PartitionMetadata> getPartitionMetadata(
-            Collection<TablePath> tablePaths, long[] partitionIds, String listenerName) {
-        // todo: hack logic; currently, we can't get partition metadata by partition ids directly,
-        // in here, we always assume the partition ids must belong to the first argument tablePaths;
-        // at least, in current client metadata request design, the assumption is true.
-        // but the assumption is fragile; we should use metadata cache to help to get partition by
-        // partition ids
-
-        List<PartitionMetadata> partitionMetadata = new ArrayList<>();
-        Set<Long> partitionIdSet = new HashSet<>();
-        for (long partitionId : partitionIds) {
-            partitionIdSet.add(partitionId);
-        }
-        try {
-            for (TablePath tablePath : tablePaths) {
-                if (partitionIdSet.isEmpty()) {
-                    break;
-                }
-                Set<Long> hitPartitionIds = new HashSet<>();
-                // TODO: this is a heavy operation, should be optimized when we have metadata cache
-                Map<Long, String> partitionNameById = zkClient.getPartitionIdAndNames(tablePath);
-                for (Long partitionId : partitionIdSet) {
-                    // the partition is under the table, get the metadata
-                    String partitionName = partitionNameById.get(partitionId);
-                    if (partitionName != null) {
-                        partitionMetadata.add(
-                                getPartitionMetadata(
-                                        PhysicalTablePath.of(tablePath, partitionName),
-                                        listenerName));
-                        hitPartitionIds.add(partitionId);
-                    }
-                }
-                partitionIdSet.removeAll(hitPartitionIds);
-            }
-        } catch (Exception e) {
-            throw new FlussRuntimeException(
-                    "Failed to get metadata for partition ids: " + Arrays.toString(partitionIds),
-                    e);
-        }
-        if (!partitionIdSet.isEmpty()) {
-            throw new PartitionNotExistException(
-                    "Partition not exist for partition ids: " + partitionIdSet);
-        }
-        return partitionMetadata;
-    }
-
-    private List<BucketMetadata> toBucketMetadataList(
-            long tableId,
-            @Nullable Long partitionId,
-            TableAssignment tableAssignment,
-            int leaderEpoch)
-            throws Exception {
-        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
-        // iterate each bucket assignment
-        for (Map.Entry<Integer, BucketAssignment> assignment :
-                tableAssignment.getBucketAssignments().entrySet()) {
-            int bucketId = assignment.getKey();
-            TableBucket tableBucket = new TableBucket(tableId, partitionId, bucketId);
-
-            List<Integer> replicas = assignment.getValue().getReplicas();
-
-            // now get the leader
-            Optional<LeaderAndIsr> optLeaderAndIsr = zkClient.getLeaderAndIsr(tableBucket);
-            int leader = optLeaderAndIsr.map(LeaderAndIsr::leader).orElse(NO_LEADER);
-            bucketMetadataList.add(new BucketMetadata(bucketId, leader, leaderEpoch, replicas));
-        }
-        return bucketMetadataList;
-    }
-
-    private AssignmentInfo getAssignmentInfo(
-            @Nullable Long tableId, PhysicalTablePath physicalTablePath) throws Exception {
-        // it's a partition, get the partition assignment
-        if (physicalTablePath.getPartitionName() != null) {
-            Optional<TablePartition> tablePartition =
-                    zkClient.getPartition(
-                            physicalTablePath.getTablePath(), physicalTablePath.getPartitionName());
-            if (!tablePartition.isPresent()) {
-                throw new PartitionNotExistException(
-                        "Table partition '" + physicalTablePath + "' does not exist.");
-            }
-            long partitionId = tablePartition.get().getPartitionId();
-
-            return new AssignmentInfo(
-                    tablePartition.get().getTableId(),
-                    zkClient.getPartitionAssignment(partitionId).orElse(null),
-                    partitionId);
-        } else {
-            checkNotNull(tableId, "tableId must be not null");
-            return new AssignmentInfo(
-                    tableId, zkClient.getTableAssignment(tableId).orElse(null), null);
-        }
-    }
-
-    private static class AssignmentInfo {
-        private final long tableId;
-        // null then the bucket doesn't belong to a partition. Otherwise, not null
-        private final @Nullable Long partitionId;
-        private final @Nullable TableAssignment tableAssignment;
-
-        private AssignmentInfo(
-                long tableId, TableAssignment tableAssignment, @Nullable Long partitionId) {
-            this.tableId = tableId;
-            this.tableAssignment = tableAssignment;
-            this.partitionId = partitionId;
         }
     }
 }

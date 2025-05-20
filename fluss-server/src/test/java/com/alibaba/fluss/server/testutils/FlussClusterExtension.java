@@ -25,6 +25,7 @@ import com.alibaba.fluss.config.MemorySize;
 import com.alibaba.fluss.fs.local.LocalFileSystem;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.metrics.registry.MetricRegistry;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
@@ -43,7 +44,11 @@ import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshotHandle;
+import com.alibaba.fluss.server.metadata.BucketMetadata;
+import com.alibaba.fluss.server.metadata.PartitionMetadata;
 import com.alibaba.fluss.server.metadata.ServerInfo;
+import com.alibaba.fluss.server.metadata.ServerMetadataCache;
+import com.alibaba.fluss.server.metadata.TableMetadata;
 import com.alibaba.fluss.server.replica.Replica;
 import com.alibaba.fluss.server.replica.ReplicaManager;
 import com.alibaba.fluss.server.tablet.TabletServer;
@@ -490,8 +495,8 @@ public final class FlussClusterExtension
         }
     }
 
-    /** Wait until all the table assignments buckets are ready for table. */
-    public void waitUtilTableReady(long tableId) {
+    /** Wait until all the table assignments buckets are ready for non-partitioned table. */
+    public void waitUtilNonePartitionedTableReady(long tableId, TablePath tablePath) {
         ZooKeeperClient zkClient = getZooKeeperClient();
         retry(
                 Duration.ofMinutes(1),
@@ -500,19 +505,10 @@ public final class FlussClusterExtension
                             zkClient.getTableAssignment(tableId);
                     assertThat(tableAssignmentOpt).isPresent();
                     waitReplicaInAssignmentReady(zkClient, tableAssignmentOpt.get(), tableId, null);
-                });
-    }
 
-    public void waitUtilTablePartitionReady(long tableId, long partitionId) {
-        ZooKeeperClient zkClient = getZooKeeperClient();
-        retry(
-                Duration.ofMinutes(1),
-                () -> {
-                    Optional<PartitionAssignment> partitionAssignmentOpt =
-                            zkClient.getPartitionAssignment(partitionId);
-                    assertThat(partitionAssignmentOpt).isPresent();
-                    waitReplicaInAssignmentReady(
-                            zkClient, partitionAssignmentOpt.get(), tableId, partitionId);
+                    // check server metadata cache have same tableMetadata for none-partitioned
+                    // table, and all bucketMetadataList in tableMetadata have leader.
+                    waitTableMetadataReady(tableId, tablePath);
                 });
     }
 
@@ -692,29 +688,56 @@ public final class FlussClusterExtension
         }
     }
 
-    public Map<String, Long> waitUntilPartitionAllReady(TablePath tablePath) {
+    public void waitUtilTablePartitionReady(long tableId, long partitionId) {
+        ZooKeeperClient zkClient = getZooKeeperClient();
+        retry(
+                Duration.ofMinutes(1),
+                () -> {
+                    Optional<PartitionAssignment> partitionAssignmentOpt =
+                            zkClient.getPartitionAssignment(partitionId);
+                    assertThat(partitionAssignmentOpt).isPresent();
+                    waitReplicaInAssignmentReady(
+                            zkClient, partitionAssignmentOpt.get(), tableId, partitionId);
+                });
+    }
+
+    public Map<String, Long> waitUntilPartitionAllReady(long tableId, TablePath tablePath) {
         int preCreatePartitions = ConfigOptions.TABLE_AUTO_PARTITION_NUM_PRECREATE.defaultValue();
         // wait util table partition is created
-        return waitUntilPartitionsCreated(tablePath, preCreatePartitions);
+        return waitUntilPartitionsCreated(tableId, tablePath, preCreatePartitions);
     }
 
-    public Map<String, Long> waitUntilPartitionAllReady(TablePath tablePath, int expectCount) {
-        return waitUntilPartitionsCreated(tablePath, expectCount);
+    public Map<String, Long> waitUntilPartitionAllReady(
+            long tableId, TablePath tablePath, int expectCount) {
+        return waitUntilPartitionsCreated(tableId, tablePath, expectCount);
     }
 
-    public Map<String, Long> waitUntilPartitionsCreated(TablePath tablePath, int expectCount) {
-        return waitValue(
-                () -> {
-                    Map<String, Long> partitions =
-                            zooKeeperClient.getPartitionNameAndIds(tablePath);
-                    if (partitions.size() == expectCount) {
-                        return Optional.of(partitions);
-                    } else {
-                        return Optional.empty();
-                    }
-                },
+    public Map<String, Long> waitUntilPartitionsCreated(
+            long tableId, TablePath tablePath, int expectCount) {
+        Map<String, Long> partitionIdByName =
+                waitValue(
+                        () -> {
+                            Map<String, Long> partitions =
+                                    zooKeeperClient.getPartitionNameAndIds(tablePath);
+                            if (partitions.size() == expectCount) {
+                                return Optional.of(partitions);
+                            } else {
+                                return Optional.empty();
+                            }
+                        },
+                        Duration.ofMinutes(1),
+                        "Fail to wait " + expectCount + " partitions created");
+
+        // check server metadata cache have same partitionMetadata, and all
+        // bucketMetadataList in partitionMetadata have leader.
+        retry(
                 Duration.ofMinutes(1),
-                "Fail to wait " + expectCount + " partitions created");
+                () ->
+                        partitionIdByName.forEach(
+                                (partitionName, partitionId) ->
+                                        waitPartitionMetadataReady(
+                                                tableId, tablePath, partitionName, partitionId)));
+        return partitionIdByName;
     }
 
     public void waitUntilPartitionsDropped(TablePath tablePath, List<String> droppedPartitions) {
@@ -756,6 +779,142 @@ public final class FlussClusterExtension
 
     public CoordinatorServer getCoordinatorServer() {
         return coordinatorServer;
+    }
+
+    /**
+     * Wait table metadata cache in all servers equals with table metadata registered in zookeeper.
+     * (Only for partitioned table.)
+     */
+    private void waitTableMetadataReady(long tableId, TablePath tablePath) {
+        TableMetadata tableMetadataFromZk = waitTableMetadataReadInZk(tablePath, tableId);
+        collectAllServerMetadataCache()
+                .forEach(
+                        serverMetadataCache -> {
+                            Optional<TableMetadata> tableMetadataFromCacheOpt =
+                                    serverMetadataCache.getTableMetadata(tablePath);
+                            assertThat(tableMetadataFromCacheOpt).isPresent();
+                            assertTableMetadataEquals(
+                                    tableMetadataFromZk, tableMetadataFromCacheOpt.get());
+                        });
+    }
+
+    /**
+     * Wait partition metadata cache in all servers equals with partition metadata registered in
+     * zookeeper. (Only for partitioned table.)
+     */
+    private void waitPartitionMetadataReady(
+            long tableId, TablePath tablePath, String partitionName, long partitionId) {
+        PartitionMetadata partitionMetadataFromZk =
+                waitPartitionMetadataReadyInZk(tableId, partitionName, partitionId);
+        collectAllServerMetadataCache()
+                .forEach(
+                        serverMetadataCache -> {
+                            Optional<PartitionMetadata> partitionMetadataFromCacheOpt =
+                                    serverMetadataCache.getPartitionMetadata(
+                                            PhysicalTablePath.of(tablePath, partitionName));
+                            assertThat(partitionMetadataFromCacheOpt).isPresent();
+                            assertPartitionMetadataEquals(
+                                    partitionMetadataFromZk, partitionMetadataFromCacheOpt.get());
+                        });
+    }
+
+    /** Wait table metadata ready in zk (Only for none-partitioned table). */
+    public TableMetadata waitTableMetadataReadInZk(TablePath tablePath, long tableId) {
+        TableInfo tableInfo =
+                new MetadataManager(zooKeeperClient, new Configuration()).getTable(tablePath);
+        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
+        try {
+            TableAssignment tableAssignment = zooKeeperClient.getTableAssignment(tableId).get();
+            tableAssignment
+                    .getBucketAssignments()
+                    .forEach(
+                            (bucketId, assignment) -> {
+                                List<Integer> replicas = assignment.getReplicas();
+                                try {
+                                    Optional<LeaderAndIsr> leaderAndIsrOpt =
+                                            zooKeeperClient.getLeaderAndIsr(
+                                                    new TableBucket(tableId, bucketId));
+                                    assertThat(leaderAndIsrOpt).isPresent();
+                                    LeaderAndIsr leaderAndIsr = leaderAndIsrOpt.get();
+                                    bucketMetadataList.add(
+                                            new BucketMetadata(
+                                                    bucketId,
+                                                    leaderAndIsr.leader(),
+                                                    leaderAndIsr.leaderEpoch(),
+                                                    replicas));
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return new TableMetadata(tableInfo, bucketMetadataList);
+    }
+
+    /** Wait partition metadata ready in zk (Only for partitioned table). */
+    public PartitionMetadata waitPartitionMetadataReadyInZk(
+            long tableId, String partitionName, long partitionId) {
+        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
+        try {
+            TableAssignment tableAssignment =
+                    zooKeeperClient.getPartitionAssignment(partitionId).get();
+            tableAssignment
+                    .getBucketAssignments()
+                    .forEach(
+                            (bucketId, assignment) -> {
+                                List<Integer> replicas = assignment.getReplicas();
+                                try {
+                                    Optional<LeaderAndIsr> leaderAndIsrOpt =
+                                            zooKeeperClient.getLeaderAndIsr(
+                                                    new TableBucket(
+                                                            tableId, partitionId, bucketId));
+                                    assertThat(leaderAndIsrOpt).isPresent();
+                                    LeaderAndIsr leaderAndIsr = leaderAndIsrOpt.get();
+                                    bucketMetadataList.add(
+                                            new BucketMetadata(
+                                                    bucketId,
+                                                    leaderAndIsr.leader(),
+                                                    leaderAndIsr.leaderEpoch(),
+                                                    replicas));
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+            return new PartitionMetadata(tableId, partitionName, partitionId, bucketMetadataList);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void assertTableMetadataEquals(TableMetadata expected, TableMetadata actual) {
+        assertThat(expected.getTableInfo()).isEqualTo(actual.getTableInfo());
+        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
+        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
+        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
+        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
+        actualBucketMetadataList.forEach(
+                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
+    }
+
+    public static void assertPartitionMetadataEquals(
+            PartitionMetadata expected, PartitionMetadata actual) {
+        assertThat(expected.getPartitionName()).isEqualTo(actual.getPartitionName());
+        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
+        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
+        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
+        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
+        actualBucketMetadataList.forEach(
+                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
+    }
+
+    private List<ServerMetadataCache> collectAllServerMetadataCache() {
+        List<ServerMetadataCache> serverMetadataCaches = new ArrayList<>();
+        serverMetadataCaches.add(coordinatorServer.getMetadataCache());
+        getTabletServers().stream()
+                .map(TabletServer::getMetadataCache)
+                .forEach(serverMetadataCaches::add);
+        return serverMetadataCaches;
     }
 
     // --------------------------------------------------------------------------------------------

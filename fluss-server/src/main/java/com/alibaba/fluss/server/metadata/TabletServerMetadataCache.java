@@ -94,8 +94,8 @@ public class TabletServerMetadataCache implements ServerMetadataCache {
     }
 
     @Override
-    public Optional<String> getPartitionName(long partitionId) {
-        return serverMetadataSnapshot.getPartitionName(partitionId);
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
+        return serverMetadataSnapshot.getPhysicalTablePath(partitionId);
     }
 
     @Override
@@ -226,12 +226,8 @@ public class TabletServerMetadataCache implements ServerMetadataCache {
                                     new TablePartition(tableId, removedPartitionId));
                         } else if (partitionName.equals(PARTITION_DURATION_DELETE_NAME)) {
                             serverMetadataSnapshot
-                                    .getPartitionName(partitionId)
-                                    .ifPresent(
-                                            pName ->
-                                                    partitionsIdByPath.remove(
-                                                            PhysicalTablePath.of(
-                                                                    tablePath, pName)));
+                                    .getPhysicalTablePath(partitionId)
+                                    .ifPresent(partitionsIdByPath::remove);
                             bucketMetadataMapForPartitionTable.remove(
                                     new TablePartition(tableId, partitionId));
                         } else {

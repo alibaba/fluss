@@ -90,8 +90,8 @@ public class CoordinatorServerMetadataCache implements ServerMetadataCache {
         return Optional.ofNullable(coordinatorContext.getTablePathById(tableId));
     }
 
-    public Optional<String> getPartitionName(long partitionId) {
-        return Optional.ofNullable(coordinatorContext.getPartitionName(partitionId));
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
+        return coordinatorContext.getPhysicalTablePath(partitionId);
     }
 
     @Override

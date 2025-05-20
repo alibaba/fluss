@@ -151,10 +151,6 @@ message TableExistsResponse {
 message MetadataRequest {
   repeated PbTablePath table_path = 1;
   repeated PbPhysicalTablePath partitions_path = 2;
-
-  // note: currently, we assume the partition ids must belong to the table_paths in the
-  // metadata request
-  // todo: we won't need the assumption after we introduce metadata cache in server
   repeated int64 partitions_id = 3 [packed = true];
 }
 

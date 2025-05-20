@@ -63,7 +63,7 @@ public class LogFetcherTest extends ClientToServerITCaseBase {
 
         // We create table data1NonPkTablePath previously.
         tableId = createTable(DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR, false);
-        FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
+        FLUSS_CLUSTER_EXTENSION.waitUtilNonePartitionedTableReady(tableId, DATA1_TABLE_PATH);
 
         RpcClient rpcClient = FLUSS_CLUSTER_EXTENSION.getRpcClient();
         MetadataUpdater metadataUpdater = new MetadataUpdater(clientConf, rpcClient);

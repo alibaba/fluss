@@ -266,7 +266,8 @@ public class CoordinatorServerMetadataCacheTest {
             long expectedPartitionId,
             String expectedPartitionName,
             List<BucketMetadata> expectedBucketMetadataList) {
-        String actualPartitionName = serverMetadataCache.getPartitionName(partitionId).get();
+        String actualPartitionName =
+                serverMetadataCache.getPhysicalTablePath(partitionId).get().getPartitionName();
         assertThat(actualPartitionName).isEqualTo(expectedPartitionName);
         PartitionMetadata partitionMetadata =
                 serverMetadataCache

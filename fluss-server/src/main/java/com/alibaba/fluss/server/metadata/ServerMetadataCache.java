@@ -66,7 +66,7 @@ public interface ServerMetadataCache {
 
     Optional<TablePath> getTablePath(long tableId);
 
-    Optional<String> getPartitionName(long partitionId);
+    Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId);
 
     Optional<TableInfo> getTableInfo(long tableId);
 

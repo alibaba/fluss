@@ -47,7 +47,7 @@ public class ServerMetadataSnapshot {
     private final Map<Long, TablePath> pathByTableId;
     // partition table.
     private final Map<PhysicalTablePath, Long> partitionIdByPath;
-    private final Map<Long, String> partitionNameById;
+    private final Map<Long, PhysicalTablePath> physicalPathByPartitionId;
 
     private final Map<Long, TableInfo> tableInfoByTableId;
 
@@ -76,12 +76,11 @@ public class ServerMetadataSnapshot {
         this.pathByTableId = Collections.unmodifiableMap(pathByTableId);
 
         this.partitionIdByPath = Collections.unmodifiableMap(partitionIdByPath);
-        Map<Long, String> tempPartitionNameById = new HashMap<>();
+        Map<Long, PhysicalTablePath> tempPhysicalPathByPartitionId = new HashMap<>();
         partitionIdByPath.forEach(
                 ((physicalTablePath, partitionId) ->
-                        tempPartitionNameById.put(
-                                partitionId, physicalTablePath.getPartitionName())));
-        this.partitionNameById = Collections.unmodifiableMap(tempPartitionNameById);
+                        tempPhysicalPathByPartitionId.put(partitionId, physicalTablePath)));
+        this.physicalPathByPartitionId = Collections.unmodifiableMap(tempPhysicalPathByPartitionId);
 
         this.tableInfoByTableId = Collections.unmodifiableMap(tableInfoByTableId);
         this.bucketMetadataMap = Collections.unmodifiableMap(bucketMetadataMap);
@@ -143,8 +142,8 @@ public class ServerMetadataSnapshot {
         return Optional.ofNullable(partitionIdByPath.get(physicalTablePath));
     }
 
-    public Optional<String> getPartitionName(long partitionId) {
-        return Optional.ofNullable(partitionNameById.get(partitionId));
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
+        return Optional.ofNullable(physicalPathByPartitionId.get(partitionId));
     }
 
     public Optional<TableInfo> getTableInfo(long tableId) {

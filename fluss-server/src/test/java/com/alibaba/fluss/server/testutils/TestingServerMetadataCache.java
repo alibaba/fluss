@@ -74,7 +74,7 @@ public class TestingServerMetadataCache implements ServerMetadataCache {
     }
 
     @Override
-    public Optional<String> getPartitionName(long partitionId) {
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
         return Optional.empty();
     }
 

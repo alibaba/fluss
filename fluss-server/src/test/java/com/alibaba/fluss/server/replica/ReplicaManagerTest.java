@@ -1694,9 +1694,14 @@ class ReplicaManagerTest extends ReplicaTestBase {
         expectedPartitionNameById.forEach(
                 (k, v) -> {
                     if (v != null) {
-                        assertThat(serverMetadataCache.getPartitionName(k).get()).isEqualTo(v);
+                        assertThat(
+                                        serverMetadataCache
+                                                .getPhysicalTablePath(k)
+                                                .get()
+                                                .getPartitionName())
+                                .isEqualTo(v);
                     } else {
-                        assertThat(serverMetadataCache.getPartitionName(k)).isEmpty();
+                        assertThat(serverMetadataCache.getPhysicalTablePath(k)).isEmpty();
                     }
                 });
     }

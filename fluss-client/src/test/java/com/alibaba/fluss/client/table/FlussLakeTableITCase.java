@@ -272,7 +272,7 @@ class FlussLakeTableITCase {
         if (isPartitioned) {
             partitionIdByNames =
                     FLUSS_CLUSTER_EXTENSION.waitUntilPartitionsCreated(
-                            tablePath, PARTITION_PRE_CREATE);
+                            tableId, tablePath, PARTITION_PRE_CREATE);
         }
         int totalRows = partitionIdByNames != null ? rowNums * partitionIdByNames.size() : rowNums;
 

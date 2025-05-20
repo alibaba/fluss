@@ -27,10 +27,10 @@ import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
-import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
+import com.alibaba.fluss.exception.UnknownTableOrBucketException;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -554,7 +554,7 @@ class TableManagerITCase {
         int expectBucketCount = tableDescriptor.getTableDistribution().get().getBucketCount().get();
 
         Map<String, Long> partitionById =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionsCreated(tablePath, 1);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionsCreated(tableId, tablePath, 1);
 
         for (long partitionId : partitionById.values()) {
             for (int i = 0; i < expectBucketCount; i++) {
@@ -595,9 +595,9 @@ class TableManagerITCase {
                             gateway.metadata(partitionMetadataRequest).get();
                         })
                 .cause()
-                .isInstanceOf(PartitionNotExistException.class)
+                .isInstanceOf(UnknownTableOrBucketException.class)
                 .hasMessage(
-                        "Table partition 'db1.partitioned_tb(p=not_exist_partition)' does not exist.");
+                        "Partition not exist in server cache for partition path: db1.partitioned_tb(p=not_exist_partition)");
     }
 
     @ParameterizedTest

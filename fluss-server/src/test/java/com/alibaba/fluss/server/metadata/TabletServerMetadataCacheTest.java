@@ -252,7 +252,7 @@ public class TabletServerMetadataCacheTest {
                                         PARTITION_DURATION_DELETE_ID, // mark this partition as
                                         // deletion.
                                         Collections.emptyList()))));
-        assertThat(serverMetadataCache.getPartitionName(partitionId1)).isEmpty();
+        assertThat(serverMetadataCache.getPhysicalTablePath(partitionId1)).isEmpty();
         assertThat(
                         serverMetadataCache.getPartitionMetadata(
                                 PhysicalTablePath.of(partitionedTablePath, partitionName1)))
@@ -283,7 +283,8 @@ public class TabletServerMetadataCacheTest {
             long expectedPartitionId,
             String expectedPartitionName,
             List<BucketMetadata> expectedBucketMetadataList) {
-        String actualPartitionName = serverMetadataCache.getPartitionName(partitionId).get();
+        String actualPartitionName =
+                serverMetadataCache.getPhysicalTablePath(partitionId).get().getPartitionName();
         assertThat(actualPartitionName).isEqualTo(expectedPartitionName);
         PartitionMetadata partitionMetadata =
                 serverMetadataCache

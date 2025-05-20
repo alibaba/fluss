@@ -18,20 +18,13 @@ package com.alibaba.fluss.server.metadata;
 
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
-import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
-import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
-import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
-import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.tablet.TabletServer;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
-import com.alibaba.fluss.server.zk.ZooKeeperClient;
-import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
-import com.alibaba.fluss.server.zk.data.TableAssignment;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,18 +33,17 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import javax.annotation.Nullable;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
+import static com.alibaba.fluss.server.testutils.FlussClusterExtension.assertPartitionMetadataEquals;
+import static com.alibaba.fluss.server.testutils.FlussClusterExtension.assertTableMetadataEquals;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createPartition;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createTable;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDropPartitionRequest;
@@ -67,16 +59,10 @@ class MetadataUpdateITCase {
             FlussClusterExtension.builder().setNumOfTabletServers(3).build();
 
     private CoordinatorGateway coordinatorGateway;
-    private ZooKeeperClient zkClient;
-    private MetadataManager metadataManager;
 
     @BeforeEach
     void setup() {
         coordinatorGateway = FLUSS_CLUSTER_EXTENSION.newCoordinatorClient();
-        zkClient = FLUSS_CLUSTER_EXTENSION.getZooKeeperClient();
-        metadataManager =
-                new MetadataManager(
-                        FLUSS_CLUSTER_EXTENSION.getZooKeeperClient(), new Configuration());
     }
 
     @Test
@@ -359,7 +345,8 @@ class MetadataUpdateITCase {
                                         assertThat(serverMetadataCache.getTableMetadata(tablePath))
                                                 .isPresent();
                                         TableMetadata tableMetadataFromZk =
-                                                getTableMetadataFromZk(tablePath, tableId);
+                                                FLUSS_CLUSTER_EXTENSION.waitTableMetadataReadInZk(
+                                                        tablePath, tableId);
                                         assertTableMetadataEquals(
                                                 tableMetadataFromZk,
                                                 serverMetadataCache
@@ -380,12 +367,15 @@ class MetadataUpdateITCase {
                     expectedPartitionNameById.forEach(
                             (partitionId, tableContext) -> {
                                 if (!tableContext.isDeleted) {
-                                    assertThat(serverMetadataCache.getPartitionName(partitionId))
+                                    assertThat(
+                                                    serverMetadataCache.getPhysicalTablePath(
+                                                            partitionId))
                                             .isPresent();
                                     assertThat(
                                                     serverMetadataCache
-                                                            .getPartitionName(partitionId)
-                                                            .get())
+                                                            .getPhysicalTablePath(partitionId)
+                                                            .get()
+                                                            .getPartitionName())
                                             .isEqualTo(tableContext.partitionName);
 
                                     assertThat(
@@ -395,7 +385,7 @@ class MetadataUpdateITCase {
                                                                     tableContext.partitionName)))
                                             .isPresent();
                                     PartitionMetadata partitionMetadataFromZk =
-                                            getPartitionMetadataFromZk(
+                                            FLUSS_CLUSTER_EXTENSION.waitPartitionMetadataReadyInZk(
                                                     tableContext.tableId,
                                                     tableContext.partitionName,
                                                     partitionId);
@@ -408,7 +398,9 @@ class MetadataUpdateITCase {
                                                                     tableContext.partitionName))
                                                     .get());
                                 } else {
-                                    assertThat(serverMetadataCache.getPartitionName(partitionId))
+                                    assertThat(
+                                                    serverMetadataCache.getPhysicalTablePath(
+                                                            partitionId))
                                             .isNotPresent();
                                     assertThat(
                                                     serverMetadataCache.getPartitionMetadata(
@@ -419,90 +411,6 @@ class MetadataUpdateITCase {
                                 }
                             });
                 });
-    }
-
-    private TableMetadata getTableMetadataFromZk(TablePath tablePath, long tableId) {
-        TableInfo tableInfo = metadataManager.getTable(tablePath);
-        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
-        try {
-            TableAssignment tableAssignment = zkClient.getTableAssignment(tableId).get();
-            tableAssignment
-                    .getBucketAssignments()
-                    .forEach(
-                            (bucketId, assignment) -> {
-                                List<Integer> replicas = assignment.getReplicas();
-                                try {
-                                    LeaderAndIsr leaderAndIsr =
-                                            zkClient.getLeaderAndIsr(
-                                                            new TableBucket(tableId, bucketId))
-                                                    .get();
-                                    bucketMetadataList.add(
-                                            new BucketMetadata(
-                                                    bucketId,
-                                                    leaderAndIsr.leader(),
-                                                    leaderAndIsr.leaderEpoch(),
-                                                    replicas));
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        return new TableMetadata(tableInfo, bucketMetadataList);
-    }
-
-    private PartitionMetadata getPartitionMetadataFromZk(
-            long tableId, String partitionName, long partitionId) {
-        List<BucketMetadata> bucketMetadataList = new ArrayList<>();
-        try {
-            TableAssignment tableAssignment = zkClient.getPartitionAssignment(partitionId).get();
-            tableAssignment
-                    .getBucketAssignments()
-                    .forEach(
-                            (bucketId, assignment) -> {
-                                List<Integer> replicas = assignment.getReplicas();
-                                try {
-                                    LeaderAndIsr leaderAndIsr =
-                                            zkClient.getLeaderAndIsr(
-                                                            new TableBucket(
-                                                                    tableId, partitionId, bucketId))
-                                                    .get();
-                                    bucketMetadataList.add(
-                                            new BucketMetadata(
-                                                    bucketId,
-                                                    leaderAndIsr.leader(),
-                                                    leaderAndIsr.leaderEpoch(),
-                                                    replicas));
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
-            return new PartitionMetadata(tableId, partitionName, partitionId, bucketMetadataList);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void assertTableMetadataEquals(TableMetadata expected, TableMetadata actual) {
-        assertThat(expected.getTableInfo()).isEqualTo(actual.getTableInfo());
-        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
-        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
-        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
-        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
-        actualBucketMetadataList.forEach(
-                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
-    }
-
-    private void assertPartitionMetadataEquals(
-            PartitionMetadata expected, PartitionMetadata actual) {
-        assertThat(expected.getPartitionName()).isEqualTo(actual.getPartitionName());
-        List<BucketMetadata> bucketMetadataList = expected.getBucketMetadataList();
-        List<BucketMetadata> actualBucketMetadataList = actual.getBucketMetadataList();
-        assertThat(bucketMetadataList).hasSameSizeAs(actualBucketMetadataList);
-        Set<BucketMetadata> metadataSet = new HashSet<>(expected.getBucketMetadataList());
-        actualBucketMetadataList.forEach(
-                actualBucketMetadata -> assertThat(metadataSet).contains(actualBucketMetadata));
     }
 
     private static class TableContext {

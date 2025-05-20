@@ -493,8 +493,9 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                         .build();
         TablePath partitionedTablePath = TablePath.of(dbName, "test_partitioned_table");
         admin.createTable(partitionedTablePath, partitionedTable, true).get();
+        long tableId = admin.getTableInfo(partitionedTablePath).get().getTableId();
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(partitionedTablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, partitionedTablePath);
 
         List<PartitionInfo> partitionInfos = admin.listPartitionInfos(partitionedTablePath).get();
         assertThat(partitionInfos).hasSize(partitionIdByNames.size());
@@ -709,8 +710,9 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                         .build();
         TablePath tablePath = TablePath.of(dbName, "test_add_and_drop_partitioned_table_1");
         admin.createTable(tablePath, partitionedTable, true).get();
+        long tableId = admin.getTableInfo(tablePath).get().getTableId();
         // wait all auto partitions created.
-        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
+        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tableId, tablePath);
 
         // there are four auto created partitions.
         int currentYear = LocalDate.now().getYear();
