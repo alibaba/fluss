@@ -16,8 +16,11 @@
 
 package com.alibaba.fluss.rpc.util;
 
+import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.rpc.messages.PbAclFilter;
 import com.alibaba.fluss.rpc.messages.PbAclInfo;
+import com.alibaba.fluss.rpc.messages.PbKeyValue;
+import com.alibaba.fluss.rpc.messages.PbPartitionSpec;
 import com.alibaba.fluss.security.acl.AccessControlEntry;
 import com.alibaba.fluss.security.acl.AccessControlEntryFilter;
 import com.alibaba.fluss.security.acl.AclBinding;
@@ -29,6 +32,7 @@ import com.alibaba.fluss.security.acl.Resource;
 import com.alibaba.fluss.security.acl.ResourceFilter;
 import com.alibaba.fluss.security.acl.ResourceType;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -132,5 +136,15 @@ public class CommonRpcMessageUtils {
                         pbAclFilter.hasHost() ? pbAclFilter.getHost() : null,
                         OperationType.fromCode((byte) pbAclFilter.getOperationType()),
                         PermissionType.fromCode((byte) pbAclFilter.getPermissionType())));
+    }
+
+    public static ResolvedPartitionSpec toResolvedPartitionSpec(PbPartitionSpec pbPartitionSpec) {
+        List<String> partitionKeys = new ArrayList<>();
+        List<String> partitionValues = new ArrayList<>();
+        for (PbKeyValue pbKeyValue : pbPartitionSpec.getPartitionKeyValuesList()) {
+            partitionKeys.add(pbKeyValue.getKey());
+            partitionValues.add(pbKeyValue.getValue());
+        }
+        return new ResolvedPartitionSpec(partitionKeys, partitionValues);
     }
 }
