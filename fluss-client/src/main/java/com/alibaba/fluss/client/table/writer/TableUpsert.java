@@ -38,7 +38,6 @@ public class TableUpsert implements Upsert {
     private final @Nullable int[] targetColumns;
     private final Admin admin;
 
-    // TODO 传入admin
     public TableUpsert(
             TablePath tablePath,
             TableInfo tableInfo,

@@ -54,6 +54,7 @@ class UpsertWriterImpl extends AbstractTableWriter implements UpsertWriter {
     private final RowEncoder rowEncoder;
     private final FieldGetter[] fieldGetters;
     private final Admin admin;
+    private final boolean isDynamicPartitionEnabled;
 
     UpsertWriterImpl(
             TablePath tablePath,
@@ -80,6 +81,7 @@ class UpsertWriterImpl extends AbstractTableWriter implements UpsertWriter {
         this.rowEncoder = RowEncoder.create(kvFormat, rowType);
         this.fieldGetters = InternalRow.createFieldGetters(rowType);
         this.admin = admin;
+        this.isDynamicPartitionEnabled = tableInfo.getTableConfig().isDynamicPartitionEnabled();
     }
 
     private static void sanityCheck(
@@ -134,7 +136,7 @@ class UpsertWriterImpl extends AbstractTableWriter implements UpsertWriter {
                 bucketKeyEncoder == primaryKeyEncoder ? key : bucketKeyEncoder.encodeKey(row);
         WriteRecord record =
                 WriteRecord.forUpsert(
-                        getPhysicalPath(row, admin, true),
+                        getPhysicalPath(row, admin, isDynamicPartitionEnabled),
                         encodeRow(row),
                         key,
                         bucketKey,

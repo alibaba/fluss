@@ -47,6 +47,7 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
     private final IndexedRowEncoder indexedRowEncoder;
     private final FieldGetter[] fieldGetters;
     private final Admin admin;
+    private final boolean isDynamicPartitionEnabled;
 
     AppendWriterImpl(
             TablePath tablePath,
@@ -68,6 +69,7 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
         this.indexedRowEncoder = new IndexedRowEncoder(tableInfo.getRowType());
         this.fieldGetters = InternalRow.createFieldGetters(tableInfo.getRowType());
         this.admin = admin;
+        this.isDynamicPartitionEnabled = tableInfo.getTableConfig().isDynamicPartitionEnabled();
     }
 
     /**
@@ -79,7 +81,7 @@ class AppendWriterImpl extends AbstractTableWriter implements AppendWriter {
     public CompletableFuture<AppendResult> append(InternalRow row) {
         checkFieldCount(row);
 
-        PhysicalTablePath physicalPath = getPhysicalPath(row, admin, true);
+        PhysicalTablePath physicalPath = getPhysicalPath(row, admin, isDynamicPartitionEnabled);
         byte[] bucketKey = bucketKeyEncoder != null ? bucketKeyEncoder.encodeKey(row) : null;
 
         final WriteRecord record;
