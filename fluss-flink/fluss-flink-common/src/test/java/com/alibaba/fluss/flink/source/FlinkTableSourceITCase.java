@@ -59,6 +59,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.alibaba.fluss.flink.FlinkConnectorOptions.BOOTSTRAP_SERVERS;
@@ -919,6 +920,93 @@ abstract class FlinkTableSourceITCase extends FlinkTestBase {
                 .cause()
                 .isInstanceOf(UnsupportedOperationException.class)
                 .hasMessage("Full lookup caching is not supported yet.");
+    }
+
+    @Test
+    void testStreamingReadSinglePartitionPushDown() throws Exception {
+        tEnv.executeSql(
+                "create table partitioned_table"
+                        + " (a int not null, b varchar, c string, primary key (a, c) NOT ENFORCED) partitioned by (c) ");
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "partitioned_table");
+        tEnv.executeSql("alter table partitioned_table add partition (c=2025)");
+        tEnv.executeSql("alter table partitioned_table add partition (c=2026)");
+
+        List<String> expectedRowValues =
+                writeRowsToPartition(tablePath, Arrays.asList("2025", "2026")).stream()
+                        .filter(s -> s.contains("2025"))
+                        .collect(Collectors.toList());
+        waitUtilAllBucketFinishSnapshot(admin, tablePath, Arrays.asList("2025", "2026"));
+
+        org.apache.flink.util.CloseableIterator<Row> rowIter =
+                tEnv.executeSql("select * from partitioned_table where c ='2025'").collect();
+
+        assertResultsIgnoreOrder(rowIter, expectedRowValues, true);
+    }
+
+    @Test
+    void testStreamingReadMultiPartitionPushDown() throws Exception {
+
+        tEnv.executeSql(
+                "create table multi_partitioned_table"
+                        + " (a int not null, b varchar, c string,d string, primary key (a, c, d) NOT ENFORCED) partitioned by (c,d) "
+                        + "with ('table.auto-partition.enabled' = 'true', 'table.auto-partition.time-unit' = 'year','table.auto-partition.key'= 'c','table.auto-partition.num-precreate' = '0')");
+        TablePath tablePath = TablePath.of(DEFAULT_DB, "multi_partitioned_table");
+        tEnv.executeSql("alter table multi_partitioned_table add partition (c=2025,d=1)");
+        tEnv.executeSql("alter table multi_partitioned_table add partition (c=2025,d=2)");
+        tEnv.executeSql("alter table multi_partitioned_table add partition (c=2026,d=1)");
+
+        List<String> expectedRowValues =
+                writeRowsToTwoPartition(
+                                tablePath, Arrays.asList("c=2025,d=1", "c=2025,d=2", "c=2026,d=1"))
+                        .stream()
+                        .filter(s -> s.contains("2025"))
+                        .collect(Collectors.toList());
+        waitUtilAllBucketFinishSnapshot(
+                admin, tablePath, Arrays.asList("2025$1", "2025$2", "2025$2"));
+
+        // test partition key prefix match
+        org.apache.flink.util.CloseableIterator<Row> rowIter =
+                tEnv.executeSql("select * from multi_partitioned_table where c ='2025'").collect();
+
+        assertResultsIgnoreOrder(rowIter, expectedRowValues, false);
+
+        tEnv.executeSql("alter table multi_partitioned_table add partition (c=2025,d=3)");
+        tEnv.executeSql("alter table multi_partitioned_table add partition (c=2026,d=2)");
+        expectedRowValues =
+                writeRowsToTwoPartition(tablePath, Arrays.asList("c=2025,d=3", "c=2026,d=2"))
+                        .stream()
+                        .filter(s -> s.contains("2025"))
+                        .collect(Collectors.toList());
+        waitUtilAllBucketFinishSnapshot(admin, tablePath, Arrays.asList("2025$3", "2026$2"));
+        assertResultsIgnoreOrder(rowIter, expectedRowValues, true);
+
+        // test all partition key match
+        rowIter =
+                tEnv.executeSql("select * from multi_partitioned_table where c ='2025' and d ='3' ")
+                        .collect();
+        assertResultsIgnoreOrder(rowIter, expectedRowValues, true);
+    }
+
+    private List<String> writeRowsToTwoPartition(TablePath tablePath, Collection<String> partitions)
+            throws Exception {
+        List<InternalRow> rows = new ArrayList<>();
+        List<String> expectedRowValues = new ArrayList<>();
+
+        for (String partition : partitions) {
+            String[] keyValuePairs = partition.split(",");
+            String[] values = new String[2];
+            values[0] = keyValuePairs[0].split("=")[1];
+            values[1] = keyValuePairs[1].split("=")[1];
+
+            for (int i = 0; i < 10; i++) {
+                rows.add(row(i, "v1", values[0], values[1]));
+                expectedRowValues.add(String.format("+I[%d, v1, %s, %s]", i, values[0], values[1]));
+            }
+        }
+
+        writeRows(tablePath, rows, false);
+
+        return expectedRowValues;
     }
 
     private enum Caching {
