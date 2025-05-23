@@ -31,6 +31,8 @@ import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
+import com.alibaba.fluss.fs.FsPath;
+import com.alibaba.fluss.fs.TestFileSystem;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
@@ -1158,6 +1160,19 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                         .withSchema(doProjection ? rowType.project(new int[] {0}) : rowType)
                         .isEqualTo(expectedRecord.getRow());
             }
+        }
+    }
+
+    @Test
+    void testFileSystemRecognizeConnectionConf() throws Exception {
+        Configuration config = new Configuration(clientConf);
+        config.setString("fs.test.key", "fs_test_value");
+        config.setString("client.test.key", "client_test_value");
+        try (Connection conn = ConnectionFactory.createConnection(config)) {
+            FsPath fsPath = new FsPath("test:///f1");
+            TestFileSystem testFileSystem = (TestFileSystem) fsPath.getFileSystem();
+            Configuration filesystemConf = testFileSystem.getConfiguration();
+            assertThat(filesystemConf.toMap()).containsEntry("fs.test.key", "fs_test_value");
         }
     }
 }

@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.alibaba.fluss.config.FlussConfigUtils.CLIENT_PREFIX;
+import static com.alibaba.fluss.config.FlussConfigUtils.FS_PREFIX;
 import static com.alibaba.fluss.flink.catalog.FlinkCatalog.LAKE_TABLE_SPLITTER;
 import static com.alibaba.fluss.flink.utils.FlinkConnectorOptionsUtils.getBucketKeyIndexes;
 import static com.alibaba.fluss.flink.utils.FlinkConnectorOptionsUtils.getBucketKeys;
@@ -76,7 +77,7 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
         }
 
         FactoryUtil.TableFactoryHelper helper = FactoryUtil.createTableFactoryHelper(this, context);
-        helper.validateExcept("table.", "client.");
+        helper.validateExcept("table.", "client.", "fs.");
 
         boolean isStreamingMode =
                 context.getConfiguration().get(ExecutionOptions.RUNTIME_MODE)
@@ -210,10 +211,10 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 ConfigOptions.BOOTSTRAP_SERVERS.key(),
                 tableOptions.get(FlinkConnectorOptions.BOOTSTRAP_SERVERS.key()));
 
-        // forward all client configs
+        // forward all client&fs configs
         tableOptions.forEach(
                 (key, value) -> {
-                    if (key.startsWith(CLIENT_PREFIX)) {
+                    if (key.startsWith(CLIENT_PREFIX) || key.startsWith(FS_PREFIX)) {
                         flussConfig.setString(key, value);
                     }
                 });
