@@ -242,7 +242,6 @@ public interface Admin extends AutoCloseable {
      *
      * @param tablePath The path of the table.
      */
-    @Deprecated
     CompletableFuture<List<PartitionInfo>> listPartitionInfos(TablePath tablePath);
 
     /**
