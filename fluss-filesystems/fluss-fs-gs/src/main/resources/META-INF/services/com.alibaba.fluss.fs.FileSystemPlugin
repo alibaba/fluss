@@ -13,4 +13,3 @@
 # limitations under the License.
 
 com.alibaba.fluss.fs.gs.GSFileSystemPlugin
-com.alibaba.fluss.fs.gs.GSAFileSystemPlugin
