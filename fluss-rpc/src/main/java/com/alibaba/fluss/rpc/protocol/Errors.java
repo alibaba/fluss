@@ -41,6 +41,7 @@ import com.alibaba.fluss.exception.InvalidUpdateVersionException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
 import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.exception.LakeStorageNotConfiguredException;
+import com.alibaba.fluss.exception.LakeTableSnapshotNotExistException;
 import com.alibaba.fluss.exception.LeaderNotAvailableException;
 import com.alibaba.fluss.exception.LogOffsetOutOfRangeException;
 import com.alibaba.fluss.exception.LogStorageException;
@@ -207,7 +208,9 @@ public enum Errors {
     RETRIABLE_AUTHENTICATE_EXCEPTION(
             51,
             "Authentication failed with retriable exception. ",
-            RetriableAuthenticationException::new);
+            RetriableAuthenticationException::new),
+    LAKE_SNAPSHOT_NOT_EXIST(
+            52, "The lake snapshot is not exist.", LakeTableSnapshotNotExistException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 
