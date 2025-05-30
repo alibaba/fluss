@@ -20,7 +20,6 @@ import com.alibaba.fluss.memory.MemorySegment;
 import com.alibaba.fluss.memory.PreAllocatedPagedOutputView;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.record.ChangeType;
-import com.alibaba.fluss.record.DefaultLogRecordBatch;
 import com.alibaba.fluss.record.IndexedLogRecord;
 import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordBatch;
@@ -36,6 +35,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Collections;
 import java.util.Iterator;
 
+import static com.alibaba.fluss.record.LogRecordBatch.CURRENT_LOG_MAGIC_VALUE;
+import static com.alibaba.fluss.record.LogRecordBatchFormat.recordBatchHeaderSize;
 import static com.alibaba.fluss.record.TestData.DATA1_PHYSICAL_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID;
@@ -68,7 +69,7 @@ public class IndexedLogWriteBatchTest {
 
         for (int i = 0;
                 i
-                        < (writeLimit - DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE)
+                        < (writeLimit - recordBatchHeaderSize(CURRENT_LOG_MAGIC_VALUE))
                                 / estimatedSizeInBytes;
                 i++) {
             boolean appendResult =

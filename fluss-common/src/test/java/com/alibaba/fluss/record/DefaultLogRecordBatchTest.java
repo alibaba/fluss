@@ -23,21 +23,26 @@ import com.alibaba.fluss.testutils.DataTestUtils;
 import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.CloseableIterator;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import static com.alibaba.fluss.record.LogRecordBatchFormat.LOG_MAGIC_VALUE_V0;
+import static com.alibaba.fluss.record.LogRecordBatchFormat.LOG_MAGIC_VALUE_V1;
+import static com.alibaba.fluss.record.LogRecordBatchFormat.recordBatchHeaderSize;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link DefaultLogRecordBatch}. */
 public class DefaultLogRecordBatchTest extends LogTestBase {
 
-    @Test
-    void testRecordBatchSize() throws Exception {
+    @ParameterizedTest
+    @ValueSource(bytes = {LOG_MAGIC_VALUE_V0, LOG_MAGIC_VALUE_V1})
+    void testRecordBatchSize(byte magic) throws Exception {
         MemoryLogRecords memoryLogRecords =
-                DataTestUtils.genMemoryLogRecordsByObject(TestData.DATA1);
+                DataTestUtils.genMemoryLogRecordsByObject(magic, TestData.DATA1);
         int totalSize = 0;
         for (LogRecordBatch logRecordBatch : memoryLogRecords.batches()) {
             totalSize += logRecordBatch.sizeInBytes();
@@ -45,8 +50,9 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
         assertThat(totalSize).isEqualTo(memoryLogRecords.sizeInBytes());
     }
 
-    @Test
-    void testIndexedRowWriteAndReadBatch() throws Exception {
+    @ParameterizedTest
+    @ValueSource(bytes = {LOG_MAGIC_VALUE_V0, LOG_MAGIC_VALUE_V1})
+    void testIndexedRowWriteAndReadBatch(byte magic) throws Exception {
         int recordNumber = 50;
         RowType allRowType = TestInternalRowGenerator.createAllRowType();
         MemoryLogRecordsIndexedBuilder builder =
@@ -97,8 +103,9 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
         builder.close();
     }
 
-    @Test
-    void testNoRecordAppend() throws Exception {
+    @ParameterizedTest
+    @ValueSource(bytes = {LOG_MAGIC_VALUE_V0, LOG_MAGIC_VALUE_V1})
+    void testNoRecordAppend(byte magic) throws Exception {
         // 1. no record append with baseOffset as 0.
         MemoryLogRecordsIndexedBuilder builder =
                 MemoryLogRecordsIndexedBuilder.builder(
@@ -106,7 +113,7 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
         MemoryLogRecords memoryLogRecords = MemoryLogRecords.pointToBytesView(builder.build());
         Iterator<LogRecordBatch> iterator = memoryLogRecords.batches().iterator();
         // only contains batch header.
-        assertThat(memoryLogRecords.sizeInBytes()).isEqualTo(48);
+        assertThat(memoryLogRecords.sizeInBytes()).isEqualTo(recordBatchHeaderSize(magic));
 
         assertThat(iterator.hasNext()).isTrue();
         LogRecordBatch logRecordBatch = iterator.next();
@@ -134,7 +141,7 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
         memoryLogRecords = MemoryLogRecords.pointToBytesView(builder.build());
         iterator = memoryLogRecords.batches().iterator();
         // only contains batch header.
-        assertThat(memoryLogRecords.sizeInBytes()).isEqualTo(48);
+        assertThat(memoryLogRecords.sizeInBytes()).isEqualTo(recordBatchHeaderSize(magic));
 
         assertThat(iterator.hasNext()).isTrue();
         logRecordBatch = iterator.next();
