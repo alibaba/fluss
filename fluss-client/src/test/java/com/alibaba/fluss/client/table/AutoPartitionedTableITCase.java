@@ -395,6 +395,10 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
                         .partitionedBy("c")
                         .property(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED, true)
                         .property(
+                                ConfigOptions.TABLE_DYNAMIC_PARTITION_ENABLED,
+                                false) // for auto partition test, we will close dynamic partition
+                        // creation.
+                        .property(
                                 ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT,
                                 AutoPartitionTimeUnit.YEAR)
                         .build();
