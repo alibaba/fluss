@@ -71,7 +71,7 @@
 
 .menu__list-item {
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .menu__link--sublist-caret:after {
@@ -94,7 +94,7 @@
 
     b,
     strong {
-        font-weight: 500;
+        font-weight: 700;
         color: #1d1d1d;
     }
 
