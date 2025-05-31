@@ -38,6 +38,7 @@ import com.alibaba.fluss.rpc.messages.PutKvRequest;
 import com.alibaba.fluss.rpc.messages.PutKvResponse;
 import com.alibaba.fluss.rpc.protocol.ApiError;
 import com.alibaba.fluss.rpc.protocol.Errors;
+import com.alibaba.fluss.utils.ExceptionUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -172,7 +173,21 @@ public class Sender implements Runnable {
     public void runOnce() throws Exception {
         if (idempotenceManager.idempotenceEnabled()) {
             // may be wait for writer id.
-            idempotenceManager.maybeWaitForWriterId();
+            Set<PhysicalTablePath> targetTables = accumulator.getPhysicalTablePathsInBatches();
+            // TODO: only request to init writer_id when we have valid target tables
+            try {
+                idempotenceManager.maybeWaitForWriterId(targetTables);
+            } catch (Exception e) {
+                Throwable t = ExceptionUtils.stripExecutionException(e);
+
+                // TODO: If 'only request to init writer_id when we have valid target tables' have
+                // been down, this if check can be removed.
+                if (!targetTables.isEmpty()) {
+                    maybeAbortBatches((Exception) t);
+                } else {
+                    LOG.trace("No target tables, ignore init writer id error", t);
+                }
+            }
         }
 
         // do send.
@@ -251,6 +266,13 @@ public class Sender implements Runnable {
                 }
             }
             maybeRemoveAndDeallocateBatch(batch);
+        }
+    }
+
+    private void maybeAbortBatches(Exception exception) {
+        if (accumulator.hasIncomplete()) {
+            LOG.error("Aborting write batches due to fatal error", exception);
+            accumulator.abortBatches(exception);
         }
     }
 
