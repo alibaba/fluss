@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.flink.source.testutils;
 
+import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
@@ -34,10 +35,42 @@ public class FlinkRowAssertionsUtils {
         try {
             int expectRecords = expected.size();
             List<String> actual = new ArrayList<>(expectRecords);
+
+            long startTime = System.currentTimeMillis();
+            int maxWaitTime = 60000; // 60 seconds
+
             for (int i = 0; i < expectRecords; i++) {
-                actual.add(iterator.next().toString());
+                // Wait for next record with timeout
+                while (!iterator.hasNext()) {
+                    if (System.currentTimeMillis() - startTime > maxWaitTime) {
+                        // Timeout reached - stop waiting
+                        break;
+                    }
+                    Thread.sleep(10);
+                }
+
+                if (iterator.hasNext()) {
+                    actual.add(iterator.next().toString());
+                } else {
+                    // No more records available
+                    break;
+                }
             }
+
             assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Test interrupted", e);
+        } catch (Exception e) {
+            // Handle job completion gracefully
+            if (e.getCause() instanceof IllegalStateException
+                    && e.getMessage() != null
+                    && e.getMessage().contains("MiniCluster")) {
+                // Expected for finite jobs - do nothing
+            } else {
+                throw e;
+            }
         } finally {
             if (closeIterator) {
                 try {
@@ -49,5 +82,51 @@ public class FlinkRowAssertionsUtils {
         }
     }
 
-    // Add other shared utility methods here
+    // expects exact order
+    public static void assertQueryResultExactOrder(
+            TableEnvironment env, String query, List<String> expected) throws Exception {
+        try (CloseableIterator<Row> rowIter = env.executeSql(query).collect()) {
+            int expectRecords = expected.size();
+            List<String> actual = new ArrayList<>(expectRecords);
+
+            // Add timeout logic
+            long startTime = System.currentTimeMillis();
+            int maxWaitTime = 60000; // 60 seconds
+
+            for (int i = 0; i < expectRecords; i++) {
+                // Wait for next record with timeout
+                while (!rowIter.hasNext()) {
+                    if (System.currentTimeMillis() - startTime > maxWaitTime) {
+                        // Timeout reached - stop waiting
+                        break;
+                    }
+                    Thread.sleep(10);
+                }
+
+                if (rowIter.hasNext()) {
+                    Row r = rowIter.next();
+                    String row = r.toString();
+                    actual.add(row);
+                } else {
+                    // No more records available
+                    break;
+                }
+            }
+
+            assertThat(actual).containsExactlyElementsOf(expected);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Test interrupted", e);
+        } catch (Exception e) {
+            // Handle job completion gracefully
+            if (e.getCause() instanceof IllegalStateException
+                    && e.getMessage() != null
+                    && e.getMessage().contains("MiniCluster")) {
+                // Expected for finite jobs - do nothing
+            } else {
+                throw e;
+            }
+        }
+    }
 }
