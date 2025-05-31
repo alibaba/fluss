@@ -29,6 +29,7 @@ import com.alibaba.fluss.flink.source.split.SourceSplitBase;
 import com.alibaba.fluss.flink.source.split.SourceSplitSerializer;
 import com.alibaba.fluss.flink.source.state.FlussSourceEnumeratorStateSerializer;
 import com.alibaba.fluss.flink.source.state.SourceEnumeratorState;
+import com.alibaba.fluss.flink.utils.PushdownUtils.FieldEqual;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.types.RowType;
 
@@ -46,6 +47,8 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import javax.annotation.Nullable;
 
+import java.util.List;
+
 /** Flink source for Fluss. */
 public class FlinkSource<OUT>
         implements Source<OUT, SourceSplitBase, SourceEnumeratorState>, ResultTypeQueryable {
@@ -62,6 +65,8 @@ public class FlinkSource<OUT>
     private final boolean streaming;
     private final FlussDeserializationSchema<OUT> deserializationSchema;
 
+    @Nullable private final List<FieldEqual> partitionFilters;
+
     public FlinkSource(
             Configuration flussConf,
             TablePath tablePath,
@@ -72,7 +77,8 @@ public class FlinkSource<OUT>
             OffsetsInitializer offsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
             FlussDeserializationSchema<OUT> deserializationSchema,
-            boolean streaming) {
+            boolean streaming,
+            List<FieldEqual> partitionFilters) {
         this.flussConf = flussConf;
         this.tablePath = tablePath;
         this.hasPrimaryKey = hasPrimaryKey;
@@ -83,6 +89,7 @@ public class FlinkSource<OUT>
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.deserializationSchema = deserializationSchema;
         this.streaming = streaming;
+        this.partitionFilters = partitionFilters;
     }
 
     @Override
@@ -101,7 +108,8 @@ public class FlinkSource<OUT>
                 splitEnumeratorContext,
                 offsetsInitializer,
                 scanPartitionDiscoveryIntervalMs,
-                streaming);
+                streaming,
+                partitionFilters);
     }
 
     @Override
@@ -118,7 +126,8 @@ public class FlinkSource<OUT>
                 sourceEnumeratorState.getAssignedPartitions(),
                 offsetsInitializer,
                 scanPartitionDiscoveryIntervalMs,
-                streaming);
+                streaming,
+                partitionFilters);
     }
 
     @Override
