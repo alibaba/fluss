@@ -345,6 +345,12 @@
                                         <!-- exclude for fluss-dist -->
                                         <exclude>com.alibaba.fluss.dist.DummyClass</exclude>
                                         <exclde>com.alibaba.fluss.lake.paimon.FlussDataTypeToPaimonDataType</exclde>
+                                        <!-- start exclude for flink tiering service -->
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.LakeTieringWriterInitContext</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.LakeTieringSourceReader</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TableBucketWriteResultEmitter</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TableBucketWriteResultTypeInfo*</exclude>
+                                        <!-- end exclude for flink tiering service -->
                                     </excludes>
                                 </rule>
                             </rules>
