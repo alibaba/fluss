@@ -910,6 +910,14 @@ public class ConfigOptions {
                                     + "requests per bucket exceeds this setting, the writer will wait for the inflight "
                                     + "requests to complete before sending out new requests.");
 
+    public static final ConfigOption<Duration> CLIENT_WRITER_DYNAMIC_BATCH_SIZE_ESTIMATE_INTERVAL =
+            key("client.writer.dynamic-batch-size-estimate.interval")
+                    .durationType()
+                    .defaultValue(Duration.ofMinutes(2))
+                    .withDescription(
+                            "The interval for dynamic batch size estimate for the writer's DynamicWriteBatchSizeEstimator. "
+                                    + "To disable dynamic batch size estimate, set this setting to 0s.");
+
     public static final ConfigOption<Duration> CLIENT_REQUEST_TIMEOUT =
             key("client.request-timeout")
                     .durationType()

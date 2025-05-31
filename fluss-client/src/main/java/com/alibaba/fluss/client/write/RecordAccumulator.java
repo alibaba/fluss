@@ -76,7 +76,6 @@ public final class RecordAccumulator {
     private final AtomicInteger flushesInProgress;
     private final AtomicInteger appendsInProgress;
     private final int batchSize;
-    private final int pagesPerBatch;
 
     /**
      * An artificial delay time to add before declaring a records instance that isn't full ready for
@@ -107,6 +106,7 @@ public final class RecordAccumulator {
 
     private final IdempotenceManager idempotenceManager;
     private final Clock clock;
+    private final DynamicWriteBatchSizeEstimator dynamicWriteBatchSizeEstimator;
 
     // TODO add retryBackoffMs to retry the produce request upon receiving an error.
     // TODO add deliveryTimeoutMs to report success or failure on record delivery.
@@ -129,11 +129,17 @@ public final class RecordAccumulator {
                 Math.max(1, (int) conf.get(ConfigOptions.CLIENT_WRITER_BATCH_SIZE).getBytes());
 
         this.writerBufferPool = LazyMemorySegmentPool.createWriterBufferPool(conf);
-        this.pagesPerBatch = Math.max(1, MathUtils.ceilDiv(batchSize, writerBufferPool.pageSize()));
         this.bufferAllocator = new RootAllocator(Long.MAX_VALUE);
         this.arrowWriterPool = new ArrowWriterPool(bufferAllocator);
         this.incomplete = new IncompleteBatches();
         this.nodesDrainIndex = new HashMap<>();
+        this.dynamicWriteBatchSizeEstimator =
+                new DynamicWriteBatchSizeEstimator(
+                        batchSize,
+                        (int) conf.get(ConfigOptions.CLIENT_WRITER_BUFFER_MEMORY_SIZE).getBytes(),
+                        (int) conf.get(ConfigOptions.CLIENT_WRITER_BUFFER_PAGE_SIZE).getBytes(),
+                        conf.get(ConfigOptions.CLIENT_WRITER_DYNAMIC_BATCH_SIZE_ESTIMATE_INTERVAL)
+                                .toMillis());
         this.idempotenceManager = idempotenceManager;
         this.clock = clock;
         registerMetrics(writerMetricGroup);
@@ -189,7 +195,7 @@ public final class RecordAccumulator {
             }
 
             TableInfo tableInfo = cluster.getTableOrElseThrow(physicalTablePath.getTablePath());
-            memorySegments = allocateMemorySegments(writeRecord);
+            memorySegments = allocateMemorySegments(writeRecord, physicalTablePath);
             synchronized (dq) {
                 RecordAppendResult appendResult =
                         appendNewBatch(
@@ -360,7 +366,15 @@ public final class RecordAccumulator {
         return bucketAndWriteBatches.batches.get(tableBucket.getBucket());
     }
 
-    private List<MemorySegment> allocateMemorySegments(WriteRecord writeRecord) throws IOException {
+    private List<MemorySegment> allocateMemorySegments(
+            WriteRecord writeRecord, PhysicalTablePath physicalTablePath) throws IOException {
+        int pagesPerBatch =
+                Math.max(
+                        1,
+                        MathUtils.ceilDiv(
+                                dynamicWriteBatchSizeEstimator.batchSize(physicalTablePath),
+                                writerBufferPool.pageSize()));
+
         if (writeRecord.getWriteFormat() == WriteFormat.ARROW_LOG) {
             // pre-allocate a batch memory size for Arrow, if it is not sufficient during batching,
             // it will allocate memory from heap
@@ -638,7 +652,12 @@ public final class RecordAccumulator {
             // the rest of the work by processing outside the lock close() is particularly expensive
             checkNotNull(batch, "batch should not be null");
             batch.close();
-            size += batch.estimatedSizeInBytes();
+
+            int currentBatchSize = batch.estimatedSizeInBytes();
+            size += currentBatchSize;
+            PhysicalTablePath physicalTablePath = batch.physicalTablePath();
+            dynamicWriteBatchSizeEstimator.recordNewBatchSize(physicalTablePath, currentBatchSize);
+
             ready.add(batch);
             // mark the batch as drained.
             batch.drained(System.currentTimeMillis());
