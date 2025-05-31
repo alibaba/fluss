@@ -144,7 +144,13 @@ abstract class FlinkTableSourceITCase extends FlinkTestBase {
         List<String> expectedRows = Arrays.asList("+I[1, v1]", "+I[2, v2]", "+I[3, v3]");
 
         assertResultsIgnoreOrder(
-                tEnv.executeSql("select * from read_snapshot_test").collect(), expectedRows, true);
+                tEnv.executeSql(
+                                // the options is just used to check option with prefix 'fs' should
+                                // pass Flink validation
+                                "select * from read_snapshot_test /*+ OPTIONS('fs.oss.endpoint' = 'test') */")
+                        .collect(),
+                expectedRows,
+                true);
     }
 
     @Test

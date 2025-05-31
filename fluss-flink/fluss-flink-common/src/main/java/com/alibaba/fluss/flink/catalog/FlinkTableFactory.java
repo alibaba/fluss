@@ -47,6 +47,7 @@ import org.apache.flink.table.types.logical.RowType;
 
 import java.io.File;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -57,6 +58,7 @@ import java.util.Set;
 
 import static com.alibaba.fluss.config.ConfigOptions.TABLE_DATALAKE_FORMAT;
 import static com.alibaba.fluss.config.FlussConfigUtils.CLIENT_PREFIX;
+import static com.alibaba.fluss.config.FlussConfigUtils.FS_PREFIX;
 import static com.alibaba.fluss.flink.catalog.FlinkCatalog.LAKE_TABLE_SPLITTER;
 import static com.alibaba.fluss.flink.utils.DataLakeUtils.getDatalakeFormat;
 import static com.alibaba.fluss.flink.utils.FlinkConnectorOptionsUtils.getBucketKeyIndexes;
@@ -82,11 +84,10 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
         FactoryUtil.TableFactoryHelper helper = FactoryUtil.createTableFactoryHelper(this, context);
         final ReadableConfig tableOptions = helper.getOptions();
         Optional<DataLakeFormat> datalakeFormat = getDatalakeFormat(tableOptions);
-        if (datalakeFormat.isPresent()) {
-            helper.validateExcept("table.", "client.", datalakeFormat.get() + ".");
-        } else {
-            helper.validateExcept("table.", "client.");
-        }
+        List<String> prefixesToSkip =
+                new ArrayList<>(Arrays.asList("table.", "client.", FS_PREFIX));
+        datalakeFormat.ifPresent(dataLakeFormat -> prefixesToSkip.add(dataLakeFormat + "."));
+        helper.validateExcept(prefixesToSkip.toArray(new String[0]));
 
         boolean isStreamingMode =
                 context.getConfiguration().get(ExecutionOptions.RUNTIME_MODE)
@@ -224,10 +225,10 @@ public class FlinkTableFactory implements DynamicTableSourceFactory, DynamicTabl
                 ConfigOptions.BOOTSTRAP_SERVERS.key(),
                 tableOptions.get(FlinkConnectorOptions.BOOTSTRAP_SERVERS.key()));
 
-        // forward all client configs
+        // forward all client&fs configs
         tableOptions.forEach(
                 (key, value) -> {
-                    if (key.startsWith(CLIENT_PREFIX)) {
+                    if (key.startsWith(CLIENT_PREFIX) || key.startsWith(FS_PREFIX)) {
                         flussConfig.setString(key, value);
                     }
                 });
