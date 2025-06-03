@@ -21,15 +21,21 @@ import com.alibaba.fluss.exception.AuthenticationException;
 
 import javax.annotation.Nullable;
 
+import java.io.Closeable;
+
 /** Authenticator for client side. */
 @PublicEvolving
-public interface ClientAuthenticator {
+public interface ClientAuthenticator extends Closeable {
 
     /** The protocol name of the authenticator, which will send in the AuthenticateRequest. */
     String protocol();
 
     /** Initialize the authenticator. */
-    default void initialize(AuthenticateContext context) {}
+    default void initialize(AuthenticateContext context) throws AuthenticationException {}
+
+    default boolean hasInitialTokenResponse() {
+        return true;
+    }
 
     /**
      * * Generates the initial token or calculates a token based on the server's challenge, then
@@ -79,6 +85,10 @@ public interface ClientAuthenticator {
     /** Checks if the authentication from client side is completed. */
     boolean isCompleted();
 
+    default void close() {}
+
     /** The context of the authentication process. */
-    interface AuthenticateContext {}
+    interface AuthenticateContext {
+        String ipAddress();
+    }
 }

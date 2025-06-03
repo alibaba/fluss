@@ -71,6 +71,7 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
     private final ServerAuthenticator authenticator;
 
     private volatile ConnectionState state;
+    private volatile boolean initialized = false;
 
     public NettyServerHandler(
             RequestChannel requestChannel,
@@ -167,7 +168,6 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
         super.channelActive(ctx);
         this.ctx = ctx;
         this.remoteAddress = ctx.channel().remoteAddress();
-        authenticator.initialize(new DefaultAuthenticateContext());
         switchState(
                 authenticator.isCompleted()
                         ? ConnectionState.READY
@@ -314,13 +314,17 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         AuthenticateRequest authenticateRequest = (AuthenticateRequest) requestMessage;
-        if (!authenticator.protocol().equals(authenticateRequest.getProtocol())) {
-            future.completeExceptionally(
-                    new AuthenticationException(
-                            String.format(
-                                    "Authenticate protocol not match: protocol of server is '%s' while protocol of client is '%s'",
-                                    authenticator.protocol(), authenticateRequest.getProtocol())));
+        try {
+            authenticator.matchProtocol(authenticateRequest.getProtocol());
+        } catch (AuthenticationException e) {
+            future.completeExceptionally(e);
             return;
+        }
+
+        if (!initialized) {
+            authenticator.initialize(
+                    new DefaultAuthenticateContext(authenticateRequest.getProtocol()));
+            initialized = true;
         }
 
         AuthenticateResponse authenticateResponse = new AuthenticateResponse();
@@ -340,7 +344,8 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
                         ctx.channel().remoteAddress(),
                         e.getMessage(),
                         e);
-                authenticator.initialize(new DefaultAuthenticateContext());
+                authenticator.initialize(
+                        new DefaultAuthenticateContext(authenticateRequest.getProtocol()));
             }
 
             future.completeExceptionally(e);
@@ -376,11 +381,27 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
     }
 
     private class DefaultAuthenticateContext implements ServerAuthenticator.AuthenticateContext {
+        private final String protocolName;
+
+        public DefaultAuthenticateContext(String protocolName) {
+            this.protocolName = protocolName;
+        }
+
         @Override
         public String ipAddress() {
             return ((InetSocketAddress) ctx.channel().remoteAddress())
                     .getAddress()
                     .getHostAddress();
+        }
+
+        @Override
+        public String listenerName() {
+            return listenerName;
+        }
+
+        @Override
+        public String protocol() {
+            return protocolName;
         }
     }
 }
