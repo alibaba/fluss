@@ -33,6 +33,15 @@ public interface ServerAuthenticator extends Closeable {
 
     String protocol();
 
+    default void matchProtocol(String protocol) throws AuthenticationException {
+        if (!protocol().equals(protocol)) {
+            throw new AuthenticationException(
+                    String.format(
+                            "Authenticate protocol not match: protocol of server is '%s' while protocol of client is '%s'",
+                            protocol(), protocol));
+        }
+    }
+
     /** Initialize the authenticator. */
     default void initialize(AuthenticateContext context) {}
 
@@ -111,5 +120,9 @@ public interface ServerAuthenticator extends Closeable {
     /** The context of the authentication process. */
     interface AuthenticateContext {
         String ipAddress();
+
+        String listenerName();
+
+        String protocol();
     }
 }
