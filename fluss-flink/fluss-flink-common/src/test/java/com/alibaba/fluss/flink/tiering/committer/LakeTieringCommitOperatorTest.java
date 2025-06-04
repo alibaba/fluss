@@ -88,32 +88,38 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
 
         long tableId1 = createTable(tablePath1, DEFAULT_PK_TABLE_DESCRIPTOR);
         long tableId2 = createTable(tablePath2, DEFAULT_PK_TABLE_DESCRIPTOR);
+        int numberOfWriteResults = 3;
 
         // table1, bucket 0
         TableBucket t1b0 = new TableBucket(tableId1, 0);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath1, t1b0, 1, 11));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath1, t1b0, 1, 11, numberOfWriteResults));
         // table1, bucket 1
         TableBucket t1b1 = new TableBucket(tableId1, 1);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath1, t1b1, 2, 12));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath1, t1b1, 2, 12, numberOfWriteResults));
         verifyNoLakeSnapshot(tablePath1);
 
         // table2, bucket0
         TableBucket t2b0 = new TableBucket(tableId2, 0);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath2, t2b0, 1, 21));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath2, t2b0, 1, 21, numberOfWriteResults));
 
         // table2, bucket1
         TableBucket t2b1 = new TableBucket(tableId2, 1);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath2, t2b1, 2, 22));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath2, t2b1, 2, 22, numberOfWriteResults));
         verifyNoLakeSnapshot(tablePath2);
 
         // add table1, bucket2
         TableBucket t1b2 = new TableBucket(tableId1, 2);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath1, t1b2, 3, 13));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath1, t1b2, 3, 13, numberOfWriteResults));
         // verify lake snapshot
         Map<TableBucket, Long> expectedLogEndOffsets = new HashMap<>();
         expectedLogEndOffsets.put(t1b0, 11L);
@@ -124,7 +130,8 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
         // add table2, bucket2
         TableBucket t2b2 = new TableBucket(tableId2, 2);
         committerOperator.processElement(
-                createTableBucketWriteResultStreamRecord(tablePath2, t2b2, 4, 23));
+                createTableBucketWriteResultStreamRecord(
+                        tablePath2, t2b2, 4, 23, numberOfWriteResults));
         expectedLogEndOffsets = new HashMap<>();
         expectedLogEndOffsets.put(t2b0, 21L);
         expectedLogEndOffsets.put(t2b1, 22L);
@@ -138,7 +145,7 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
             long offset = bucket * bucket;
             committerOperator.processElement(
                     createTableBucketWriteResultStreamRecord(
-                            tablePath1, tableBucket, bucket, offset));
+                            tablePath1, tableBucket, bucket, offset, numberOfWriteResults));
             expectedLogEndOffsets.put(tableBucket, offset);
         }
         verifyLakeSnapshot(tablePath1, tableId1, 0, expectedLogEndOffsets);
@@ -151,6 +158,7 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
         Map<String, Long> partitionIdByNames =
                 FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
         Map<TableBucket, Long> expectedLogEndOffsets = new HashMap<>();
+        int numberOfWriteResults = 3 * partitionIdByNames.size();
         long offset = 0;
         for (int bucket = 0; bucket < 3; bucket++) {
             for (Map.Entry<String, Long> partitionIdAndNameEntry : partitionIdByNames.entrySet()) {
@@ -159,7 +167,7 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
                 long currentOffset = offset++;
                 committerOperator.processElement(
                         createTableBucketWriteResultStreamRecord(
-                                tablePath, tableBucket, 1, currentOffset));
+                                tablePath, tableBucket, 1, currentOffset, numberOfWriteResults));
                 expectedLogEndOffsets.put(tableBucket, currentOffset);
             }
             if (bucket == 2) {
@@ -175,10 +183,15 @@ class LakeTieringCommitOperatorTest extends FlinkTestBase {
                     TablePath tablePath,
                     TableBucket tableBucket,
                     int writeResult,
-                    long logEndOffset) {
+                    long logEndOffset,
+                    int numberOfWriteResults) {
         TableBucketWriteResult<TestingWriteResult> tableBucketWriteResult =
                 new TableBucketWriteResult<>(
-                        tablePath, tableBucket, new TestingWriteResult(writeResult), logEndOffset);
+                        tablePath,
+                        tableBucket,
+                        new TestingWriteResult(writeResult),
+                        logEndOffset,
+                        numberOfWriteResults);
         return new StreamRecord<>(tableBucketWriteResult);
     }
 

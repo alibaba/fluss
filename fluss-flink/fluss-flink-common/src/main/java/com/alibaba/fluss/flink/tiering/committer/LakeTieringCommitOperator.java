@@ -22,8 +22,6 @@ import com.alibaba.fluss.flink.tiering.source.TableBucketWriteResult;
 import com.alibaba.fluss.lakehouse.committer.LakeCommitter;
 import com.alibaba.fluss.lakehouse.writer.LakeTieringFactory;
 import com.alibaba.fluss.metadata.TableBucket;
-import com.alibaba.fluss.metadata.TableInfo;
-import com.alibaba.fluss.metadata.TablePath;
 
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.operators.coordination.OperatorEventGateway;
@@ -44,9 +42,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.utils.Preconditions.checkState;
+
 /**
- * A Flink operator to combine {@link WriteResult} to {@link Committable} which will then be
- * committed to lake & Fluss cluster.
+ * A Flink operator to aggregate {@link WriteResult}s by table to {@link Committable} which will
+ * then be committed to lake & Fluss cluster.
  */
 public class LakeTieringCommitOperator<WriteResult, Committable>
         extends AbstractStreamOperator<Committable>
@@ -59,11 +59,9 @@ public class LakeTieringCommitOperator<WriteResult, Committable>
     private final OperatorEventGateway operatorEventGateway;
     private final TableLakeSnapshotCommitter tableLakeSnapshotCommitter;
 
-    private final Map<Long, Map<Long, List<TableBucketWriteResult<WriteResult>>>>
-            partitionedTableCollectedResult;
+    // tableid -> write results
     private final Map<Long, List<TableBucketWriteResult<WriteResult>>>
-            nonPartitionedTableCollectedResult;
-    private final Map<Long, Integer> bucketNumByTableId;
+            collectedTableBucketWriteResults;
 
     public LakeTieringCommitOperator(
             StreamOperatorParameters<Committable> parameters,
@@ -73,9 +71,7 @@ public class LakeTieringCommitOperator<WriteResult, Committable>
         this.lakeTieringFactory = lakeTieringFactory;
         this.operatorEventGateway = operatorEventGateway;
         this.tableLakeSnapshotCommitter = new TableLakeSnapshotCommitter(flussConf);
-        this.partitionedTableCollectedResult = new HashMap<>();
-        this.nonPartitionedTableCollectedResult = new HashMap<>();
-        this.bucketNumByTableId = new HashMap<>();
+        this.collectedTableBucketWriteResults = new HashMap<>();
         this.setup(
                 parameters.getContainingTask(),
                 parameters.getStreamConfig(),
@@ -93,22 +89,16 @@ public class LakeTieringCommitOperator<WriteResult, Committable>
         TableBucketWriteResult<WriteResult> tableBucketWriteResult = streamRecord.getValue();
         TableBucket tableBucket = tableBucketWriteResult.tableBucket();
         long tableId = tableBucket.getTableId();
-        registerTableBucketWriteResult(tableBucketWriteResult);
+        registerTableBucketWriteResult(tableId, tableBucketWriteResult);
 
         // may collect all write results for the table
-        boolean isPartitioned = tableBucket.getPartitionId() != null;
         List<TableBucketWriteResult<WriteResult>> committableWriteResults =
-                collectTableAllBucketWriteResult(tableId, isPartitioned);
+                collectTableAllBucketWriteResult(tableId);
 
         if (committableWriteResults != null) {
             commitWriteResults(tableId, committableWriteResults);
-            // clear the table id
-            bucketNumByTableId.remove(tableId);
-            if (isPartitioned) {
-                partitionedTableCollectedResult.remove(tableId);
-            } else {
-                nonPartitionedTableCollectedResult.remove(tableId);
-            }
+            collectedTableBucketWriteResults.remove(tableId);
+            // notify that the table id has been finished tier
             operatorEventGateway.sendEventToCoordinator(
                     new SourceEventWrapper(new FinishTieringEvent(tableId)));
         }
@@ -137,79 +127,48 @@ public class LakeTieringCommitOperator<WriteResult, Committable>
     }
 
     private void registerTableBucketWriteResult(
-            TableBucketWriteResult<WriteResult> tableBucketWriteResult) throws Exception {
-        TableBucket tableBucket = tableBucketWriteResult.tableBucket();
-        TablePath tablePath = tableBucketWriteResult.tablePath();
-        long tableId = tableBucket.getTableId();
-        if (!bucketNumByTableId.containsKey(tableId)) {
-            TableInfo tableInfo = tableLakeSnapshotCommitter.getTableInfo(tablePath);
-            // todo: check whether the table id of the table info is equal to the tableid in the
-            // write result
-            bucketNumByTableId.put(tableId, tableInfo.getNumBuckets());
-        }
-
-        if (tableBucket.getPartitionId() == null) {
-            List<TableBucketWriteResult<WriteResult>> tableBucketWriteResults =
-                    nonPartitionedTableCollectedResult.computeIfAbsent(
-                            tableId, (id) -> new ArrayList<>());
-            tableBucketWriteResults.add(tableBucketWriteResult);
-        } else {
-            Map<Long, List<TableBucketWriteResult<WriteResult>>> writeResultByPartition =
-                    partitionedTableCollectedResult.computeIfAbsent(
-                            tableId, (id) -> new HashMap<>());
-            List<TableBucketWriteResult<WriteResult>> tableBucketWriteResults =
-                    writeResultByPartition.computeIfAbsent(
-                            tableBucket.getPartitionId(), (partitionId) -> new ArrayList<>());
-            tableBucketWriteResults.add(tableBucketWriteResult);
-        }
+            long tableId, TableBucketWriteResult<WriteResult> tableBucketWriteResult) {
+        collectedTableBucketWriteResults
+                .computeIfAbsent(tableId, k -> new ArrayList<>())
+                .add(tableBucketWriteResult);
     }
 
     @Nullable
     private List<TableBucketWriteResult<WriteResult>> collectTableAllBucketWriteResult(
-            long tableId, boolean isPartitioned) {
-        if (isPartitioned) {
-            Map<Long, List<TableBucketWriteResult<WriteResult>>> writeResultByPartition =
-                    partitionedTableCollectedResult.get(tableId);
-            List<TableBucketWriteResult<WriteResult>> writeResults = new ArrayList<>();
-            for (Map.Entry<Long, List<TableBucketWriteResult<WriteResult>>> tableWriteResultEntry :
-                    writeResultByPartition.entrySet()) {
-                List<TableBucketWriteResult<WriteResult>> partitionWriteResults =
-                        collectWriteResult(tableId, tableWriteResultEntry.getValue());
-                if (partitionWriteResults != null) {
-                    writeResults.addAll(partitionWriteResults);
-                } else {
-                    return null;
-                }
-            }
-            return writeResults;
-        } else {
-            return collectWriteResult(tableId, nonPartitionedTableCollectedResult.get(tableId));
-        }
-    }
-
-    @Nullable
-    private List<TableBucketWriteResult<WriteResult>> collectWriteResult(
-            long tableId, List<TableBucketWriteResult<WriteResult>> tableBucketWriteResults) {
+            long tableId) {
         Set<TableBucket> collectedBuckets = new HashSet<>();
+        Integer numberOfWriteResults = null;
         List<TableBucketWriteResult<WriteResult>> writeResults = new ArrayList<>();
-        for (TableBucketWriteResult<WriteResult> tableBucketWriteResult : tableBucketWriteResults) {
+        for (TableBucketWriteResult<WriteResult> tableBucketWriteResult :
+                collectedTableBucketWriteResults.get(tableId)) {
             if (!collectedBuckets.add(tableBucketWriteResult.tableBucket())) {
                 // it means the write results contain more than two write result
                 // for same table, it shouldn't happen, let's throw exception to
                 // avoid unexpected behavior
                 throw new IllegalStateException(
                         String.format(
-                                "Found more than two write results for same "
-                                        + "bucket %s of table %d",
+                                "Found duplicate write results for bucket %s of table %s.",
                                 tableBucketWriteResult.tableBucket(), tableId));
+            }
+            if (numberOfWriteResults == null) {
+                numberOfWriteResults = tableBucketWriteResult.numberOfWriteResults();
+            } else {
+                // the numberOfWriteResults must be same across tableBucketWriteResults
+                checkState(
+                        numberOfWriteResults == tableBucketWriteResult.numberOfWriteResults(),
+                        "numberOfWriteResults is not same across TableBucketWriteResults for table %s, got %s and %s.",
+                        tableId,
+                        numberOfWriteResults,
+                        tableBucketWriteResult.numberOfWriteResults());
             }
             writeResults.add(tableBucketWriteResult);
         }
-        int bucketCount = bucketNumByTableId.get(tableId);
-        if (bucketCount == writeResults.size()) {
+
+        if (numberOfWriteResults != null && writeResults.size() == numberOfWriteResults) {
             return writeResults;
+        } else {
+            return null;
         }
-        return null;
     }
 
     @Override

@@ -324,13 +324,13 @@ class TieringSplitReaderTest extends FlinkTestBase {
             long startingOffset,
             long stoppingOffset) {
         TableBucket tableBucket = new TableBucket(tableId, bucket);
-        return new TieringLogSplit(tablePath, tableBucket, null, startingOffset, stoppingOffset);
+        return new TieringLogSplit(tablePath, tableBucket, null, startingOffset, stoppingOffset, 3);
     }
 
     private TieringSnapshotSplit createSnapshotSplit(
             TablePath tablePath, long tableId, int bucket, long snapshotId) {
         TableBucket tableBucket = new TableBucket(tableId, bucket);
-        return new TieringSnapshotSplit(tablePath, tableBucket, null, snapshotId, 10);
+        return new TieringSnapshotSplit(tablePath, tableBucket, null, snapshotId, 10, 3);
     }
 
     private Map<TableBucket, List<InternalRow>> putRows(long tableId, TablePath tablePath, int rows)

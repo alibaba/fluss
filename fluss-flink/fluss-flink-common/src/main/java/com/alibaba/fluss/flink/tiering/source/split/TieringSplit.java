@@ -35,8 +35,14 @@ public abstract class TieringSplit implements SourceSplit {
     protected final TableBucket tableBucket;
     @Nullable protected final String partitionName;
 
+    // the total number of splits in one round of tiering
+    protected final int numberOfSplits;
+
     public TieringSplit(
-            TablePath tablePath, TableBucket tableBucket, @Nullable String partitionName) {
+            TablePath tablePath,
+            TableBucket tableBucket,
+            @Nullable String partitionName,
+            int numberOfSplits) {
         this.tablePath = tablePath;
         this.tableBucket = tableBucket;
         this.partitionName = partitionName;
@@ -45,6 +51,7 @@ public abstract class TieringSplit implements SourceSplit {
             throw new IllegalArgumentException(
                     "Partition name and partition id must be both null or both not null.");
         }
+        this.numberOfSplits = numberOfSplits;
     }
 
     /** Checks whether this split is a primary key table split to tier. */
@@ -75,6 +82,10 @@ public abstract class TieringSplit implements SourceSplit {
         } else {
             throw new IllegalArgumentException("Unsupported split kind for " + getClass());
         }
+    }
+
+    public int getNumberOfSplits() {
+        return numberOfSplits;
     }
 
     protected static String toSplitId(String splitPrefix, TableBucket tableBucket) {
@@ -111,11 +122,12 @@ public abstract class TieringSplit implements SourceSplit {
         TieringSplit that = (TieringSplit) object;
         return Objects.equals(tablePath, that.tablePath)
                 && Objects.equals(tableBucket, that.tableBucket)
-                && Objects.equals(partitionName, that.partitionName);
+                && Objects.equals(partitionName, that.partitionName)
+                && numberOfSplits == that.numberOfSplits;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(tablePath, tableBucket, partitionName);
+        return Objects.hash(tablePath, tableBucket, partitionName, numberOfSplits);
     }
 }

@@ -18,8 +18,6 @@ package com.alibaba.fluss.flink.tiering.event;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 
-import java.util.Objects;
-
 /** Event for mark a table as tiering finished. */
 public class FinishTieringEvent implements SourceEvent {
 
@@ -33,27 +31,5 @@ public class FinishTieringEvent implements SourceEvent {
 
     public long getTableId() {
         return tableId;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        if (this == object) {
-            return true;
-        }
-        if (!(object instanceof FinishTieringEvent)) {
-            return false;
-        }
-        FinishTieringEvent that = (FinishTieringEvent) object;
-        return tableId == that.tableId;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(tableId);
-    }
-
-    @Override
-    public String toString() {
-        return "FinishTieringEvent{" + "tableId=" + tableId + '}';
     }
 }

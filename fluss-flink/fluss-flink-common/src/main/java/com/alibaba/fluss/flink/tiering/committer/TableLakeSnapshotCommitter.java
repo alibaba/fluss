@@ -18,12 +18,9 @@ package com.alibaba.fluss.flink.tiering.committer;
 
 import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.FlussConnection;
-import com.alibaba.fluss.client.admin.Admin;
 import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.TableBucket;
-import com.alibaba.fluss.metadata.TableInfo;
-import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.GatewayClientProxy;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
@@ -42,16 +39,14 @@ public class TableLakeSnapshotCommitter implements AutoCloseable {
 
     private CoordinatorGateway coordinatorGateway;
     private FlussConnection connection;
-    private Admin flussAdmin;
 
     public TableLakeSnapshotCommitter(Configuration flussConf) {
         this.flussConf = flussConf;
     }
 
     public void open() {
-        // init admin client
+        // init coordinator gateway
         connection = (FlussConnection) ConnectionFactory.createConnection(flussConf);
-        flussAdmin = connection.getAdmin();
         RpcClient rpcClient = connection.getRpcClient();
         MetadataUpdater metadataUpdater = new MetadataUpdater(flussConf, rpcClient);
         this.coordinatorGateway =
@@ -67,17 +62,7 @@ public class TableLakeSnapshotCommitter implements AutoCloseable {
         } catch (Exception e) {
             throw new IOException(
                     String.format(
-                            "Fail to commit table lake snapshot %s to Fluss", tableLakeSnapshot),
-                    ExceptionUtils.stripExecutionException(e));
-        }
-    }
-
-    public TableInfo getTableInfo(TablePath tablePath) throws IOException {
-        try {
-            return flussAdmin.getTableInfo(tablePath).get();
-        } catch (Exception e) {
-            throw new IOException(
-                    String.format("Fail to get table info for table %s", tablePath.getTableName()),
+                            "Fail to commit table lake snapshot %s to Fluss.", tableLakeSnapshot),
                     ExceptionUtils.stripExecutionException(e));
         }
     }
@@ -108,9 +93,6 @@ public class TableLakeSnapshotCommitter implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        if (flussAdmin != null) {
-            flussAdmin.close();
-        }
         if (connection != null) {
             connection.close();
         }
