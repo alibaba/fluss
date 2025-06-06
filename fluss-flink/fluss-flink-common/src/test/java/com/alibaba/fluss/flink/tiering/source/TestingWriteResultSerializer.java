@@ -16,6 +16,7 @@
 
 package com.alibaba.fluss.flink.tiering.source;
 
+import com.alibaba.fluss.flink.tiering.TestingWriteResult;
 import com.alibaba.fluss.lakehouse.serializer.SimpleVersionedSerializer;
 
 import org.apache.flink.core.memory.DataInputDeserializer;
@@ -24,7 +25,7 @@ import org.apache.flink.core.memory.DataOutputSerializer;
 import java.io.IOException;
 
 /** Simple serializer for int values. */
-class TestingWriteResultSerializer implements SimpleVersionedSerializer<TestingWriteResult> {
+public class TestingWriteResultSerializer implements SimpleVersionedSerializer<TestingWriteResult> {
 
     @Override
     public int getVersion() {

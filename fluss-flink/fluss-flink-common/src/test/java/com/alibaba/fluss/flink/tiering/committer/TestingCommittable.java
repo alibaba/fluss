@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.flink.tiering.source;
+package com.alibaba.fluss.flink.tiering.committer;
 
-/** A WriteResult for testing purpose. */
-public class TestingWriteResult {
+import java.util.List;
 
-    private final int writeResult;
+/** A committable for testing purpose. */
+public class TestingCommittable {
 
-    public TestingWriteResult(int writeResult) {
-        this.writeResult = writeResult;
+    private final List<Integer> writeResults;
+
+    public TestingCommittable(List<Integer> writeResults) {
+        this.writeResults = writeResults;
     }
 
-    public int getWriteResult() {
-        return writeResult;
+    public List<Integer> writeResults() {
+        return writeResults;
     }
 }
