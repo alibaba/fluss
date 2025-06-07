@@ -22,6 +22,7 @@ import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.FlussRuntimeException;
+import com.alibaba.fluss.exception.InvalidPartitionException;
 import com.alibaba.fluss.exception.PartitionAlreadyExistsException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
@@ -159,14 +160,36 @@ public class MetadataManager {
      */
     public Map<String, Long> listPartitions(TablePath tablePath)
             throws TableNotExistException, TableNotPartitionedException {
+        return listPartitions(tablePath, null);
+    }
+
+    /**
+     * List the partitions of the given table and partitionSpec.
+     *
+     * <p>Return a map from partition name to partition id.
+     */
+    public Map<String, Long> listPartitions(
+            TablePath tablePath, ResolvedPartitionSpec partitionSpecFromRequest)
+            throws TableNotExistException, TableNotPartitionedException, InvalidPartitionException {
         TableInfo tableInfo = getTable(tablePath);
         if (!tableInfo.isPartitioned()) {
             throw new TableNotPartitionedException(
                     "Table '" + tablePath + "' is not a partitioned table.");
         }
-        return uncheck(
-                () -> zookeeperClient.getPartitionNameAndIds(tablePath),
-                "Fail to list partitions for table: " + tablePath);
+        try {
+            return zookeeperClient.getPartitionNameAndIds(
+                    tablePath, tableInfo.getPartitionKeys(), partitionSpecFromRequest);
+        } catch (Exception e) {
+            if (e instanceof InvalidPartitionException) {
+                throw new InvalidPartitionException(tablePath + e.getMessage());
+            } else {
+                throw new FlussRuntimeException(
+                        String.format(
+                                "Fail to list partitions for table: %s, partitionSpec: %s.",
+                                tablePath, partitionSpecFromRequest),
+                        e);
+            }
+        }
     }
 
     public void dropDatabase(String name, boolean ignoreIfNotExists, boolean cascade)
