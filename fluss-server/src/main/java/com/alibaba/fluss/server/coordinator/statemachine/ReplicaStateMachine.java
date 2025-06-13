@@ -570,7 +570,7 @@ public class ReplicaStateMachine {
 
     private static class TableOrPartition {
         private final long tableId;
-        private final @Nullable Long partitionId;;
+        private final @Nullable Long partitionId;
 
         private TableOrPartition(long tableId, @Nullable Long partitionId) {
             this.tableId = tableId;
