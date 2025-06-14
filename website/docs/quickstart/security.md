@@ -218,7 +218,7 @@ We can add acl for user `guest` in two ways:
 CALL admin_catalog.sys.add_acl(
     'cluster.fluss', 
     'ALLOW',
-    'User:fluss', 
+    'User:guest', 
     'CREATE',
     '*'
 );
