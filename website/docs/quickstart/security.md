@@ -26,7 +26,7 @@ This document describes how to quickly deploy a security cluster and use it in F
 ### Create docker-compose.yml file
 You can use the following docker-compose.yml file to start a Fluss cluster with one CoordinatorServer and one TabletServer.
 
-In security properties, it shows that this cluster uses SASL/PLAIN to authenticate users.And there are two users: admin and guess.The admin user is the super user which have all the permissions.
+In security properties, it shows that this cluster uses SASL/PLAIN to authenticate users.And there are two users: admin and guest.The admin user is the super user which have all the permissions.
 
 ```yaml
 services:
@@ -46,7 +46,7 @@ services:
         # security properties
         security.protocol.map: CLIENT:SASL, INTERNAL:PLAINTEXT
         security.sasl.enabled.mechanisms: PLAIN
-        security.sasl.plain.jaas.config: com.alibaba.fluss.security.auth.sasl.plain.PlainLoginModule required user_admin="admin-pass" user_guess="guess-pass";
+        security.sasl.plain.jaas.config: com.alibaba.fluss.security.auth.sasl.plain.PlainLoginModule required user_admin="admin-pass" user_guest="guest-pass";
         authorizer.enabled: true
         super.users: User:admin
     ports:
@@ -130,15 +130,15 @@ It will show that the client.security.protocol' is not right.
 com.alibaba.fluss.exception.AuthenticationException: The connection has not completed authentication yet. This may be caused by a missing or incorrect configuration of 'client.security.protocol' on the client side.
 ```
 
-Then, we set the authentication properties as user `guess` in the catalog, then it will work:
+Then, we set the authentication properties as user `guest` in the catalog, then it will work:
 ```sql title="Flink SQL"
 CREATE CATALOG guest_catalog WITH (
   'type' = 'fluss',
   'bootstrap.servers' = 'localhost:9123',
   'client.security.protocol' = 'SASL',
   'client.security.sasl.mechanism' = 'PLAIN',
-  'client.security.sasl.username' = 'guess',
-  'client.security.sasl.password' = 'guess-pass'
+  'client.security.sasl.username' = 'guest',
+  'client.security.sasl.password' = 'guest-pass'
 );
 ```
 
@@ -178,7 +178,7 @@ CREATE TABLE `guest_catalog`.`fluss`.`fluss_order` (
 The result is:
 ```sql
 [ERROR] Could not execute SQL statement. Reason:
-com.alibaba.fluss.exception.AuthorizationException: Principal FlussPrincipal{name='guess', type='User'} have no authorization to operate CREATE on resource Resource{type=DATABASE, name='fluss'}
+com.alibaba.fluss.exception.AuthorizationException: Principal FlussPrincipal{name='guest', type='User'} have no authorization to operate CREATE on resource Resource{type=DATABASE, name='fluss'}
 ```
 
 it turned out that the user `guest` have no authorization for `CREATE` operation  on database `fluss`.
@@ -212,8 +212,8 @@ CREATE TABLE `admin_catalog`.`fluss`.`fluss_order` (
 ```
 Then this statement will execute successfully. It means the user `admin` have authorization for `CREATE` operation  on database `fluss`.
 
-## Add Acl for user `guess`
-We can add acl for user `guess` in two ways:
+## Add Acl for user `guest`
+We can add acl for user `guest` in two ways:
 ```sql title="Flink SQL"
 CALL admin_catalog.sys.add_acl(
     'cluster.fluss', 
@@ -248,7 +248,7 @@ CALL admin_catalog.sys.list_acl(
 );
 ```
 
-The result show that user `guess` hava authorization for `CREATE` operation  on database `fluss` now.
+The result show that user `guest` hava authorization for `CREATE` operation  on database `fluss` now.
 ```sql
 +--------------------------------------------------------------------------------------------+
 |                                                                                     result |
@@ -273,8 +273,8 @@ CREATE TABLE `guest_catalog`.`fluss`.`fluss_order2` (
 ```
 Then this statement will execute successfully. 
 
-## Drop Acl for user `guess`
-We can remove acl for user `guess` in two ways:
+## Drop Acl for user `guest`
+We can remove acl for user `guest` in two ways:
 ```sql title="Flink SQL"
 CALL admin_catalog.sys.drop_acl(
     'cluster.fluss', 
@@ -326,5 +326,5 @@ CREATE TABLE `guest_catalog`.`fluss`.`fluss_order3` (
 The result is:
 ```sql
 [ERROR] Could not execute SQL statement. Reason:
-com.alibaba.fluss.exception.AuthorizationException: Principal FlussPrincipal{name='guess', type='User'} have no authorization to operate CREATE on resource Resource{type=DATABASE, name='fluss'}
+com.alibaba.fluss.exception.AuthorizationException: Principal FlussPrincipal{name='guest', type='User'} have no authorization to operate CREATE on resource Resource{type=DATABASE, name='fluss'}
 ```
