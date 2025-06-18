@@ -18,6 +18,7 @@
 package com.alibaba.fluss.server.tablet;
 
 import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.RetriableException;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -51,12 +52,15 @@ import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** The ITCase for tablet server failover. */
-class TabletServerFailOverITCase {
+/** The ITCase for tabletServer shutdown with uncontrolled shutdown. */
+class TabletServerUncontrolledShutdownITCase {
 
     @RegisterExtension
     public static final FlussClusterExtension FLUSS_CLUSTER_EXTENSION =
-            FlussClusterExtension.builder().setNumOfTabletServers(3).build();
+            FlussClusterExtension.builder()
+                    .setNumOfTabletServers(3)
+                    .setClusterConf(initConfig())
+                    .build();
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
@@ -184,5 +188,11 @@ class TabletServerFailOverITCase {
                                     tableId, 0, 1, genKvRecordBatch(DATA_1_WITH_KEY_AND_VALUE)))
                     .get();
         }
+    }
+
+    private static Configuration initConfig() {
+        Configuration conf = new Configuration();
+        conf.set(ConfigOptions.TABLET_SERVER_CONTROLLED_SHUTDOWN_ENABLED, false);
+        return conf;
     }
 }
