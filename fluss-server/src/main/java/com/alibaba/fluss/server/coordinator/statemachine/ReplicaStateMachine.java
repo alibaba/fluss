@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -472,7 +473,7 @@ public class ReplicaStateMachine {
         for (TableBucketReplica tableBucketReplica : tableBucketReplicas) {
             // when drop whole table or partition, we don't need to re-election and change isr one
             // by one
-            // just set lead to NO_LEADER and set isr to itself.
+            // just set leader to NO_LEADER and set isr to empty.
             TableBucket tableBucket = tableBucketReplica.getTableBucket();
             if (batchUpdate.containsKey(tableBucket)) {
                 continue;
@@ -485,11 +486,9 @@ public class ReplicaStateMachine {
                 continue;
             }
 
-            int replicaId = tableBucketReplica.getReplica();
             int newLeader = LeaderAndIsr.NO_LEADER;
-            List<Integer> newIsr = Collections.singletonList(replicaId);
             LeaderAndIsr adjustLeaderAndIsr =
-                    optLeaderAndIsr.get().newLeaderAndIsr(newLeader, newIsr);
+                    optLeaderAndIsr.get().newLeaderAndIsr(newLeader, new ArrayList<>());
 
             batchUpdate.put(tableBucket, adjustLeaderAndIsr);
         }
