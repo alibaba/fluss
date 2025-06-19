@@ -624,6 +624,8 @@ public class CoordinatorEventProcessor implements EventProcessor {
             lakeTableTieringManager.removeLakeTable(tableId);
         }
 
+        tableManager.resumeDeletions();
+
         // send update metadata request.
         updateTabletServerMetadataCache(
                 new HashSet<>(coordinatorContext.getLiveTabletServers().values()),
@@ -1199,5 +1201,10 @@ public class CoordinatorEventProcessor implements EventProcessor {
     @VisibleForTesting
     CompletedSnapshotStoreManager completedSnapshotStoreManager() {
         return completedSnapshotStoreManager;
+    }
+
+    @VisibleForTesting
+    public CoordinatorContext getCoordinatorContext() {
+        return coordinatorContext;
     }
 }

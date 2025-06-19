@@ -352,6 +352,11 @@ public class CoordinatorServer extends ServerBase {
         }
     }
 
+    @VisibleForTesting
+    public CoordinatorEventProcessor getCoordinatorEventProcessorForTesting() {
+        return getCoordinatorEventProcessor();
+    }
+
     CompletableFuture<Void> stopServices() {
         synchronized (lock) {
             Throwable exception = null;
