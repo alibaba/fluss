@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -146,16 +147,16 @@ public final class TestData {
                     Tuple2.of(new Object[] {2}, new Object[] {2, "b1"}),
                     Tuple2.of(new Object[] {3}, null));
 
-    public static final List<Tuple2<RowKind, Object[]>> EXPECTED_LOG_RESULTS_FOR_DATA_1_WITH_PK =
+    public static final List<Tuple2<ChangeType, Object[]>> EXPECTED_LOG_RESULTS_FOR_DATA_1_WITH_PK =
             Arrays.asList(
-                    Tuple2.of(RowKind.INSERT, new Object[] {1, "a"}),
-                    Tuple2.of(RowKind.INSERT, new Object[] {2, "b"}),
-                    Tuple2.of(RowKind.INSERT, new Object[] {3, "c"}),
-                    Tuple2.of(RowKind.UPDATE_BEFORE, new Object[] {1, "a"}),
-                    Tuple2.of(RowKind.UPDATE_AFTER, new Object[] {1, "a1"}),
-                    Tuple2.of(RowKind.UPDATE_BEFORE, new Object[] {2, "b"}),
-                    Tuple2.of(RowKind.UPDATE_AFTER, new Object[] {2, "b1"}),
-                    Tuple2.of(RowKind.DELETE, new Object[] {3, "c"}));
+                    Tuple2.of(ChangeType.INSERT, new Object[] {1, "a"}),
+                    Tuple2.of(ChangeType.INSERT, new Object[] {2, "b"}),
+                    Tuple2.of(ChangeType.INSERT, new Object[] {3, "c"}),
+                    Tuple2.of(ChangeType.UPDATE_BEFORE, new Object[] {1, "a"}),
+                    Tuple2.of(ChangeType.UPDATE_AFTER, new Object[] {1, "a1"}),
+                    Tuple2.of(ChangeType.UPDATE_BEFORE, new Object[] {2, "b"}),
+                    Tuple2.of(ChangeType.UPDATE_AFTER, new Object[] {2, "b1"}),
+                    Tuple2.of(ChangeType.DELETE, new Object[] {3, "c"}));
 
     // ---------------------------- data1 table info end ------------------------------
 

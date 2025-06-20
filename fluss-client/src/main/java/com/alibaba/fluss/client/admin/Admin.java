@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,29 +22,36 @@ import com.alibaba.fluss.client.metadata.KvSnapshotMetadata;
 import com.alibaba.fluss.client.metadata.KvSnapshots;
 import com.alibaba.fluss.client.metadata.LakeSnapshot;
 import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
+import com.alibaba.fluss.exception.InvalidPartitionException;
 import com.alibaba.fluss.exception.InvalidReplicationFactorException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
 import com.alibaba.fluss.exception.NonPrimaryKeyTableException;
+import com.alibaba.fluss.exception.PartitionAlreadyExistsException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
-import com.alibaba.fluss.lakehouse.LakeStorageInfo;
+import com.alibaba.fluss.exception.TooManyBucketsException;
+import com.alibaba.fluss.exception.TooManyPartitionsException;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
-import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.PartitionSpec;
+import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.security.acl.AclBinding;
+import com.alibaba.fluss.security.acl.AclBindingFilter;
 
 import java.util.Collection;
 import java.util.List;
@@ -241,6 +249,72 @@ public interface Admin extends AutoCloseable {
     CompletableFuture<List<PartitionInfo>> listPartitionInfos(TablePath tablePath);
 
     /**
+     * List all partitions in fluss cluster that are under the given table and the given partial
+     * PartitionSpec asynchronously.
+     *
+     * <p>The following exceptions can be anticipated when calling {@code get()} on returned future.
+     *
+     * <ul>
+     *   <li>{@link TableNotExistException} if the table does not exist.
+     *   <li>{@link TableNotPartitionedException} if the table is not partitioned.
+     *   <li>{@link InvalidPartitionException} if the input partition spec is invalid.
+     * </ul>
+     *
+     * @param tablePath The path of the table.
+     * @param partialPartitionSpec Part of table partition spec
+     */
+    CompletableFuture<List<PartitionInfo>> listPartitionInfos(
+            TablePath tablePath, PartitionSpec partialPartitionSpec);
+
+    /**
+     * Create a new partition for a partitioned table.
+     *
+     * <p>The following exceptions can be anticipated when calling {@code get()} on returned future.
+     *
+     * <ul>
+     *   <li>{@link TableNotExistException} if the table does not exist.
+     *   <li>{@link TableNotPartitionedException} if the table is not partitioned.
+     *   <li>{@link PartitionAlreadyExistsException} if the partition already exists and {@code
+     *       ignoreIfExists} is false.
+     *   <li>{@link InvalidPartitionException} if the input partition spec is invalid.
+     *   <li>{@link TooManyPartitionsException} if the number of partitions is larger than the
+     *       maximum number of partitions of one table, see {@link ConfigOptions#MAX_PARTITION_NUM}.
+     *   <li>{@link TooManyBucketsException} if the number of buckets is larger than the maximum
+     *       number of buckets of one table, see {@link ConfigOptions#MAX_BUCKET_NUM}.
+     * </ul>
+     *
+     * @param tablePath The table path of the table.
+     * @param partitionSpec The partition spec to add.
+     * @param ignoreIfExists Flag to specify behavior when a partition with the given name already
+     *     exists: if set to false, throw a PartitionAlreadyExistsException, if set to true, do
+     *     nothing.
+     */
+    CompletableFuture<Void> createPartition(
+            TablePath tablePath, PartitionSpec partitionSpec, boolean ignoreIfExists);
+
+    /**
+     * Drop a partition from a partitioned table.
+     *
+     * <p>The following exceptions can be anticipated when calling {@code get()} on returned future.
+     *
+     * <ul>
+     *   <li>{@link TableNotExistException} if the table does not exist.
+     *   <li>{@link TableNotPartitionedException} if the table is not partitioned.
+     *   <li>{@link PartitionNotExistException} if the partition not exists and {@code
+     *       ignoreIfExists} is false.
+     *   <li>{@link InvalidPartitionException} if the input partition spec is invalid.
+     * </ul>
+     *
+     * @param tablePath The table path of the table.
+     * @param partitionSpec The partition spec to drop.
+     * @param ignoreIfNotExists Flag to specify behavior when a partition with the given name does
+     *     not exist: if set to false, throw a PartitionNotExistException, if set to true, do
+     *     nothing.
+     */
+    CompletableFuture<Void> dropPartition(
+            TablePath tablePath, PartitionSpec partitionSpec, boolean ignoreIfNotExists);
+
+    /**
      * Get the latest kv snapshots of the given table asynchronously. A kv snapshot is a snapshot of
      * a bucket of a primary key table at a certain point in time. Therefore, there are at-most
      * {@code N} snapshots for a primary key table, {@code N} is the number of buckets.
@@ -278,6 +352,8 @@ public interface Admin extends AutoCloseable {
      * </ul>
      *
      * @param tablePath the table path of the table.
+     * @param partitionName the partition name, see {@link ResolvedPartitionSpec#getPartitionName}
+     *     for the format of the partition name.
      */
     CompletableFuture<KvSnapshots> getLatestKvSnapshots(TablePath tablePath, String partitionName);
 
@@ -317,15 +393,61 @@ public interface Admin extends AutoCloseable {
      * List offset for the specified buckets. This operation enables to find the beginning offset,
      * end offset as well as the offset matching a timestamp in buckets.
      *
-     * @param physicalTablePath the physical table path of the buckets.
+     * @param tablePath the table path of the table.
      * @param buckets the buckets to fetch offset.
      * @param offsetSpec the offset spec to fetch.
      */
     ListOffsetsResult listOffsets(
-            PhysicalTablePath physicalTablePath,
+            TablePath tablePath, Collection<Integer> buckets, OffsetSpec offsetSpec);
+
+    /**
+     * List offset for the specified buckets. This operation enables to find the beginning offset,
+     * end offset as well as the offset matching a timestamp in buckets.
+     *
+     * @param tablePath the table path of the table.
+     * @param partitionName the partition name of the partition,see {@link
+     *     ResolvedPartitionSpec#getPartitionName} * for the format of the partition name.
+     * @param buckets the buckets to fetch offset.
+     * @param offsetSpec the offset spec to fetch.
+     */
+    ListOffsetsResult listOffsets(
+            TablePath tablePath,
+            String partitionName,
             Collection<Integer> buckets,
             OffsetSpec offsetSpec);
 
-    /** Describe the lake used for lakehouse storage. */
-    CompletableFuture<LakeStorageInfo> describeLakeStorage();
+    /**
+     * Retrieves ACL entries filtered by principal for the specified resource.
+     *
+     * <p>1. Validates the user has 'describe' permission on the resource. 2. Returns entries
+     * matching the principal if permitted; throws an exception otherwise.
+     *
+     * @return A CompletableFuture containing the filtered ACL entries.
+     */
+    CompletableFuture<Collection<AclBinding>> listAcls(AclBindingFilter aclBindingFilter);
+
+    /**
+     * Creates multiple ACL entries in a single atomic operation.
+     *
+     * <p>1. Validates the user has 'alter' permission on the resource. 2. Creates the ACL entries
+     * if valid and permitted.
+     *
+     * <p>Each entry in {@code aclBindings} must have a valid principal, operation and permission.
+     *
+     * @param aclBindings List of ACL entries to create.
+     * @return A CompletableFuture indicating completion of the operation.
+     */
+    CreateAclsResult createAcls(Collection<AclBinding> aclBindings);
+
+    /**
+     * Removes multiple ACL entries in a single atomic operation.
+     *
+     * <p>1. Validates the user has 'alter' permission on the resource. 2. Removes entries only if
+     * they exactly match the provided entries (principal, operation, permission). 3. Does not
+     * remove entries if any of the ACL entries do not exist.
+     *
+     * @param filters List of ACL entries to remove.
+     * @return A CompletableFuture indicating completion of the operation.
+     */
+    DropAclsResult dropAcls(Collection<AclBindingFilter> filters);
 }

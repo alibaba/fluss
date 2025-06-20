@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,9 +24,11 @@ import com.alibaba.fluss.client.metrics.ScannerMetricGroup;
 import com.alibaba.fluss.client.table.scanner.RemoteFileDownloader;
 import com.alibaba.fluss.client.table.scanner.ScanRecord;
 import com.alibaba.fluss.cluster.BucketLocation;
+import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.InvalidMetadataException;
+import com.alibaba.fluss.exception.LeaderNotAvailableException;
 import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -47,6 +50,7 @@ import com.alibaba.fluss.rpc.messages.PbFetchLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogReqForTable;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForTable;
+import com.alibaba.fluss.rpc.protocol.Errors;
 import com.alibaba.fluss.utils.IOUtils;
 import com.alibaba.fluss.utils.Projection;
 
@@ -67,7 +71,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.getFetchLogResultForBucket;
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.getFetchLogResultForBucket;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
 /* This file is based on source code of Apache Kafka Project (https://kafka.apache.org/), licensed by the Apache
@@ -192,28 +196,36 @@ public class LogFetcher implements Closeable {
     }
 
     private void sendFetchRequest(int destination, FetchLogRequest fetchLogRequest) {
-        // TODO cache the tablet server gateway.
-        TabletServerGateway gateway =
-                GatewayClientProxy.createGatewayProxy(
-                        () -> metadataUpdater.getTabletServer(destination),
-                        rpcClient,
-                        TabletServerGateway.class);
-
-        final long requestStartTime = System.currentTimeMillis();
-        scannerMetricGroup.fetchRequestCount().inc();
-
         TableOrPartitions tableOrPartitionsInFetchRequest =
                 getTableOrPartitionsInFetchRequest(fetchLogRequest);
+        // TODO cache the tablet server gateway.
+        ServerNode destinationNode = metadataUpdater.getTabletServer(destination);
+        if (destinationNode == null) {
+            handleFetchLogException(
+                    destination,
+                    tableOrPartitionsInFetchRequest,
+                    new LeaderNotAvailableException(
+                            "Server " + destination + " is not found in metadata cache."));
+        } else {
+            TabletServerGateway gateway =
+                    GatewayClientProxy.createGatewayProxy(
+                            () -> destinationNode, rpcClient, TabletServerGateway.class);
 
-        gateway.fetchLog(fetchLogRequest)
-                .whenComplete(
-                        (fetchLogResponse, e) ->
-                                handleFetchLogResponse(
-                                        destination,
-                                        requestStartTime,
-                                        fetchLogResponse,
-                                        tableOrPartitionsInFetchRequest,
-                                        e));
+            final long requestStartTime = System.currentTimeMillis();
+            scannerMetricGroup.fetchRequestCount().inc();
+
+            gateway.fetchLog(fetchLogRequest)
+                    .whenComplete(
+                            (fetchLogResponse, e) -> {
+                                if (e != null) {
+                                    handleFetchLogException(
+                                            destination, tableOrPartitionsInFetchRequest, e);
+                                } else {
+                                    handleFetchLogResponse(
+                                            destination, requestStartTime, fetchLogResponse);
+                                }
+                            });
+        }
     }
 
     private TableOrPartitions getTableOrPartitionsInFetchRequest(FetchLogRequest fetchLogRequest) {
@@ -251,34 +263,41 @@ public class LogFetcher implements Closeable {
         }
     }
 
-    /** Implements the core logic for a successful fetch log response. */
-    private synchronized void handleFetchLogResponse(
-            int destination,
-            long requestStartTime,
-            FetchLogResponse fetchLogResponse,
-            TableOrPartitions tableOrPartitionsInFetchRequest,
-            @Nullable Throwable e) {
+    private void invalidTableOrPartitions(TableOrPartitions tableOrPartitions) {
+        Set<PhysicalTablePath> physicalTablePaths =
+                metadataUpdater.getPhysicalTablePathByIds(
+                        tableOrPartitions.tableIds, tableOrPartitions.tablePartitions);
+        metadataUpdater.invalidPhysicalTableBucketMeta(physicalTablePaths);
+    }
+
+    private void handleFetchLogException(
+            int destination, TableOrPartitions tableOrPartitionsInFetchRequest, Throwable e) {
         try {
             if (isClosed) {
                 return;
             }
 
-            if (e != null) {
-                LOG.error("Failed to fetch log from node {}", destination, e);
+            LOG.error("Failed to fetch log from node {}", destination, e);
+            // if is invalid metadata exception, we need to clear table bucket meta
+            // to enable another round of log fetch to request new medata
+            if (e instanceof InvalidMetadataException) {
+                LOG.warn(
+                        "Invalid metadata error in fetch log request. "
+                                + "Going to request metadata update.",
+                        e);
+                invalidTableOrPartitions(tableOrPartitionsInFetchRequest);
+            }
+        } finally {
+            LOG.debug("Removing pending request for node: {}", destination);
+            nodesWithPendingFetchRequests.remove(destination);
+        }
+    }
 
-                // if is invalid metadata exception, we need to clear table bucket meta
-                // to enable another round of log fetch to request new medata
-                if (e instanceof InvalidMetadataException) {
-                    Set<PhysicalTablePath> physicalTablePaths =
-                            metadataUpdater.getPhysicalTablePathByIds(
-                                    tableOrPartitionsInFetchRequest.tableIds,
-                                    tableOrPartitionsInFetchRequest.tablePartitions);
-                    LOG.warn(
-                            "Received invalid metadata error in fetch log request. "
-                                    + "Going to request metadata update.",
-                            e);
-                    metadataUpdater.invalidPhysicalTableBucketMeta(physicalTablePaths);
-                }
+    /** Implements the core logic for a successful fetch log response. */
+    private synchronized void handleFetchLogResponse(
+            int destination, long requestStartTime, FetchLogResponse fetchLogResponse) {
+        try {
+            if (isClosed) {
                 return;
             }
 
@@ -314,7 +333,8 @@ public class LogFetcher implements Closeable {
                                     fetchResultForBucket.getHighWatermark());
                         } else {
                             LogRecords logRecords = fetchResultForBucket.recordsOrEmpty();
-                            if (!MemoryLogRecords.EMPTY.equals(logRecords)) {
+                            if (!MemoryLogRecords.EMPTY.equals(logRecords)
+                                    || fetchResultForBucket.getErrorCode() != Errors.NONE.code()) {
                                 // In oder to not signal notEmptyCondition, add completed fetch to
                                 // buffer until log records is not empty.
                                 DefaultCompletedFetch completedFetch =

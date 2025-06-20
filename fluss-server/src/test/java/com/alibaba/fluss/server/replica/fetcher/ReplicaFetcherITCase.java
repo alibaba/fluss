@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -257,14 +259,16 @@ public class ReplicaFetcherITCase {
         // let's kill a non leader server
         int leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
 
-        int serverToKill =
+        int followerToStop =
                 FLUSS_CLUSTER_EXTENSION.getTabletServerNodes().stream()
                         .filter(node -> node.id() != leader)
                         .findFirst()
                         .get()
                         .id();
 
-        FLUSS_CLUSTER_EXTENSION.stopTabletServer(serverToKill);
+        int leaderEpoch = 0;
+        // stop the follower replica for the bucket
+        FLUSS_CLUSTER_EXTENSION.stopReplica(followerToStop, tb, leaderEpoch);
 
         // put kv record batch to the leader,
         // but as one server is killed, the put won't be ack
@@ -301,8 +305,18 @@ public class ReplicaFetcherITCase {
                     null);
         }
 
-        // start the server again, then the kv should be flushed finally
-        FLUSS_CLUSTER_EXTENSION.startTabletServer(serverToKill);
+        // start the follower replica by notify leaderAndIsr,
+        // then the kv should be flushed finally
+        LeaderAndIsr currentLeaderAndIsr = zkClient.getLeaderAndIsr(tb).get();
+        LeaderAndIsr newLeaderAndIsr =
+                new LeaderAndIsr(
+                        currentLeaderAndIsr.leader(),
+                        currentLeaderAndIsr.leaderEpoch() + 1,
+                        currentLeaderAndIsr.isr(),
+                        currentLeaderAndIsr.coordinatorEpoch(),
+                        currentLeaderAndIsr.bucketEpoch());
+        FLUSS_CLUSTER_EXTENSION.notifyLeaderAndIsr(
+                followerToStop, DATA1_TABLE_PATH, tb, newLeaderAndIsr, Arrays.asList(0, 1, 2));
 
         // wait util the put future is done
         putResponse.get();

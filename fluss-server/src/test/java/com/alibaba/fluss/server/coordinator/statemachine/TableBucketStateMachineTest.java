@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +20,7 @@ package com.alibaba.fluss.server.coordinator.statemachine;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
@@ -28,10 +30,11 @@ import com.alibaba.fluss.server.coordinator.CoordinatorContext;
 import com.alibaba.fluss.server.coordinator.CoordinatorEventProcessor;
 import com.alibaba.fluss.server.coordinator.CoordinatorRequestBatch;
 import com.alibaba.fluss.server.coordinator.CoordinatorTestUtils;
+import com.alibaba.fluss.server.coordinator.LakeTableTieringManager;
+import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.coordinator.TestCoordinatorChannelManager;
 import com.alibaba.fluss.server.coordinator.event.CoordinatorEventManager;
-import com.alibaba.fluss.server.metadata.ServerMetadataCache;
-import com.alibaba.fluss.server.metadata.ServerMetadataCacheImpl;
+import com.alibaba.fluss.server.metadata.CoordinatorMetadataCache;
 import com.alibaba.fluss.server.metrics.group.TestingMetricGroups;
 import com.alibaba.fluss.server.zk.NOPErrorHandler;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
@@ -39,6 +42,7 @@ import com.alibaba.fluss.server.zk.ZooKeeperExtension;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.shaded.guava32.com.google.common.collect.Sets;
 import com.alibaba.fluss.testutils.common.AllCallbackWrapper;
+import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,7 +54,9 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.Executors;
 
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.NewBucket;
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.NonExistentBucket;
 import static com.alibaba.fluss.server.coordinator.statemachine.BucketState.OfflineBucket;
@@ -67,10 +73,11 @@ class TableBucketStateMachineTest {
 
     private static ZooKeeperClient zookeeperClient;
     private static CoordinatorContext coordinatorContext;
-    private ServerMetadataCache serverMetadataCache;
     private TestCoordinatorChannelManager testCoordinatorChannelManager;
     private CoordinatorRequestBatch coordinatorRequestBatch;
     private AutoPartitionManager autoPartitionManager;
+    private LakeTableTieringManager lakeTableTieringManager;
+    private CoordinatorMetadataCache serverMetadataCache;
 
     @BeforeAll
     static void baseBeforeAll() {
@@ -92,10 +99,15 @@ class TableBucketStateMachineTest {
                         testCoordinatorChannelManager,
                         event -> {
                             // do nothing
-                        });
-        serverMetadataCache = new ServerMetadataCacheImpl();
+                        },
+                        coordinatorContext);
+        serverMetadataCache = new CoordinatorMetadataCache();
         autoPartitionManager =
-                new AutoPartitionManager(serverMetadataCache, zookeeperClient, new Configuration());
+                new AutoPartitionManager(
+                        serverMetadataCache,
+                        new MetadataManager(zookeeperClient, new Configuration()),
+                        new Configuration());
+        lakeTableTieringManager = new LakeTableTieringManager();
     }
 
     @Test
@@ -174,6 +186,14 @@ class TableBucketStateMachineTest {
         // init a table bucket assignment to coordinator context
         long tableId = 4;
         TableBucket tableBucket = new TableBucket(tableId, 0);
+        coordinatorContext.putTableInfo(
+                TableInfo.of(
+                        fakeTablePath,
+                        tableId,
+                        0,
+                        DATA1_TABLE_DESCRIPTOR,
+                        System.currentTimeMillis(),
+                        System.currentTimeMillis()));
         coordinatorContext.putTablePath(tableId, fakeTablePath);
         coordinatorContext.updateBucketReplicaAssignment(tableBucket, Arrays.asList(0, 1, 2));
         coordinatorContext.putBucketState(tableBucket, NewBucket);
@@ -229,12 +249,17 @@ class TableBucketStateMachineTest {
                                         TestingClientMetricGroup.newInstance())),
                         coordinatorContext,
                         autoPartitionManager,
+                        lakeTableTieringManager,
                         TestingMetricGroups.COORDINATOR_METRICS,
-                        new Configuration());
+                        new Configuration(),
+                        Executors.newFixedThreadPool(
+                                1, new ExecutorThreadFactory("test-coordinator-io")));
         CoordinatorEventManager eventManager =
-                new CoordinatorEventManager(coordinatorEventProcessor);
+                new CoordinatorEventManager(
+                        coordinatorEventProcessor, TestingMetricGroups.COORDINATOR_METRICS);
         coordinatorRequestBatch =
-                new CoordinatorRequestBatch(testCoordinatorChannelManager, eventManager);
+                new CoordinatorRequestBatch(
+                        testCoordinatorChannelManager, eventManager, coordinatorContext);
         tableBucketStateMachine =
                 new TableBucketStateMachine(
                         coordinatorContext, coordinatorRequestBatch, zookeeperClient);

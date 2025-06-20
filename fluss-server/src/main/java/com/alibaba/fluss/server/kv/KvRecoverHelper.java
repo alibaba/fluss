@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,12 +23,12 @@ import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.record.LogRecord;
 import com.alibaba.fluss.record.LogRecordBatch;
 import com.alibaba.fluss.record.LogRecordReadContext;
 import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
-import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.row.BinaryRow;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.row.encode.KeyEncoder;
@@ -155,11 +156,11 @@ public class KvRecoverHelper {
                                 logRecordBatch.records(readContext)) {
                     while (logRecordIter.hasNext()) {
                         LogRecord logRecord = logRecordIter.next();
-                        if (logRecord.getRowKind() != RowKind.UPDATE_BEFORE) {
+                        if (logRecord.getChangeType() != ChangeType.UPDATE_BEFORE) {
                             InternalRow logRow = logRecord.getRow();
                             byte[] key = keyEncoder.encodeKey(logRow);
                             byte[] value = null;
-                            if (logRecord.getRowKind() != RowKind.DELETE) {
+                            if (logRecord.getChangeType() != ChangeType.DELETE) {
                                 // the log row format may not compatible with kv row format,
                                 // e.g, arrow vs. compacted, thus needs a conversion here.
                                 BinaryRow row = toKvRow(logRecord.getRow());

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,6 +27,8 @@ import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
 import com.alibaba.fluss.rpc.netty.NettyMetrics;
 import com.alibaba.fluss.rpc.netty.NettyUtils;
 import com.alibaba.fluss.rpc.protocol.ApiKeys;
+import com.alibaba.fluss.security.auth.AuthenticationFactory;
+import com.alibaba.fluss.security.auth.ClientAuthenticator;
 import com.alibaba.fluss.shaded.netty4.io.netty.bootstrap.Bootstrap;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.PooledByteBufAllocator;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelOption;
@@ -43,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 
@@ -70,6 +74,8 @@ public final class NettyClient implements RpcClient {
     /** Metric groups for client. */
     private final ClientMetricGroup clientMetricGroup;
 
+    private final Supplier<ClientAuthenticator> authenticatorSupplier;
+
     private volatile boolean isClosed = false;
 
     public NettyClient(Configuration conf, ClientMetricGroup clientMetricGroup) {
@@ -90,8 +96,11 @@ public final class NettyClient implements RpcClient {
                         .channel(NettyUtils.getClientSocketChannelClass(eventGroup))
                         .option(ChannelOption.ALLOCATOR, pooledAllocator)
                         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMs)
+                        .option(ChannelOption.TCP_NODELAY, true)
+                        .option(ChannelOption.SO_KEEPALIVE, true)
                         .handler(new ClientChannelInitializer(connectionMaxIdle));
         this.clientMetricGroup = clientMetricGroup;
+        this.authenticatorSupplier = AuthenticationFactory.loadClientAuthenticatorSupplier(conf);
         NettyMetrics.registerNettyMetrics(clientMetricGroup, pooledAllocator);
     }
 
@@ -176,7 +185,11 @@ public final class NettyClient implements RpcClient {
                 ignored -> {
                     LOG.debug("Creating connection to server {}.", node);
                     ServerConnection connection =
-                            new ServerConnection(bootstrap, node, clientMetricGroup);
+                            new ServerConnection(
+                                    bootstrap,
+                                    node,
+                                    clientMetricGroup,
+                                    authenticatorSupplier.get());
                     connection.whenClose(ignore -> connections.remove(serverId, connection));
                     return connection;
                 });

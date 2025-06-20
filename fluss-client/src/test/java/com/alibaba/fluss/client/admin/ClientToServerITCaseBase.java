@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,7 +32,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
-import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -49,12 +50,17 @@ import javax.annotation.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
 import static com.alibaba.fluss.testutils.InternalRowAssert.assertThatRow;
+import static com.alibaba.fluss.utils.Preconditions.checkArgument;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -108,13 +114,13 @@ public abstract class ClientToServerITCaseBase {
         conf.setInt(ConfigOptions.DEFAULT_REPLICATION_FACTOR, 3);
         // set a shorter interval for testing purpose
         conf.set(ConfigOptions.KV_SNAPSHOT_INTERVAL, Duration.ofSeconds(1));
-        // set a shorter max lag time to make tests in FlussFailServerTableITCase faster
-        conf.set(ConfigOptions.LOG_REPLICA_MAX_LAG_TIME, Duration.ofSeconds(10));
         // set default datalake format for the cluster and enable datalake tables
         conf.set(ConfigOptions.DATALAKE_FORMAT, DataLakeFormat.PAIMON);
 
         conf.set(ConfigOptions.CLIENT_WRITER_BUFFER_MEMORY_SIZE, MemorySize.parse("1mb"));
         conf.set(ConfigOptions.CLIENT_WRITER_BATCH_SIZE, MemorySize.parse("1kb"));
+        conf.set(ConfigOptions.MAX_PARTITION_NUM, 10);
+        conf.set(ConfigOptions.MAX_BUCKET_NUM, 30);
         return conf;
     }
 
@@ -134,7 +140,8 @@ public abstract class ClientToServerITCaseBase {
     }
 
     protected static void subscribeFromTimestamp(
-            PhysicalTablePath physicalTablePath,
+            TablePath tablePath,
+            @Nullable String partitionName,
             @Nullable Long partitionId,
             Table table,
             LogScanner logScanner,
@@ -142,12 +149,7 @@ public abstract class ClientToServerITCaseBase {
             long timestamp)
             throws Exception {
         Map<Integer, Long> offsetsMap =
-                admin.listOffsets(
-                                physicalTablePath,
-                                getAllBuckets(table),
-                                new TimestampSpec(timestamp))
-                        .all()
-                        .get();
+                listOffsets(tablePath, partitionName, table, admin, new TimestampSpec(timestamp));
         if (partitionId != null) {
             offsetsMap.forEach(
                     (bucketId, offset) -> logScanner.subscribe(partitionId, bucketId, offset));
@@ -156,17 +158,30 @@ public abstract class ClientToServerITCaseBase {
         }
     }
 
+    private static Map<Integer, Long> listOffsets(
+            TablePath tablePath,
+            String partitionName,
+            Table table,
+            Admin admin,
+            OffsetSpec offsetSpec)
+            throws InterruptedException, ExecutionException {
+        return partitionName == null
+                ? admin.listOffsets(tablePath, getAllBuckets(table), offsetSpec).all().get()
+                : admin.listOffsets(tablePath, partitionName, getAllBuckets(table), offsetSpec)
+                        .all()
+                        .get();
+    }
+
     protected static void subscribeFromLatestOffset(
-            PhysicalTablePath physicalTablePath,
+            TablePath tablePath,
+            @Nullable String partitionName,
             @Nullable Long partitionId,
             Table table,
             LogScanner logScanner,
             Admin admin)
             throws Exception {
         Map<Integer, Long> offsetsMap =
-                admin.listOffsets(physicalTablePath, getAllBuckets(table), new LatestSpec())
-                        .all()
-                        .get();
+                listOffsets(tablePath, partitionName, table, admin, new LatestSpec());
         if (partitionId != null) {
             offsetsMap.forEach(
                     (bucketId, offset) -> logScanner.subscribe(partitionId, bucketId, offset));
@@ -257,5 +272,19 @@ public abstract class ClientToServerITCaseBase {
     protected static InternalRow lookupRow(Lookuper lookuper, InternalRow keyRow) throws Exception {
         // lookup this key.
         return lookuper.lookup(keyRow).get().getSingletonRow();
+    }
+
+    protected static PartitionSpec newPartitionSpec(String partitionKey, String partitionValue) {
+        return new PartitionSpec(Collections.singletonMap(partitionKey, partitionValue));
+    }
+
+    protected static PartitionSpec newPartitionSpec(
+            List<String> partitionKeys, List<String> partitionValues) {
+        checkArgument(partitionKeys.size() == partitionValues.size());
+        Map<String, String> collectMap =
+                IntStream.range(0, partitionKeys.size())
+                        .boxed()
+                        .collect(Collectors.toMap(partitionKeys::get, partitionValues::get));
+        return new PartitionSpec(collectMap);
     }
 }

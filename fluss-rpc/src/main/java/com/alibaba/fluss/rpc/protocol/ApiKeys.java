@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -59,11 +60,17 @@ public enum ApiKeys {
     NOTIFY_KV_SNAPSHOT_OFFSET(1029, 0, 0, PRIVATE),
     COMMIT_LAKE_TABLE_SNAPSHOT(1030, 0, 0, PRIVATE),
     NOTIFY_LAKE_TABLE_OFFSET(1031, 0, 0, PRIVATE),
-    DESCRIBE_LAKE_STORAGE(1032, 0, 0, PUBLIC),
-    GET_LATEST_LAKE_SNAPSHOT(1033, 0, 0, PUBLIC),
-    LIMIT_SCAN(1034, 0, 0, PUBLIC),
-    PREFIX_LOOKUP(1035, 0, 0, PUBLIC),
-    GET_DATABASE_INFO(1036, 0, 0, PUBLIC);
+    GET_LATEST_LAKE_SNAPSHOT(1032, 0, 0, PUBLIC),
+    LIMIT_SCAN(1033, 0, 0, PUBLIC),
+    PREFIX_LOOKUP(1034, 0, 0, PUBLIC),
+    GET_DATABASE_INFO(1035, 0, 0, PUBLIC),
+    CREATE_PARTITION(1036, 0, 0, PUBLIC),
+    DROP_PARTITION(1037, 0, 0, PUBLIC),
+    AUTHENTICATE(1038, 0, 0, PUBLIC),
+    CREATE_ACLS(1039, 0, 0, PUBLIC),
+    LIST_ACLS(1040, 0, 0, PUBLIC),
+    DROP_ACLS(1041, 0, 0, PUBLIC),
+    LAKE_TIERING_HEARTBEAT(1042, 0, 0, PRIVATE);
 
     private static final Map<Integer, ApiKeys> ID_TO_TYPE =
             Arrays.stream(ApiKeys.values())

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- Copyright (c) 2024 Alibaba Group Holding Ltd.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
       http://www.apache.org/licenses/LICENSE-2.0
 
@@ -22,7 +24,7 @@
     <parent>
         <groupId>com.alibaba.fluss</groupId>
         <artifactId>fluss-filesystems</artifactId>
-        <version>0.6-SNAPSHOT</version>
+        <version>0.8-SNAPSHOT</version>
     </parent>
 
     <artifactId>fluss-fs-oss</artifactId>
@@ -50,6 +52,12 @@
             <groupId>com.alibaba.fluss</groupId>
             <artifactId>fluss-fs-hadoop</artifactId>
             <version>${project.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.hadoop</groupId>
+                    <artifactId>hadoop-hdfs-client</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
@@ -99,6 +107,10 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-test-utils</artifactId>
+        </dependency>
         <!-- for the behavior test suite -->
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
@@ -196,6 +208,10 @@
                                 <includes>
                                     <include>*:*</include>
                                 </includes>
+                                <excludes>
+                                    <exclude>javax.servlet:servlet-api</exclude>
+                                    <exclude>xmlenc:xmlenc</exclude>
+                                </excludes>
                             </artifactSet>
                             <filters>
                                 <filter>
@@ -204,6 +220,10 @@
                                         <exclude>.gitkeep</exclude>
                                         <exclude>mime.types</exclude>
                                         <exclude>mozilla/**</exclude>
+                                        <exclude>LICENSE.txt</exclude>
+                                        <exclude>license/LICENSE*</exclude>
+                                        <exclude>okhttp3/internal/publicsuffix/NOTICE</exclude>
+                                        <exclude>NOTICE</exclude>
                                     </excludes>
                                 </filter>
                             </filters>

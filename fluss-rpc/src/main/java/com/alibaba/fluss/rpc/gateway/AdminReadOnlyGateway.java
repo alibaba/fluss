@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,8 +20,6 @@ package com.alibaba.fluss.rpc.gateway;
 import com.alibaba.fluss.rpc.RpcGateway;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.GetDatabaseInfoRequest;
 import com.alibaba.fluss.rpc.messages.GetDatabaseInfoResponse;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenRequest;
@@ -35,6 +34,8 @@ import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
 import com.alibaba.fluss.rpc.messages.GetTableInfoResponse;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaRequest;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaResponse;
+import com.alibaba.fluss.rpc.messages.ListAclsRequest;
+import com.alibaba.fluss.rpc.messages.ListAclsResponse;
 import com.alibaba.fluss.rpc.messages.ListDatabasesRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesResponse;
 import com.alibaba.fluss.rpc.messages.ListPartitionInfosRequest;
@@ -45,8 +46,6 @@ import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
-import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
-import com.alibaba.fluss.rpc.messages.UpdateMetadataResponse;
 import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.RPC;
 
@@ -130,15 +129,6 @@ public interface AdminReadOnlyGateway extends RpcGateway {
     CompletableFuture<MetadataResponse> metadata(MetadataRequest request);
 
     /**
-     * request send to tablet server to update the metadata cache for every tablet server node,
-     * asynchronously.
-     *
-     * @return the update metadata response
-     */
-    @RPC(api = ApiKeys.UPDATE_METADATA)
-    CompletableFuture<UpdateMetadataResponse> updateMetadata(UpdateMetadataRequest request);
-
-    /**
      * Get the latest kv snapshots of a primary key table. A kv snapshot is a snapshot of a kv
      * tablet, so a table can have multiple kv snapshots.
      *
@@ -180,15 +170,6 @@ public interface AdminReadOnlyGateway extends RpcGateway {
             ListPartitionInfosRequest request);
 
     /**
-     * Describe the lake storage used for Fluss.
-     *
-     * @return a future returns lake storage info
-     */
-    @RPC(api = ApiKeys.DESCRIBE_LAKE_STORAGE)
-    CompletableFuture<DescribeLakeStorageResponse> describeLakeStorage(
-            DescribeLakeStorageRequest request);
-
-    /**
      * Get the latest lake snapshot for the given table.
      *
      * @param request request that specifies that table path.
@@ -197,4 +178,13 @@ public interface AdminReadOnlyGateway extends RpcGateway {
     @RPC(api = ApiKeys.GET_LATEST_LAKE_SNAPSHOT)
     CompletableFuture<GetLatestLakeSnapshotResponse> getLatestLakeSnapshot(
             GetLatestLakeSnapshotRequest request);
+
+    /**
+     * List acls for a table.
+     *
+     * @param request the request that specifies the table path.
+     * @return a future returns the list of acls.
+     */
+    @RPC(api = ApiKeys.LIST_ACLS)
+    CompletableFuture<ListAclsResponse> listAcls(ListAclsRequest request);
 }

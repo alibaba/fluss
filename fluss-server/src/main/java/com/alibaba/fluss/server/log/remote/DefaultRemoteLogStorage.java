@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -105,9 +106,6 @@ public class DefaultRemoteLogStorage implements RemoteLogStorage {
             List<CompletableFuture<Void>> futures =
                     createUploadFutures(remoteLogSegment, logSegmentFiles);
             FutureUtils.waitForAll(futures).get();
-            for (CompletableFuture<Void> future : futures) {
-                future.get();
-            }
         } catch (ExecutionException e) {
             Throwable throwable = ExceptionUtils.stripExecutionException(e);
             throwable = ExceptionUtils.stripException(throwable, RuntimeException.class);
@@ -172,9 +170,17 @@ public class DefaultRemoteLogStorage implements RemoteLogStorage {
     @Override
     public InputStream fetchIndex(RemoteLogSegment remoteLogSegment, IndexType indexType)
             throws RemoteStorageException {
-        FsPath remoteLogSegmentIndexFile =
-                FlussPaths.remoteOffsetIndexFile(
-                        remoteLogDir, remoteLogSegment, IndexType.getFileSuffix(indexType));
+        FsPath remoteLogSegmentIndexFile;
+        if (indexType == IndexType.WRITER_ID_SNAPSHOT) {
+            remoteLogSegmentIndexFile =
+                    FlussPaths.remoteWriterSnapshotFile(
+                            remoteLogDir, remoteLogSegment, IndexType.getFileSuffix(indexType));
+        } else {
+            remoteLogSegmentIndexFile =
+                    FlussPaths.remoteOffsetIndexFile(
+                            remoteLogDir, remoteLogSegment, IndexType.getFileSuffix(indexType));
+        }
+
         try {
             return fileSystem.open(remoteLogSegmentIndexFile);
         } catch (IOException e) {

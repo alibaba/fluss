@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,11 +18,17 @@
 package com.alibaba.fluss.server.zk;
 
 import com.alibaba.fluss.annotation.Internal;
+import com.alibaba.fluss.metadata.ResolvedPartitionSpec;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.security.acl.AccessControlEntry;
+import com.alibaba.fluss.security.acl.Resource;
+import com.alibaba.fluss.security.acl.ResourceType;
+import com.alibaba.fluss.server.authorizer.DefaultAuthorizer.VersionedAcls;
+import com.alibaba.fluss.server.entity.RegisterTableBucketLeadAndIsrInfo;
 import com.alibaba.fluss.server.zk.data.BucketSnapshot;
 import com.alibaba.fluss.server.zk.data.CoordinatorAddress;
 import com.alibaba.fluss.server.zk.data.DatabaseRegistration;
@@ -29,9 +36,12 @@ import com.alibaba.fluss.server.zk.data.LakeTableSnapshot;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.server.zk.data.PartitionAssignment;
 import com.alibaba.fluss.server.zk.data.RemoteLogManifestHandle;
+import com.alibaba.fluss.server.zk.data.ResourceAcl;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.server.zk.data.TableRegistration;
 import com.alibaba.fluss.server.zk.data.TabletServerRegistration;
+import com.alibaba.fluss.server.zk.data.ZkData;
+import com.alibaba.fluss.server.zk.data.ZkData.AclChangeNotificationNode;
 import com.alibaba.fluss.server.zk.data.ZkData.BucketIdsZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.BucketRemoteLogsZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.BucketSnapshotIdZNode;
@@ -45,6 +55,7 @@ import com.alibaba.fluss.server.zk.data.ZkData.PartitionIdZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.PartitionSequenceIdZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.PartitionZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.PartitionsZNode;
+import com.alibaba.fluss.server.zk.data.ZkData.ResourceAclNode;
 import com.alibaba.fluss.server.zk.data.ZkData.SchemaZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.SchemasZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.ServerIdZNode;
@@ -55,6 +66,7 @@ import com.alibaba.fluss.server.zk.data.ZkData.TableZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.TablesZNode;
 import com.alibaba.fluss.server.zk.data.ZkData.WriterIdZNode;
 import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.CuratorFramework;
+import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.api.transaction.CuratorOp;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.CreateMode;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
 import com.alibaba.fluss.shaded.zookeeper3.org.apache.zookeeper.data.Stat;
@@ -75,6 +87,8 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
+import static com.alibaba.fluss.metadata.ResolvedPartitionSpec.fromPartitionName;
+
 /**
  * This class includes methods for write/read various metadata (leader address, tablet server
  * registration, table assignment, table, schema) in Zookeeper.
@@ -83,7 +97,8 @@ import java.util.Set;
 public class ZooKeeperClient implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperClient.class);
-
+    public static final int UNKNOWN_VERSION = -2;
+    private static final int MAX_BATCH_SIZE = 1024;
     private final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper;
 
     private final CuratorFramework zkClient;
@@ -100,7 +115,7 @@ public class ZooKeeperClient implements AutoCloseable {
         this.writerIdCounter = new ZkSequenceIDCounter(zkClient, WriterIdZNode.path());
     }
 
-    private Optional<byte[]> getOrEmpty(String path) throws Exception {
+    public Optional<byte[]> getOrEmpty(String path) throws Exception {
         try {
             return Optional.of(zkClient.getData().forPath(path));
         } catch (KeeperException.NoNodeException e) {
@@ -234,6 +249,53 @@ public class ZooKeeperClient implements AutoCloseable {
                 .withMode(CreateMode.PERSISTENT)
                 .forPath(path, LeaderAndIsrZNode.encode(leaderAndIsr));
         LOG.info("Registered {} for bucket {} in Zookeeper.", leaderAndIsr, tableBucket);
+    }
+
+    public void batchRegisterLeaderAndIsrForTablePartition(
+            List<RegisterTableBucketLeadAndIsrInfo> registerList) throws Exception {
+        if (registerList.isEmpty()) {
+            return;
+        }
+
+        List<CuratorOp> ops = new ArrayList<>(registerList.size());
+        // In transaction API, it is not allowed to use "creatingParentsIfNeeded()"
+        // So we have to create parent dictionary in advance.
+        RegisterTableBucketLeadAndIsrInfo firstInfo = registerList.get(0);
+        String bucketsParentPath = BucketIdsZNode.path(firstInfo.getTableBucket());
+        zkClient.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT)
+                .forPath(bucketsParentPath);
+
+        for (RegisterTableBucketLeadAndIsrInfo info : registerList) {
+            byte[] data = LeaderAndIsrZNode.encode(info.getLeaderAndIsr());
+            // create direct parent node
+            CuratorOp parentNodeCreate =
+                    zkClient.transactionOp()
+                            .create()
+                            .withMode(CreateMode.PERSISTENT)
+                            .forPath(ZkData.BucketIdZNode.path(info.getTableBucket()));
+            // create current node
+            CuratorOp currentNodeCreate =
+                    zkClient.transactionOp()
+                            .create()
+                            .withMode(CreateMode.PERSISTENT)
+                            .forPath(LeaderAndIsrZNode.path(info.getTableBucket()), data);
+            ops.add(parentNodeCreate);
+            ops.add(currentNodeCreate);
+            if (ops.size() == MAX_BATCH_SIZE) {
+                zkClient.transaction().forOperations(ops);
+                ops.clear();
+            }
+        }
+        if (!ops.isEmpty()) {
+            zkClient.transaction().forOperations(ops);
+        }
+        LOG.info(
+                "Batch registered leadAndIsr for tableId: {}, partitionId: {}, partitionName: {}  in Zookeeper.",
+                firstInfo.getTableBucket().getTableId(),
+                firstInfo.getTableBucket().getPartitionId(),
+                firstInfo.getPartitionName());
     }
 
     /** Get the bucket LeaderAndIsr in ZK. */
@@ -389,6 +451,28 @@ public class ZooKeeperClient implements AutoCloseable {
         return partitions;
     }
 
+    /** Get the partition and the id for the partitions of a table in ZK by partition spec. */
+    public Map<String, Long> getPartitionNameAndIds(
+            TablePath tablePath,
+            List<String> partitionKeys,
+            ResolvedPartitionSpec partialPartitionSpec)
+            throws Exception {
+        Map<String, Long> partitions = new HashMap<>();
+
+        for (String partitionName : getPartitions(tablePath)) {
+            ResolvedPartitionSpec resolvedPartitionSpec =
+                    fromPartitionName(partitionKeys, partitionName);
+            boolean contains = resolvedPartitionSpec.contains(partialPartitionSpec);
+            if (contains) {
+                Optional<TablePartition> optPartition = getPartition(tablePath, partitionName);
+                optPartition.ifPresent(
+                        partition -> partitions.put(partitionName, partition.getPartitionId()));
+            }
+        }
+
+        return partitions;
+    }
+
     /** Get the id and name for the partitions of a table in ZK. */
     public Map<Long, String> getPartitionIdAndNames(TablePath tablePath) throws Exception {
         Map<Long, String> partitionIdAndNames = new HashMap<>();
@@ -406,6 +490,16 @@ public class ZooKeeperClient implements AutoCloseable {
             throws Exception {
         String path = PartitionZNode.path(tablePath, partitionName);
         return getOrEmpty(path).map(PartitionZNode::decode);
+    }
+
+    /** Get partition num of a table in ZK. */
+    public int getPartitionNumber(TablePath tablePath) throws Exception {
+        String path = PartitionsZNode.path(tablePath);
+        Stat stat = zkClient.checkExists().forPath(path);
+        if (stat == null) {
+            return 0;
+        }
+        return stat.getNumChildren();
     }
 
     /** Create a partition for a table in ZK. */
@@ -625,7 +719,7 @@ public class ZooKeeperClient implements AutoCloseable {
             // after the previous commit
             LakeTableSnapshot previous = optLakeTableSnapshot.get();
 
-            // merge log start offset, current will override the previous
+            // merge log startup offset, current will override the previous
             Map<TableBucket, Long> bucketLogStartOffset =
                     new HashMap<>(previous.getBucketLogStartOffset());
             bucketLogStartOffset.putAll(lakeTableSnapshot.getBucketLogStartOffset());
@@ -654,6 +748,95 @@ public class ZooKeeperClient implements AutoCloseable {
         return getOrEmpty(path).map(LakeTableZNode::decode);
     }
 
+    /**
+     * Register or update the acl registration to zookeeper.
+     *
+     * <p>Note: If there is already an acl registration for the given resources and the acl version
+     * is smaller than new one, it will be overwritten.(we need to compare the version before
+     * upsert)
+     *
+     * @return the version of the acl node after upsert.
+     */
+    public int updateResourceAcl(
+            Resource resource, Set<AccessControlEntry> accessControlEntries, int expectedVersion)
+            throws Exception {
+        String path = ResourceAclNode.path(resource);
+        LOG.info("update acl node {} with value {}", resource, accessControlEntries);
+        return zkClient.setData()
+                .withVersion(expectedVersion)
+                .forPath(path, ResourceAclNode.encode(new ResourceAcl(accessControlEntries)))
+                .getVersion();
+    }
+
+    public void createResourceAcl(Resource resource, Set<AccessControlEntry> accessControlEntries)
+            throws Exception {
+        String path = ResourceAclNode.path(resource);
+        LOG.info("insert acl node {} with value {}", resource, accessControlEntries);
+        zkClient.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT)
+                .forPath(path, ResourceAclNode.encode(new ResourceAcl(accessControlEntries)));
+    }
+
+    /**
+     * Retrieves the ACL (Access Control List) for a specific resource from ZooKeeper.
+     *
+     * @param resource the resource to query
+     * @return an Optional containing the ResourceAcl if it exists, or empty if not found
+     * @throws Exception if there is an error accessing ZooKeeper
+     */
+    public VersionedAcls getResourceAclWithVersion(Resource resource) throws Exception {
+        String path = ResourceAclNode.path(resource);
+        try {
+            Stat stat = new Stat();
+            byte[] bytes = zkClient.getData().storingStatIn(stat).forPath(path);
+            int zkVersion = stat.getVersion();
+            Optional<ResourceAcl> resourceAcl =
+                    Optional.ofNullable(bytes).map(ResourceAclNode::decode);
+
+            return new VersionedAcls(
+                    zkVersion,
+                    resourceAcl.isPresent()
+                            ? resourceAcl.get().getEntries()
+                            : Collections.emptySet());
+        } catch (KeeperException.NoNodeException e) {
+            return new VersionedAcls(UNKNOWN_VERSION, Collections.emptySet());
+        }
+    }
+
+    /**
+     * Retrieves all resources of a specific type and their corresponding ACLs from ZooKeeper.
+     *
+     * @param resourceType the type of resource to query
+     * @return a list of child node names representing resources of the given type
+     * @throws Exception if there is an error accessing ZooKeeper
+     */
+    public List<String> listResourcesByType(ResourceType resourceType) throws Exception {
+        String path = ResourceAclNode.path(resourceType);
+        return getChildren(path);
+    }
+
+    /**
+     * Deletes the ACL (Access Control List) for a specific resource from ZooKeeper.
+     *
+     * @param resource the resource whose ACL should be deleted
+     * @throws Exception if there is an error accessing ZooKeeper
+     */
+    public void contitionalDeleteResourceAcl(Resource resource, int zkVersion) throws Exception {
+        String path = ResourceAclNode.path(resource);
+        zkClient.delete().withVersion(zkVersion).forPath(path);
+    }
+
+    public void insertAclChangeNotification(Resource resource) throws Exception {
+        zkClient.create()
+                .creatingParentsIfNeeded()
+                .withMode(CreateMode.PERSISTENT_SEQUENTIAL)
+                .forPath(
+                        AclChangeNotificationNode.pathPrefix(),
+                        AclChangeNotificationNode.encode(resource));
+        LOG.info("add acl change notification for resource {}  ", resource);
+    }
+
     // --------------------------------------------------------------------------------------------
     // Utils
     // --------------------------------------------------------------------------------------------
@@ -669,6 +852,24 @@ public class ZooKeeperClient implements AutoCloseable {
             return zkClient.getChildren().forPath(path);
         } catch (KeeperException.NoNodeException e) {
             return Collections.emptyList();
+        }
+    }
+
+    /** Gets the data and stat of a given zk node path. */
+    public Optional<Stat> getStat(String path) throws Exception {
+        try {
+            Stat stat = zkClient.checkExists().forPath(path);
+            return Optional.ofNullable(stat);
+        } catch (KeeperException.NoNodeException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** delete a path. */
+    public void deletePath(String path) throws Exception {
+        try {
+            zkClient.delete().forPath(path);
+        } catch (KeeperException.NoNodeException ignored) {
         }
     }
 

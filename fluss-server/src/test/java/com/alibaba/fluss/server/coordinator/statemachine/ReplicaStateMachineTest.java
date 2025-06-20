@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,11 +17,12 @@
 
 package com.alibaba.fluss.server.coordinator.statemachine;
 
-import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
+import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.server.coordinator.CoordinatorChannelManager;
@@ -30,10 +32,18 @@ import com.alibaba.fluss.server.coordinator.CoordinatorTestUtils;
 import com.alibaba.fluss.server.coordinator.TestCoordinatorChannelManager;
 import com.alibaba.fluss.server.coordinator.event.DeleteReplicaResponseReceivedEvent;
 import com.alibaba.fluss.server.entity.DeleteReplicaResultForBucket;
+import com.alibaba.fluss.server.metadata.ServerInfo;
+import com.alibaba.fluss.server.zk.NOPErrorHandler;
+import com.alibaba.fluss.server.zk.ZooKeeperClient;
+import com.alibaba.fluss.server.zk.ZooKeeperExtension;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
+import com.alibaba.fluss.testutils.common.AllCallbackWrapper;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -42,6 +52,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
+import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.NewReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OfflineReplica;
 import static com.alibaba.fluss.server.coordinator.statemachine.ReplicaState.OnlineReplica;
@@ -50,6 +62,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link ReplicaStateMachine} . */
 class ReplicaStateMachineTest {
+
+    @RegisterExtension
+    public static final AllCallbackWrapper<ZooKeeperExtension> ZOO_KEEPER_EXTENSION_WRAPPER =
+            new AllCallbackWrapper<>(new ZooKeeperExtension());
+
+    private static ZooKeeperClient zookeeperClient;
+
+    @BeforeAll
+    static void baseBeforeAll() {
+        zookeeperClient =
+                ZOO_KEEPER_EXTENSION_WRAPPER
+                        .getCustomExtension()
+                        .getZooKeeperClient(NOPErrorHandler.INSTANCE);
+    }
 
     @Test
     void testStartup() {
@@ -60,9 +86,7 @@ class ReplicaStateMachineTest {
         // bucket0 has two replicas, put them into context
         coordinatorContext.updateBucketReplicaAssignment(tableBucket, Arrays.asList(1, 2));
         // only server1 is alive
-        List<ServerNode> liveServers =
-                Collections.singletonList(new ServerNode(1, "host", 23, ServerType.TABLET_SERVER));
-        coordinatorContext.setLiveTabletServers(liveServers);
+        coordinatorContext.setLiveTabletServers(createServers(new int[] {1}));
 
         // now, create the state machine with the context
         ReplicaStateMachine replicaStateMachine = createReplicaStateMachine(coordinatorContext);
@@ -71,7 +95,7 @@ class ReplicaStateMachineTest {
         TableBucketReplica replica1 = new TableBucketReplica(tableBucket, 1);
         TableBucketReplica replica2 = new TableBucketReplica(tableBucket, 2);
         // replica1 should be online as the server is online
-        // replica2 should be offline  as the server is offline
+        // replica2 should be offline as the server is offline
         assertThat(coordinatorContext.getReplicaState(replica1)).isEqualTo(OnlineReplica);
         assertThat(coordinatorContext.getReplicaState(replica2)).isEqualTo(OfflineReplica);
 
@@ -164,6 +188,57 @@ class ReplicaStateMachineTest {
         }
     }
 
+    @Test
+    void testOfflineReplicaShouldBeRemovedFromIsr() throws Exception {
+        CoordinatorContext coordinatorContext = new CoordinatorContext();
+        coordinatorContext.setLiveTabletServers(createServers(new int[] {0, 1, 2}));
+        ReplicaStateMachine replicaStateMachine = createReplicaStateMachine(coordinatorContext);
+
+        // put the replica to online
+        long tableId = 1;
+        coordinatorContext.putTableInfo(
+                TableInfo.of(
+                        DATA1_TABLE_PATH,
+                        tableId,
+                        0,
+                        DATA1_TABLE_DESCRIPTOR,
+                        System.currentTimeMillis(),
+                        System.currentTimeMillis()));
+        coordinatorContext.putTablePath(tableId, DATA1_TABLE_PATH);
+        TableBucket tableBucket = new TableBucket(tableId, 0);
+        for (int i = 0; i < 3; i++) {
+            TableBucketReplica replica = new TableBucketReplica(tableBucket, i);
+            coordinatorContext.putReplicaState(replica, OnlineReplica);
+        }
+        // put leader and isr
+        LeaderAndIsr leaderAndIsr = new LeaderAndIsr(0, 0, Arrays.asList(0, 1, 2), 0, 0);
+        zookeeperClient.registerLeaderAndIsr(tableBucket, leaderAndIsr);
+        coordinatorContext.updateBucketReplicaAssignment(tableBucket, Arrays.asList(0, 1, 2));
+        coordinatorContext.putBucketLeaderAndIsr(tableBucket, leaderAndIsr);
+
+        // set replica 1 to offline
+        replicaStateMachine.handleStateChanges(
+                Collections.singleton(new TableBucketReplica(tableBucket, 1)), OfflineReplica);
+        leaderAndIsr = coordinatorContext.getBucketLeaderAndIsr(tableBucket).get();
+        assertThat(leaderAndIsr).isEqualTo(new LeaderAndIsr(0, 0, Arrays.asList(0, 2), 0, 1));
+
+        // set replica 2 to offline
+        replicaStateMachine.handleStateChanges(
+                Collections.singleton(new TableBucketReplica(tableBucket, 2)), OfflineReplica);
+        leaderAndIsr = coordinatorContext.getBucketLeaderAndIsr(tableBucket).get();
+        assertThat(leaderAndIsr)
+                .isEqualTo(new LeaderAndIsr(0, 0, Collections.singletonList(0), 0, 2));
+
+        // set replica 0 to offline, isr shouldn't be empty, leader should be NO_LEADER
+        replicaStateMachine.handleStateChanges(
+                Collections.singleton(new TableBucketReplica(tableBucket, 0)), OfflineReplica);
+        leaderAndIsr = coordinatorContext.getBucketLeaderAndIsr(tableBucket).get();
+        assertThat(leaderAndIsr)
+                .isEqualTo(
+                        new LeaderAndIsr(
+                                LeaderAndIsr.NO_LEADER, 0, Collections.singletonList(0), 0, 3));
+    }
+
     private void toReplicaDeletionStartedState(
             ReplicaStateMachine replicaStateMachine, Collection<TableBucketReplica> replicas) {
         replicaStateMachine.handleStateChanges(replicas, NewReplica);
@@ -181,7 +256,9 @@ class ReplicaStateMachineTest {
                                         TestingClientMetricGroup.newInstance())),
                         (event) -> {
                             // do nothing
-                        }));
+                        },
+                        coordinatorContext),
+                zookeeperClient);
     }
 
     private ReplicaStateMachine createReplicaStateMachine(
@@ -210,6 +287,21 @@ class ReplicaStateMachineTest {
                                             deleteReplicaResultForBucket.succeeded());
                                 }
                             }
-                        }));
+                        },
+                        coordinatorContext),
+                zookeeperClient);
+    }
+
+    private List<ServerInfo> createServers(int[] serverIds) {
+        List<ServerInfo> servers = new ArrayList<>();
+        for (int serverId : serverIds) {
+            servers.add(
+                    new ServerInfo(
+                            serverId,
+                            "RACK" + serverId,
+                            Endpoint.fromListenersString("CLIENT://host:23"),
+                            ServerType.TABLET_SERVER));
+        }
+        return servers;
     }
 }

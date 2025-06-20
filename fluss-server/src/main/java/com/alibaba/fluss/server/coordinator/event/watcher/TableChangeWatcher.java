@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,8 @@
 
 package com.alibaba.fluss.server.coordinator.event.watcher;
 
+import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.TableConfig;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -36,7 +39,6 @@ import com.alibaba.fluss.server.zk.data.ZkData.TableZNode;
 import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.recipes.cache.ChildData;
 import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.recipes.cache.CuratorCache;
 import com.alibaba.fluss.shaded.curator5.org.apache.curator.framework.recipes.cache.CuratorCacheListener;
-import com.alibaba.fluss.utils.AutoPartitionStrategy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,7 +131,9 @@ public class TableChangeWatcher {
                             TablePartition partition = PartitionZNode.decode(oldData.getData());
                             eventManager.put(
                                     new DropPartitionEvent(
-                                            partition.getTableId(), partition.getPartitionId()));
+                                            partition.getTableId(),
+                                            partition.getPartitionId(),
+                                            physicalTablePath.getPartitionName()));
                         } else {
                             // maybe table node is deleted
                             // try to parse the path as a table node
@@ -138,11 +142,15 @@ public class TableChangeWatcher {
                                 break;
                             }
                             TableRegistration table = TableZNode.decode(oldData.getData());
+                            TableConfig tableConfig =
+                                    new TableConfig(Configuration.fromMap(table.properties));
                             eventManager.put(
                                     new DropTableEvent(
                                             table.tableId,
-                                            AutoPartitionStrategy.from(table.properties)
-                                                    .isAutoPartitionEnabled()));
+                                            tableConfig
+                                                    .getAutoPartitionStrategy()
+                                                    .isAutoPartitionEnabled(),
+                                            tableConfig.isDataLakeEnabled()));
                         }
                         break;
                     }

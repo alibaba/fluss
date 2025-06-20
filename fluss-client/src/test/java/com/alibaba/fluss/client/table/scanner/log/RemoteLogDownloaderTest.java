@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,7 @@
 
 package com.alibaba.fluss.client.table.scanner.log;
 
+import com.alibaba.fluss.client.metrics.ScannerMetricGroup;
 import com.alibaba.fluss.client.metrics.TestingScannerMetricGroup;
 import com.alibaba.fluss.client.table.scanner.RemoteFileDownloader;
 import com.alibaba.fluss.config.ConfigOptions;
@@ -56,6 +58,7 @@ class RemoteLogDownloaderTest {
     private FsPath remoteLogDir;
     private Configuration conf;
     private RemoteFileDownloader remoteFileDownloader;
+    private ScannerMetricGroup scannerMetricGroup;
     private RemoteLogDownloader remoteLogDownloader;
 
     @BeforeEach
@@ -66,12 +69,13 @@ class RemoteLogDownloaderTest {
         conf.set(ConfigOptions.CLIENT_SCANNER_REMOTE_LOG_PREFETCH_NUM, 4);
         remoteLogDir = remoteLogDir(conf);
         remoteFileDownloader = new RemoteFileDownloader(1);
+        scannerMetricGroup = TestingScannerMetricGroup.newInstance();
         remoteLogDownloader =
                 new RemoteLogDownloader(
                         DATA1_TABLE_PATH,
                         conf,
                         remoteFileDownloader,
-                        TestingScannerMetricGroup.newInstance(),
+                        scannerMetricGroup,
                         // use a short timout for faster testing
                         10L);
     }
@@ -106,12 +110,18 @@ class RemoteLogDownloaderTest {
                 });
 
         assertThat(FileUtils.listDirectory(localLogDir).length).isEqualTo(4);
+        assertThat(scannerMetricGroup.remoteFetchRequestCount().getCount()).isEqualTo(4);
+        assertThat(scannerMetricGroup.remoteFetchBytes().getCount())
+                .isEqualTo(remoteLogSegmentFilesLength(remoteLogSegments, remoteLogTabletDir, 4));
         assertThat(remoteLogDownloader.getPrefetchSemaphore().availablePermits()).isEqualTo(0);
 
         futures.get(0).getRecycleCallback().run();
         // the 5th segment should success.
         retry(Duration.ofMinutes(1), () -> assertThat(futures.get(4).isDone()).isTrue());
         assertThat(FileUtils.listDirectory(localLogDir).length).isEqualTo(4);
+        assertThat(scannerMetricGroup.remoteFetchRequestCount().getCount()).isEqualTo(5);
+        assertThat(scannerMetricGroup.remoteFetchBytes().getCount())
+                .isEqualTo(remoteLogSegmentFilesLength(remoteLogSegments, remoteLogTabletDir, 5));
         assertThat(remoteLogDownloader.getPrefetchSemaphore().availablePermits()).isEqualTo(0);
 
         futures.get(1).getRecycleCallback().run();
@@ -162,5 +172,20 @@ class RemoteLogDownloaderTest {
             remoteLogSegmentList.add(remoteLogSegment);
         }
         return remoteLogSegmentList;
+    }
+
+    private static Long remoteLogSegmentFilesLength(
+            List<RemoteLogSegment> remoteLogSegments, FsPath remoteLogTabletDir, int segmentNum) {
+        return remoteLogSegments.stream()
+                .limit(segmentNum)
+                .mapToLong(
+                        segment ->
+                                new File(
+                                                RemoteLogDownloader.getFsPathAndFileName(
+                                                                remoteLogTabletDir, segment)
+                                                        .getPath()
+                                                        .getPath())
+                                        .length())
+                .sum();
     }
 }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,6 +32,8 @@ import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.MemorySize;
+import com.alibaba.fluss.fs.FsPath;
+import com.alibaba.fluss.fs.TestFileSystem;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
@@ -40,7 +43,7 @@ import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.record.RowKind;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.row.BinaryString;
 import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
@@ -61,6 +64,7 @@ import javax.annotation.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -145,7 +149,42 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (count < expectedSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
+                    InternalRow row = scanRecord.getRow();
+                    assertThat(row.getInt(0)).isEqualTo(1);
+                    assertThat(row.getString(1)).isEqualTo(value);
+                    count++;
+                }
+            }
+            logScanner.close();
+        }
+    }
+
+    @Test
+    void testPollOnce() throws Exception {
+        TableDescriptor desc = DATA1_TABLE_DESCRIPTOR;
+        createTable(DATA1_TABLE_PATH, desc, false);
+        Configuration config = new Configuration(clientConf);
+        int expectedSize = 20;
+        try (Connection conn = ConnectionFactory.createConnection(config)) {
+            Table table = conn.getTable(DATA1_TABLE_PATH);
+            AppendWriter appendWriter = table.newAppend().createWriter();
+            BinaryString value = BinaryString.fromString(StringUtils.repeat("a", 100));
+            // should exceed the buffer size, but append successfully
+            for (int i = 0; i < expectedSize; i++) {
+                appendWriter.append(row(1, value));
+            }
+            appendWriter.flush();
+
+            // assert the written data
+            LogScanner logScanner = createLogScanner(table);
+            subscribeFromBeginning(logScanner, table);
+            int count = 0;
+            while (count < expectedSize) {
+                ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
+                assertThat(scanRecords.isEmpty()).isFalse();
+                for (ScanRecord scanRecord : scanRecords) {
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     assertThat(row.getInt(0)).isEqualTo(1);
                     assertThat(row.getString(1)).isEqualTo(value);
@@ -184,7 +223,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (count < expectedSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.INSERT);
                     InternalRow row = scanRecord.getRow();
                     assertThat(row.getInt(0)).isEqualTo(count);
                     assertThat(row.getString(1)).isEqualTo(value);
@@ -586,7 +625,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (result == null) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     result = scanRecord.getRow();
                 }
             }
@@ -663,9 +702,9 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
                     if (append) {
-                        assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                        assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     } else {
-                        assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                        assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.INSERT);
                     }
                     assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(4);
                     assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
@@ -723,7 +762,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (count < expectedSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(2);
                     assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
                     if (count % 2 == 0) {
@@ -746,7 +785,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (count < expectedSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(2);
                     assertThat(scanRecord.getRow().getInt(1)).isEqualTo(count);
                     if (count % 2 == 0) {
@@ -820,7 +859,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                     // 10 inserts
                     for (int i = 0; i < 10; i++) {
                         ScanRecord scanRecord = iterator.next();
-                        assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                        assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.INSERT);
                         assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(3);
                         assertThat(scanRecord.getRow().getInt(0)).isEqualTo(id);
                         assertThat(scanRecord.getRow().getString(1).toString())
@@ -833,7 +872,8 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                     // 10 updates
                     for (int i = 0; i < 5; i++) {
                         ScanRecord beforeRecord = iterator.next();
-                        assertThat(beforeRecord.getRowKind()).isEqualTo(RowKind.UPDATE_BEFORE);
+                        assertThat(beforeRecord.getChangeType())
+                                .isEqualTo(ChangeType.UPDATE_BEFORE);
                         assertThat(beforeRecord.getRow().getFieldCount()).isEqualTo(3);
                         assertThat(beforeRecord.getRow().getInt(0)).isEqualTo(id);
                         assertThat(beforeRecord.getRow().getString(1).toString())
@@ -841,7 +881,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                         assertThat(beforeRecord.getRow().getInt(2)).isEqualTo(100);
 
                         ScanRecord afterRecord = iterator.next();
-                        assertThat(afterRecord.getRowKind()).isEqualTo(RowKind.UPDATE_AFTER);
+                        assertThat(afterRecord.getChangeType()).isEqualTo(ChangeType.UPDATE_AFTER);
                         assertThat(afterRecord.getRow().getFieldCount()).isEqualTo(3);
                         assertThat(afterRecord.getRow().getInt(0)).isEqualTo(id);
                         assertThat(afterRecord.getRow().getString(1).toString())
@@ -854,7 +894,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
 
                     // 1 delete
                     ScanRecord beforeRecord = iterator.next();
-                    assertThat(beforeRecord.getRowKind()).isEqualTo(RowKind.DELETE);
+                    assertThat(beforeRecord.getChangeType()).isEqualTo(ChangeType.DELETE);
                     assertThat(beforeRecord.getRow().getFieldCount()).isEqualTo(3);
                     assertThat(beforeRecord.getRow().getInt(0)).isEqualTo(id);
                     assertThat(beforeRecord.getRow().getString(1).toString())
@@ -945,7 +985,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             assertThat(actualLogRecords).hasSize(rows);
             for (int i = 0; i < actualLogRecords.size(); i++) {
                 ScanRecord scanRecord = actualLogRecords.get(i);
-                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.INSERT);
                 assertThatRow(scanRecord.getRow())
                         .withSchema(doProjection ? rowType.project(new int[] {0}) : rowType)
                         .isEqualTo(expectedScanRows.get(i));
@@ -994,7 +1034,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
 
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
                     assertThat(scanRecord.getRow().getInt(1)).isEqualTo(100);
                     if (count % 2 == 0) {
@@ -1017,7 +1057,7 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             while (count < expectedSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(2);
                     assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
                     if (count % 2 == 0) {
@@ -1084,11 +1124,17 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             // update_before record, don't care about offset/timestamp
             expectedScanRecords.add(
                     new ScanRecord(
-                            -1, -1, RowKind.UPDATE_BEFORE, doProjection ? row(1) : row(1, 1000L)));
+                            -1,
+                            -1,
+                            ChangeType.UPDATE_BEFORE,
+                            doProjection ? row(1) : row(1, 1000L)));
             // update_after record
             expectedScanRecords.add(
                     new ScanRecord(
-                            -1, -1, RowKind.UPDATE_AFTER, doProjection ? row(1) : row(1, 1001L)));
+                            -1,
+                            -1,
+                            ChangeType.UPDATE_AFTER,
+                            doProjection ? row(1) : row(1, 1001L)));
             rows = rows + 2;
 
             upsertWriter.flush();
@@ -1110,11 +1156,27 @@ class FlussTableITCase extends ClientToServerITCaseBase {
             for (int i = 0; i < rows; i++) {
                 ScanRecord actualScanRecord = actualLogRecords.get(i);
                 ScanRecord expectedRecord = expectedScanRecords.get(i);
-                assertThat(actualScanRecord.getRowKind()).isEqualTo(expectedRecord.getRowKind());
+                assertThat(actualScanRecord.getChangeType())
+                        .isEqualTo(expectedRecord.getChangeType());
                 assertThatRow(actualScanRecord.getRow())
                         .withSchema(doProjection ? rowType.project(new int[] {0}) : rowType)
                         .isEqualTo(expectedRecord.getRow());
             }
+        }
+    }
+
+    @Test
+    void testFileSystemRecognizeConnectionConf() throws Exception {
+        Configuration config = new Configuration(clientConf);
+        config.setString("client.fs.test.key", "fs_test_value");
+        config.setString("client.test.key", "client_test_value");
+        try (Connection ignore = ConnectionFactory.createConnection(config)) {
+            FsPath fsPath = new FsPath("test:///f1");
+            TestFileSystem testFileSystem = (TestFileSystem) fsPath.getFileSystem();
+            Configuration filesystemConf = testFileSystem.getConfiguration();
+            assertThat(filesystemConf.toMap())
+                    .containsExactlyEntriesOf(
+                            Collections.singletonMap("client.fs.test.key", "fs_test_value"));
         }
     }
 }

@@ -1,7 +1,25 @@
 ---
-sidebar_label: Introduction
+title: Introduction
 sidebar_position: 1
 ---
+
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
 
 # What is Fluss?
 
@@ -18,10 +36,23 @@ With built-in replication for fault tolerance, horizontal scalability, and advan
 
 **Fluss (German: river, pronounced `/flus/`)** enables streaming data continuously converging, distributing and flowing into lakes, like a river 🌊
 
+## Use Cases
+The following is a list of (but not limited to) use-cases that Fluss shines ✨:
+* **📊 Optimized Real-time analytics**
+* **🔧 Feature Stores**
+* **📈 Real-time Dashboards**
+* **🧍 Real-time Customer 360**
+* **📡 Real-time IoT Pipelines**
+* **🚓 Real-time Fraud Detection**
+* **🚨 Real-time Alerting Systems**
+* **💫 Real-tim ETL/Data Warehouses**
+* **🌐 Real-time Geolocation Services**
+* **🚚 Real-time Shipment Update Tracking**
+
 ## Where to go Next?
 
-- [QuickStart](/docs/quickstart/flink/): Get started with Fluss in minutes.
-- [Architecture](/docs/concepts/architecture/): Learn about Fluss's architecture.
-- [Table Design](/docs/table-design/overview): Explore Fluss's table types, partitions and buckets.
-- [Lakehouse](/docs/streaming-lakehouse/overview/): Integrate Fluss with your Lakehouse to bring low-latency data to your Lakehouse analytics.
-- [Development](/docs/dev/ide-setup/): Set up your development environment and contribute to the community.
+- [QuickStart](quickstart/flink.md): Get started with Fluss in minutes.
+- [Architecture](concepts/architecture.md): Learn about Fluss's architecture.
+- [Table Design](table-design/overview.md): Explore Fluss's table types, partitions and buckets.
+- [Lakehouse](streaming-lakehouse/overview.md): Integrate Fluss with your Lakehouse to bring low-latency data to your Lakehouse analytics.
+- [Development](/community/dev/ide-setup): Set up your development environment and contribute to the community.

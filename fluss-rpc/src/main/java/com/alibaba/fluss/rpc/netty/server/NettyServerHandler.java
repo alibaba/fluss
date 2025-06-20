@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,45 +17,82 @@
 
 package com.alibaba.fluss.rpc.netty.server;
 
+import com.alibaba.fluss.annotation.VisibleForTesting;
+import com.alibaba.fluss.exception.AuthenticationException;
+import com.alibaba.fluss.exception.NetworkException;
+import com.alibaba.fluss.exception.RetriableAuthenticationException;
+import com.alibaba.fluss.record.send.Send;
 import com.alibaba.fluss.rpc.messages.ApiMessage;
+import com.alibaba.fluss.rpc.messages.AuthenticateRequest;
+import com.alibaba.fluss.rpc.messages.AuthenticateResponse;
+import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.rpc.protocol.ApiKeys;
 import com.alibaba.fluss.rpc.protocol.ApiManager;
 import com.alibaba.fluss.rpc.protocol.ApiMethod;
 import com.alibaba.fluss.rpc.protocol.MessageCodec;
+import com.alibaba.fluss.security.auth.ServerAuthenticator;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
+import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelFutureListener;
-import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandler;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelHandlerContext;
 import com.alibaba.fluss.shaded.netty4.io.netty.channel.ChannelInboundHandlerAdapter;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.timeout.IdleState;
 import com.alibaba.fluss.shaded.netty4.io.netty.handler.timeout.IdleStateEvent;
 import com.alibaba.fluss.utils.ExceptionUtils;
-import com.alibaba.fluss.utils.MathUtils;
+import com.alibaba.fluss.utils.IOUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+
 import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeErrorResponse;
 import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeServerFailure;
+import static com.alibaba.fluss.rpc.protocol.MessageCodec.encodeSuccessResponse;
 
 /** Implementation of the channel handler to process inbound requests for RPC server. */
-@ChannelHandler.Sharable
 public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(NettyServerHandler.class);
 
-    private final RequestChannel[] requestChannels;
-    private final int numChannels;
+    private final RequestChannel requestChannel;
     private final ApiManager apiManager;
+    private final boolean isInternal;
+    private final String listenerName;
+    private final RequestsMetrics requestsMetrics;
+    private volatile ChannelHandlerContext ctx;
+    private SocketAddress remoteAddress;
 
-    public NettyServerHandler(RequestChannel[] requestChannels, ApiManager apiManager) {
-        this.requestChannels = requestChannels;
-        this.numChannels = requestChannels.length;
+    private final ServerAuthenticator authenticator;
+
+    private volatile ConnectionState state;
+    private volatile boolean initialized = false;
+
+    public NettyServerHandler(
+            RequestChannel requestChannel,
+            ApiManager apiManager,
+            String listenerName,
+            boolean isInternal,
+            RequestsMetrics requestsMetrics,
+            ServerAuthenticator authenticator) {
+        this.requestChannel = requestChannel;
         this.apiManager = apiManager;
+        this.listenerName = listenerName;
+        this.isInternal = isInternal;
+        this.requestsMetrics = requestsMetrics;
+        this.authenticator = authenticator;
+        this.state = ConnectionState.START;
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        CompletableFuture<ApiMessage> future = new CompletableFuture<>();
         ByteBuf buffer = (ByteBuf) msg;
         int frameLength = buffer.readInt();
         short apiKey = buffer.readShort();
@@ -81,18 +119,41 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
                 needRelease = true;
             }
 
-            RpcRequest request =
-                    new RpcRequest(apiKey, apiVersion, requestId, api, requestMessage, buffer, ctx);
-            // TODO: we can introduce a smarter and dynamic strategy to distribute requests to
-            //  channels
-            int channelIndex =
-                    MathUtils.murmurHash(ctx.channel().id().asLongText().hashCode()) % numChannels;
-            requestChannels[channelIndex].putRequest(request);
+            FlussRequest request =
+                    new FlussRequest(
+                            apiKey,
+                            apiVersion,
+                            requestId,
+                            api,
+                            requestMessage,
+                            buffer,
+                            listenerName,
+                            isInternal,
+                            authenticator.isCompleted() ? authenticator.createPrincipal() : null,
+                            ((InetSocketAddress) ctx.channel().remoteAddress()).getAddress(),
+                            future);
+
+            future.whenCompleteAsync((r, t) -> sendResponse(ctx, request), ctx.executor());
+            if (apiKey == ApiKeys.AUTHENTICATE.id
+                    || (state.isAuthenticating() && apiKey != ApiKeys.API_VERSIONS.id)) {
+                // handle to authentication for 3 cases:
+                // 1. the channel is in authing state, and the request is auth request, normal case
+                // 2. the channel is in authentication state, but receive non-auth request, error
+                // 3. the channel is complete, but receive auth request (PLAINTEXT case)
+                handleAuthenticateRequest(apiKey, requestMessage, future);
+            } else {
+                requestChannel.putRequest(request);
+            }
+
+            if (!state.isActive()) {
+                LOG.warn("Received a request on an inactive channel: {}", remoteAddress);
+                request.fail(new NetworkException("Channel is inactive"));
+                needRelease = true;
+            }
         } catch (Throwable t) {
             needRelease = true;
             LOG.error("Error while parsing request.", t);
-            ApiError error = ApiError.fromThrowable(t);
-            ctx.writeAndFlush(encodeErrorResponse(ctx.alloc(), requestId, error));
+            future.completeExceptionally(t);
         } finally {
             if (needRelease) {
                 buffer.release();
@@ -103,6 +164,13 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
+        this.ctx = ctx;
+        this.remoteAddress = ctx.channel().remoteAddress();
+        switchState(
+                authenticator.isCompleted()
+                        ? ConnectionState.READY
+                        : ConnectionState.AUTHENTICATING);
+
         // TODO: connection metrics (count, client tags, receive request avg idle time, etc.)
     }
 
@@ -124,11 +192,209 @@ public final class NettyServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        LOG.warn(
-                "Connection [{}] got exception in Netty server pipeline: \n{}",
-                ctx.channel().remoteAddress(),
-                ExceptionUtils.stringifyException(cause));
+        // debug level to avoid too many logs if NLB(Network Load Balancer is mounted, see
+        // more detail in #377
+        // may revert to warn level if we found warn level is necessary
+        if (LOG.isDebugEnabled()) {
+            LOG.debug(
+                    "Connection [{}] got exception in Netty server pipeline: \n{}",
+                    ctx.channel().remoteAddress(),
+                    ExceptionUtils.stringifyException(cause));
+        }
+
         ByteBuf byteBuf = encodeServerFailure(ctx.alloc(), ApiError.fromThrowable(cause));
         ctx.writeAndFlush(byteBuf).addListener(ChannelFutureListener.CLOSE);
+        close();
+    }
+
+    private void close() {
+        switchState(ConnectionState.CLOSE);
+        IOUtils.closeQuietly(authenticator);
+        ctx.close();
+    }
+
+    private void sendResponse(ChannelHandlerContext ctx, FlussRequest request) {
+        boolean cancelled = request.cancelled();
+        if (cancelled) {
+            request.releaseBuffer();
+        }
+
+        if (state.isActive()) {
+            try {
+                CompletableFuture<ApiMessage> f = request.getResponseFuture();
+                sendSuccessResponse(ctx, request, f.get());
+            } catch (Throwable t) {
+                sendError(ctx, request, t);
+            }
+        } else {
+            request.releaseBuffer();
+        }
+    }
+
+    private void sendSuccessResponse(
+            ChannelHandlerContext ctx, FlussRequest request, ApiMessage responseMessage) {
+        // TODO: use a memory managed allocator
+        ByteBufAllocator alloc = ctx.alloc();
+        try {
+            Send send = encodeSuccessResponse(alloc, request.getRequestId(), responseMessage);
+            send.writeTo(ctx);
+            ctx.flush();
+            long requestEndTimeMs = System.currentTimeMillis();
+            updateRequestMetrics(request, requestEndTimeMs);
+        } catch (Throwable t) {
+            LOG.error("Failed to send response to client.", t);
+            sendError(ctx, request, t);
+        }
+    }
+
+    private void sendError(ChannelHandlerContext ctx, FlussRequest request, Throwable t) {
+        ApiError error = ApiError.fromThrowable(t);
+        // TODO: use a memory managed allocator
+        ByteBufAllocator alloc = ctx.alloc();
+        ByteBuf byteBuf = encodeErrorResponse(alloc, request.getRequestId(), error);
+        ctx.writeAndFlush(byteBuf);
+
+        getMetrics(request).ifPresent(metrics -> metrics.getErrorsCount().inc());
+    }
+
+    private void updateRequestMetrics(FlussRequest request, long requestEndTimeMs) {
+        // get the metrics to be updated for this kind of request
+        Optional<RequestsMetrics.Metrics> optMetrics = getMetrics(request);
+        // no any metrics registered for the kind of request
+        if (!optMetrics.isPresent()) {
+            return;
+        }
+
+        // now, we need to update metrics
+        RequestsMetrics.Metrics metrics = optMetrics.get();
+
+        metrics.getRequestsCount().inc();
+        metrics.getRequestBytes().update(request.getMessage().totalSize());
+
+        // update metrics related to time
+        long requestDequeTimeMs = request.getRequestDequeTimeMs();
+        long requestCompletedTimeMs = request.getRequestCompletedTimeMs();
+        metrics.getRequestQueueTimeMs().update(requestDequeTimeMs - request.getStartTimeMs());
+        metrics.getRequestProcessTimeMs().update(requestCompletedTimeMs - requestDequeTimeMs);
+        metrics.getResponseSendTimeMs().update(requestEndTimeMs - requestCompletedTimeMs);
+        metrics.getTotalTimeMs().update(requestEndTimeMs - request.getStartTimeMs());
+    }
+
+    private Optional<RequestsMetrics.Metrics> getMetrics(FlussRequest request) {
+        boolean isFromFollower = false;
+        ApiMessage requestMessage = request.getMessage();
+        if (request.getApiKey() == ApiKeys.FETCH_LOG.id) {
+            // for fetch, we need to identify it's from client or follower
+            FetchLogRequest fetchLogRequest = (FetchLogRequest) requestMessage;
+            isFromFollower = fetchLogRequest.getFollowerServerId() >= 0;
+        }
+        return requestsMetrics.getMetrics(request.getApiKey(), isFromFollower);
+    }
+
+    @VisibleForTesting
+    Deque<FlussRequest> inflightResponses(short apiKey) {
+        // TODO: implement this if we introduce inflight response in
+        // https://github.com/alibaba/fluss/issues/771
+        return new ArrayDeque<>();
+    }
+
+    private void handleAuthenticateRequest(
+            short apiKey, ApiMessage requestMessage, CompletableFuture<ApiMessage> future) {
+        if (apiKey != ApiKeys.AUTHENTICATE.id) {
+            LOG.warn(
+                    "Connection is still in the authentication process. Unable to handle API key: {}.",
+                    apiKey);
+            future.completeExceptionally(
+                    new AuthenticationException(
+                            "The connection has not completed authentication yet. This may be caused by a missing or incorrect configuration of 'client.security.protocol' on the client side."));
+            return;
+        }
+
+        AuthenticateRequest authenticateRequest = (AuthenticateRequest) requestMessage;
+        try {
+            authenticator.matchProtocol(authenticateRequest.getProtocol());
+        } catch (AuthenticationException e) {
+            future.completeExceptionally(e);
+            return;
+        }
+
+        if (!initialized) {
+            authenticator.initialize(
+                    new DefaultAuthenticateContext(authenticateRequest.getProtocol()));
+            initialized = true;
+        }
+
+        AuthenticateResponse authenticateResponse = new AuthenticateResponse();
+        try {
+            if (!authenticator.isCompleted()) {
+                byte[] token = authenticateRequest.getToken();
+                byte[] challenge = authenticator.evaluateResponse(token);
+                if (challenge != null) {
+                    authenticateResponse.setChallenge(challenge);
+                }
+            }
+            future.complete(authenticateResponse);
+        } catch (AuthenticationException e) {
+            if (e instanceof RetriableAuthenticationException) {
+                LOG.warn(
+                        "Authentication from {} failed due to a retriable exception: {}. Reinitializing authenticator for subsequent retries.",
+                        ctx.channel().remoteAddress(),
+                        e.getMessage(),
+                        e);
+                authenticator.initialize(
+                        new DefaultAuthenticateContext(authenticateRequest.getProtocol()));
+            }
+
+            future.completeExceptionally(e);
+        }
+
+        if (authenticator.isCompleted()) {
+            switchState(ConnectionState.READY);
+        }
+    }
+
+    private void switchState(ConnectionState targetState) {
+        LOG.debug("switch state form {} to {}", state, targetState);
+        state = targetState;
+    }
+
+    private enum ConnectionState {
+        START,
+        AUTHENTICATING,
+        READY,
+        CLOSE;
+
+        public boolean isActive() {
+            return this == AUTHENTICATING || this == READY;
+        }
+
+        public boolean isAuthenticating() {
+            return this == AUTHENTICATING;
+        }
+    }
+
+    private class DefaultAuthenticateContext implements ServerAuthenticator.AuthenticateContext {
+        private final String protocolName;
+
+        public DefaultAuthenticateContext(String protocolName) {
+            this.protocolName = protocolName;
+        }
+
+        @Override
+        public String ipAddress() {
+            return ((InetSocketAddress) ctx.channel().remoteAddress())
+                    .getAddress()
+                    .getHostAddress();
+        }
+
+        @Override
+        public String listenerName() {
+            return listenerName;
+        }
+
+        @Override
+        public String protocol() {
+            return protocolName;
+        }
     }
 }

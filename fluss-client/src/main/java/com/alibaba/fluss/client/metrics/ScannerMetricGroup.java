@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -47,7 +48,7 @@ public class ScannerMetricGroup extends AbstractMetricGroup {
     private final Histogram bytesPerRequest;
 
     // remote log
-    private final Counter remoteFetchBytesCount;
+    private final Counter remoteFetchBytes;
     private final Counter remoteFetchRequestCount;
     private final Counter remoteFetchErrorCount;
 
@@ -64,8 +65,8 @@ public class ScannerMetricGroup extends AbstractMetricGroup {
         fetchRequestCount = new ThreadSafeSimpleCounter();
         meter(MetricNames.SCANNER_FETCH_RATE, new MeterView(fetchRequestCount));
 
-        remoteFetchBytesCount = new ThreadSafeSimpleCounter();
-        meter(MetricNames.SCANNER_REMOTE_FETCH_BYTES_RATE, new MeterView(remoteFetchBytesCount));
+        remoteFetchBytes = new ThreadSafeSimpleCounter();
+        meter(MetricNames.SCANNER_REMOTE_FETCH_BYTES_RATE, new MeterView(remoteFetchBytes));
         remoteFetchRequestCount = new ThreadSafeSimpleCounter();
         meter(MetricNames.SCANNER_REMOTE_FETCH_RATE, new MeterView(remoteFetchRequestCount));
         remoteFetchErrorCount = new ThreadSafeSimpleCounter();
@@ -90,8 +91,8 @@ public class ScannerMetricGroup extends AbstractMetricGroup {
         return bytesPerRequest;
     }
 
-    public Counter remoteFetchBytesCount() {
-        return remoteFetchBytesCount;
+    public Counter remoteFetchBytes() {
+        return remoteFetchBytes;
     }
 
     public Counter remoteFetchRequestCount() {

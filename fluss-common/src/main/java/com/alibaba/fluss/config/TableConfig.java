@@ -1,17 +1,18 @@
 /*
- *  Copyright (c) 2025 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.alibaba.fluss.config;
@@ -24,6 +25,7 @@ import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.MergeEngineType;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -82,6 +84,14 @@ public class TableConfig {
      */
     public Optional<DataLakeFormat> getDataLakeFormat() {
         return config.getOptional(ConfigOptions.TABLE_DATALAKE_FORMAT);
+    }
+
+    /**
+     * Gets the data lake freshness of the table. It defines the maximum amount of time that the
+     * datalake table's content should lag behind updates to the Fluss table.
+     */
+    public Duration getDataLakeFreshness() {
+        return config.get(ConfigOptions.TABLE_DATALAKE_FRESHNESS);
     }
 
     /** Gets the optional merge engine type of the table. */

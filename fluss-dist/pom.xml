@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- Copyright (c) 2024 Alibaba Group Holding Ltd.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
       http://www.apache.org/licenses/LICENSE-2.0
 
@@ -21,7 +23,7 @@
     <parent>
         <groupId>com.alibaba.fluss</groupId>
         <artifactId>fluss</artifactId>
-        <version>0.6-SNAPSHOT</version>
+        <version>0.8-SNAPSHOT</version>
     </parent>
 
     <artifactId>fluss-dist</artifactId>
@@ -33,6 +35,14 @@
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
             <artifactId>fluss-server</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--  filesystem plugin -->
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-fs-hadoop</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
@@ -53,17 +63,46 @@
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-lakehouse-paimon</artifactId>
+            <artifactId>fluss-fs-gs</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- metrics plugin -->
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-metrics-prometheus</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-lakehouse-cli</artifactId>
+            <artifactId>fluss-metrics-jmx</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-lake-paimon</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-shaded-hadoop-2-uber</artifactId>
+            <version>2.8.3-10.0</version>
+            <scope>compile</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
 
         <!-- Concrete logging framework - we add this only here (and not in the
 			root POM) to not tie the projects to one specific framework and make
@@ -186,7 +225,7 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>shade-dist</id>
+                        <id>shade-fluss</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
@@ -199,6 +238,7 @@
                                 <includes>
                                     <!-- only include log4j-api to package source and javadoc to make sonatype happy -->
                                     <include>org.apache.logging.log4j:log4j-api</include>
+                                    <include>META-INF/*</include>
                                 </includes>
                             </artifactSet>
                         </configuration>
@@ -230,18 +270,6 @@
                         <configuration>
                             <descriptors>
                                 <descriptor>src/main/assemblies/plugins.xml</descriptor>
-                            </descriptors>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>opt</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                        <configuration>
-                            <descriptors>
-                                <descriptor>src/main/assemblies/opt.xml</descriptor>
                             </descriptors>
                         </configuration>
                     </execution>

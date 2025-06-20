@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,9 @@
 
 package com.alibaba.fluss.server.zk.data;
 
+import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.config.TableConfig;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -75,6 +78,14 @@ public class TableRegistration {
         this.modifiedTime = modifiedTime;
     }
 
+    public boolean isPartitioned() {
+        return !partitionKeys.isEmpty();
+    }
+
+    public TableConfig getTableConfig() {
+        return new TableConfig(Configuration.fromMap(properties));
+    }
+
     public TableInfo toTableInfo(TablePath tablePath, SchemaInfo schemaInfo) {
         return toTableInfo(tablePath, schemaInfo, null);
     }
@@ -82,10 +93,13 @@ public class TableRegistration {
     public TableInfo toTableInfo(
             TablePath tablePath,
             SchemaInfo schemaInfo,
-            @Nullable Map<String, String> additionalProperties) {
+            @Nullable Map<String, String> defaultTableLakeOptions) {
         Configuration properties = Configuration.fromMap(this.properties);
-        if (additionalProperties != null) {
-            additionalProperties.forEach(properties::setString);
+        if (defaultTableLakeOptions != null) {
+            if (properties.get(ConfigOptions.TABLE_DATALAKE_ENABLED)) {
+                // only make the lake options visible when the datalake is enabled on the table
+                defaultTableLakeOptions.forEach(properties::setString);
+            }
         }
         return new TableInfo(
                 tablePath,

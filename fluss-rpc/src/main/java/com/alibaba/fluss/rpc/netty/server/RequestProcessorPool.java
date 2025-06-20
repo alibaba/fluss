@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +19,8 @@ package com.alibaba.fluss.rpc.netty.server;
 
 import com.alibaba.fluss.metrics.MetricNames;
 import com.alibaba.fluss.rpc.RpcGatewayService;
+import com.alibaba.fluss.rpc.protocol.NetworkProtocolPlugin;
+import com.alibaba.fluss.rpc.protocol.RequestType;
 import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 import com.alibaba.fluss.utils.concurrent.FutureUtils;
 
@@ -44,15 +47,17 @@ final class RequestProcessorPool {
             int numProcessors,
             int totalQueueCapacity,
             RpcGatewayService service,
+            List<NetworkProtocolPlugin> protocols,
             RequestsMetrics requestsMetrics) {
         this.processors = new RequestProcessor[numProcessors];
         this.requestChannels = new RequestChannel[numProcessors];
 
+        RequestHandler<?>[] requestHandlers = initializeRequestHandlers(protocols, service);
         for (int i = 0; i < numProcessors; i++) {
             requestChannels[i] = new RequestChannel(totalQueueCapacity / numProcessors);
             // bind processor to a single channel to make requests from the
             // same channel processed serializable
-            processors[i] = new RequestProcessor(i, requestChannels[i], service, requestsMetrics);
+            processors[i] = new RequestProcessor(i, requestChannels[i], service, requestHandlers);
         }
         // register requestQueueSize metrics
         requestsMetrics.gauge(MetricNames.REQUEST_QUEUE_SIZE, this::getRequestQueueSize);
@@ -100,5 +105,25 @@ final class RequestProcessorPool {
                     }
                 });
         // service and requestChannel shutdown is handled outside.
+    }
+
+    private RequestHandler<?>[] initializeRequestHandlers(
+            List<NetworkProtocolPlugin> protocolPlugins, RpcGatewayService service) {
+        int maxRequestTypeId =
+                Arrays.stream(RequestType.values())
+                        .mapToInt(type -> type.id)
+                        .max()
+                        .orElseThrow(() -> new IllegalStateException("No response type found."));
+        RequestHandler<?>[] requestHandlers = new RequestHandler[maxRequestTypeId + 1];
+        for (NetworkProtocolPlugin protocol : protocolPlugins) {
+            RequestHandler<?> requestHandler = protocol.createRequestHandler(service);
+            int id = requestHandler.requestType().id;
+            if (requestHandlers[id] != null) {
+                throw new IllegalStateException(
+                        "Duplicate protocol found for request type id " + id + ".");
+            }
+            requestHandlers[id] = requestHandler;
+        }
+        return requestHandlers;
     }
 }

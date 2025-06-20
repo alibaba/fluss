@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -86,7 +87,8 @@ public class WriterStateEntry {
     }
 
     public void addBath(int batchSequence, long lastOffset, int offsetDelta, long timestamp) {
-        addBatchMetadata(new BatchMetadata(batchSequence, lastOffset, offsetDelta, timestamp));
+        addBatchMetadata(
+                new BatchMetadata(writerId, batchSequence, lastOffset, offsetDelta, timestamp));
         this.lastTimestamp = timestamp;
     }
 
@@ -129,12 +131,19 @@ public class WriterStateEntry {
 
     /** Metadata of a batch. */
     public static final class BatchMetadata {
+        public final long writerId;
         public final int batchSequence;
         public final long lastOffset;
         public final int offsetDelta;
         public final long timestamp;
 
-        public BatchMetadata(int batchSequence, long lastOffset, int offsetDelta, long timestamp) {
+        public BatchMetadata(
+                long writerId,
+                int batchSequence,
+                long lastOffset,
+                int offsetDelta,
+                long timestamp) {
+            this.writerId = writerId;
             this.batchSequence = batchSequence;
             this.lastOffset = lastOffset;
             this.offsetDelta = offsetDelta;

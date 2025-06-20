@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,8 @@
 
 package com.alibaba.fluss.server.utils.timer;
 
+import com.alibaba.fluss.utils.clock.Clock;
+import com.alibaba.fluss.utils.clock.SystemClock;
 import com.alibaba.fluss.utils.concurrent.ExecutorThreadFactory;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -46,17 +49,30 @@ public class DefaultTimer implements Timer {
     private final AtomicInteger taskCounter;
     private final TimingWheel timingWheel;
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    private final Clock clock;
 
-    public DefaultTimer(String executorName, long tickMs, int wheelSize, long startMs) {
+    public DefaultTimer(String executorName, long tickMs, int wheelSize, Clock clock) {
         this.taskExecutor =
                 Executors.newFixedThreadPool(1, new ExecutorThreadFactory(executorName));
         this.delayQueue = new DelayQueue<>();
         this.taskCounter = new AtomicInteger(0);
-        this.timingWheel = new TimingWheel(tickMs, wheelSize, startMs, taskCounter, delayQueue);
+        this.clock = clock;
+        this.timingWheel =
+                new TimingWheel(
+                        tickMs,
+                        wheelSize,
+                        TimeUnit.NANOSECONDS.toMillis(clock.nanoseconds()),
+                        taskCounter,
+                        delayQueue,
+                        clock);
+    }
+
+    public DefaultTimer(String executorName, long tickMs, int wheelSize) {
+        this(executorName, tickMs, wheelSize, SystemClock.getInstance());
     }
 
     public DefaultTimer(String executorName) {
-        this(executorName, 1, 20, TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
+        this(executorName, 1, 20, SystemClock.getInstance());
     }
 
     @Override
@@ -69,7 +85,7 @@ public class DefaultTimer implements Timer {
                                         timerTask,
                                         timerTask.getDelayMs()
                                                 + TimeUnit.NANOSECONDS.toMillis(
-                                                        System.nanoTime()))));
+                                                        clock.nanoseconds()))));
     }
 
     @Override

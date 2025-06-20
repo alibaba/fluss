@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,11 +22,11 @@ import com.alibaba.fluss.client.table.Table;
 import com.alibaba.fluss.client.table.scanner.ScanRecord;
 import com.alibaba.fluss.client.table.writer.AppendWriter;
 import com.alibaba.fluss.client.table.writer.UpsertWriter;
-import com.alibaba.fluss.metadata.PhysicalTablePath;
+import com.alibaba.fluss.exception.FetchException;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.record.RowKind;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.types.DataTypes;
@@ -49,6 +50,7 @@ import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
 import static org.apache.commons.lang3.RandomStringUtils.randomAlphanumeric;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** ITCase for {@link LogScannerImpl}. */
 public class LogScannerITCase extends ClientToServerITCaseBase {
@@ -74,7 +76,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (rowList.size() < recordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
@@ -86,8 +88,8 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
 
     @Test
     void testPollWhileCreateTableNotReady() throws Exception {
-        // create one table with 100 buckets.
-        int bucketNumber = 100;
+        // create one table with 30 buckets.
+        int bucketNumber = 30;
         TableDescriptor tableDescriptor =
                 TableDescriptor.builder().schema(DATA1_SCHEMA).distributedBy(bucketNumber).build();
         createTable(DATA1_TABLE_PATH, tableDescriptor, false);
@@ -109,7 +111,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (rowList.size() < recordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
@@ -148,7 +150,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (rowList.size() < recordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
@@ -201,7 +203,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (scanned < recordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     assertThat(scanRecord.getRow().getString(0).getSizeInBytes()).isEqualTo(10);
                     assertThat(scanRecord.getRow().getLong(1)).isEqualTo(scanned);
                     assertThat(scanRecord.getRow().getString(2).getSizeInBytes()).isEqualTo(1000);
@@ -257,7 +259,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (scanned < recordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.INSERT);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.INSERT);
                     assertThat(scanRecord.getRow().getString(0).getSizeInBytes()).isEqualTo(10);
                     assertThat(scanRecord.getRow().getLong(1)).isEqualTo(scanned);
                     assertThat(scanRecord.getRow().getString(2).getSizeInBytes()).isEqualTo(1000);
@@ -289,7 +291,7 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
         } else {
             Map<String, Long> partitionNameAndIds =
-                    FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
             // just pick one partition
             Map.Entry<String, Long> partitionNameAndIdEntry =
                     partitionNameAndIds.entrySet().iterator().next();
@@ -297,8 +299,6 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             partitionId = partitionNameAndIds.get(partitionName);
             FLUSS_CLUSTER_EXTENSION.waitUtilTablePartitionReady(tableId, partitionId);
         }
-
-        PhysicalTablePath physicalTablePath = PhysicalTablePath.of(tablePath, partitionName);
 
         long firstStartTimestamp = System.currentTimeMillis();
         int batchRecordSize = 10;
@@ -324,12 +324,18 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             // try to fetch from firstStartTimestamp, which smaller than the first batch commit
             // timestamp.
             subscribeFromTimestamp(
-                    physicalTablePath, partitionId, table, logScanner, admin, firstStartTimestamp);
+                    tablePath,
+                    partitionName,
+                    partitionId,
+                    table,
+                    logScanner,
+                    admin,
+                    firstStartTimestamp);
             List<GenericRow> rowList = new ArrayList<>();
             while (rowList.size() < batchRecordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
@@ -348,12 +354,18 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             // try to fetch from secondStartTimestamp, which larger than the second batch commit
             // timestamp, return the data of second batch.
             subscribeFromTimestamp(
-                    physicalTablePath, partitionId, table, logScanner, admin, secondStartTimestamp);
+                    tablePath,
+                    partitionName,
+                    partitionId,
+                    table,
+                    logScanner,
+                    admin,
+                    secondStartTimestamp);
             rowList = new ArrayList<>();
             while (rowList.size() < batchRecordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
@@ -381,13 +393,12 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             FLUSS_CLUSTER_EXTENSION.waitUtilTableReady(tableId);
         } else {
             Map<String, Long> partitionNameAndIds =
-                    FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+                    FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
             // just pick one partition
             partitionName = partitionNameAndIds.keySet().iterator().next();
             partitionId = partitionNameAndIds.get(partitionName);
             FLUSS_CLUSTER_EXTENSION.waitUtilTablePartitionReady(tableId, partitionId);
         }
-        PhysicalTablePath physicalTablePath = PhysicalTablePath.of(tablePath, partitionName);
 
         int batchRecordSize = 10;
         try (Table table = conn.getTable(tablePath)) {
@@ -399,7 +410,8 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
 
             LogScanner logScanner = createLogScanner(table);
             // try to fetch from the latest offsets. For the first batch, it cannot get any data.
-            subscribeFromLatestOffset(physicalTablePath, partitionId, table, logScanner, admin);
+            subscribeFromLatestOffset(
+                    tablePath, partitionName, partitionId, table, logScanner, admin);
             assertThat(logScanner.poll(Duration.ofSeconds(1)).isEmpty()).isTrue();
 
             // 2. write the second batch.
@@ -414,13 +426,45 @@ public class LogScannerITCase extends ClientToServerITCaseBase {
             while (rowList.size() < batchRecordSize) {
                 ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
                 for (ScanRecord scanRecord : scanRecords) {
-                    assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                    assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                     InternalRow row = scanRecord.getRow();
                     rowList.add(row(row.getInt(0), row.getString(1)));
                 }
             }
             assertThat(rowList).hasSize(batchRecordSize);
             assertThat(rowList).containsExactlyInAnyOrderElementsOf(expectedRows);
+        }
+    }
+
+    @Test
+    void testSubscribeOutOfRangeLog() throws Exception {
+        TablePath tablePath = TablePath.of("test_db_1", "test_subscribe_out_of_range_log");
+        TableDescriptor tableDescriptor =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("a", DataTypes.INT())
+                                        .column("b", DataTypes.STRING())
+                                        .build())
+                        .distributedBy(1)
+                        .build();
+        createTable(tablePath, tableDescriptor, false);
+        try (Table table = conn.getTable(tablePath)) {
+            AppendWriter appendWriter = table.newAppend().createWriter();
+            for (int n = 0; n < 10; n++) {
+                appendWriter.append(row(1, "a"));
+            }
+            appendWriter.flush();
+
+            try (LogScanner logScanner = table.newScan().createLogScanner()) {
+                logScanner.subscribe(0, Long.MIN_VALUE);
+
+                assertThatThrownBy(() -> logScanner.poll(Duration.ofSeconds(1)))
+                        .isInstanceOf(FetchException.class)
+                        .hasMessageContaining(
+                                String.format(
+                                        "The fetching offset %s is out of range", Long.MIN_VALUE));
+            }
         }
     }
 }

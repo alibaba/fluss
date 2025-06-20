@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,8 +17,11 @@
 
 package com.alibaba.fluss.server.tablet;
 
+import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
 import com.alibaba.fluss.metadata.LogFormat;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -31,21 +35,31 @@ import com.alibaba.fluss.rpc.messages.FetchLogResponse;
 import com.alibaba.fluss.rpc.messages.InitWriterRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.ListOffsetsResponse;
+import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrRequest;
+import com.alibaba.fluss.rpc.messages.NotifyLeaderAndIsrResponse;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbFetchLogRespForTable;
 import com.alibaba.fluss.rpc.messages.PbListOffsetsRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbLookupRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbNotifyLeaderAndIsrReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbPrefixLookupRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbPutKvRespForBucket;
+import com.alibaba.fluss.rpc.messages.ProduceLogResponse;
 import com.alibaba.fluss.rpc.messages.PutKvResponse;
 import com.alibaba.fluss.rpc.protocol.Errors;
+import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
+import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrResultForBucket;
 import com.alibaba.fluss.server.log.ListOffsetsParam;
+import com.alibaba.fluss.server.metadata.ServerInfo;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
+import com.alibaba.fluss.server.utils.ServerRpcMessageUtils;
+import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.types.DataField;
 import com.alibaba.fluss.types.DataTypes;
 import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.types.Tuple2;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -55,11 +69,17 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Queue;
+import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static com.alibaba.fluss.record.TestData.ANOTHER_DATA1;
 import static com.alibaba.fluss.record.TestData.DATA1;
+import static com.alibaba.fluss.record.TestData.DATA1_PHYSICAL_TABLE_PATH;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
@@ -81,10 +101,14 @@ import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newLookupRe
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newPrefixLookupRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newProduceLogRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newPutKvRequest;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getNotifyLeaderAndIsrResponseData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeNotifyBucketLeaderAndIsr;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeUpdateMetadataRequest;
 import static com.alibaba.fluss.testutils.DataTestUtils.compactedRow;
 import static com.alibaba.fluss.testutils.DataTestUtils.genKvRecordBatch;
 import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsByObject;
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
+import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -139,6 +163,46 @@ public class TabletServiceITCase {
                 .cause()
                 .isInstanceOf(InvalidRequiredAcksException.class)
                 .hasMessageContaining("Invalid required acks");
+    }
+
+    @Test
+    @Disabled("TODO: add back in https://github.com/alibaba/fluss/issues/771")
+    void testProduceLogResponseReturnInOrder() throws Exception {
+        long tableId =
+                createTable(
+                        FLUSS_CLUSTER_EXTENSION,
+                        DATA1_TABLE_PATH,
+                        DATA1_TABLE_DESCRIPTOR.withReplicationFactor(3));
+        TableBucket tb = new TableBucket(tableId, 0);
+
+        FLUSS_CLUSTER_EXTENSION.waitUtilAllReplicaReady(tb);
+
+        int leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
+        TabletServerGateway leaderGateWay =
+                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
+
+        Queue<Integer> responseOrder = new ConcurrentLinkedQueue<>();
+        Random random = new Random();
+        for (int i = 0; i < 1000; i++) {
+            boolean needAck = random.nextBoolean();
+            CompletableFuture<ProduceLogResponse> produceLogFuture =
+                    leaderGateWay.produceLog(
+                            newProduceLogRequest(
+                                    tableId,
+                                    0,
+                                    needAck ? -1 : 0, // 0 means return immediately.
+                                    genMemoryLogRecordsByObject(DATA1)));
+            final int number = i;
+            produceLogFuture.whenComplete((r, e) -> responseOrder.add(number));
+        }
+
+        retry(Duration.ofMinutes(1), () -> assertThat(responseOrder.size()).isEqualTo(1000));
+        int previousValue = -1;
+        while (!responseOrder.isEmpty()) {
+            int currentValue = responseOrder.poll();
+            assertThat(currentValue).isGreaterThan(previousValue);
+            previousValue = currentValue;
+        }
     }
 
     @Test
@@ -248,6 +312,7 @@ public class TabletServiceITCase {
     }
 
     @Test
+    @Disabled("TODO: add back in https://github.com/alibaba/fluss/issues/777")
     void testFetchLogWithMinFetchSizeAndTimeout() throws Exception {
         long tableId =
                 createTable(FLUSS_CLUSTER_EXTENSION, DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR);
@@ -739,6 +804,92 @@ public class TabletServiceITCase {
         }
     }
 
+    @Test
+    void testBecomeLeaderOrFollowerWithOneTabletServerOffline() throws Exception {
+        // If one tabletServer offline, and the leader of specify tableBucket is on this
+        // tabletServer, one bucket level error NotLeaderOrFollower exception will be thrown.
+        long tableId =
+                createTable(
+                        FLUSS_CLUSTER_EXTENSION,
+                        DATA1_TABLE_PATH,
+                        TableDescriptor.builder()
+                                .schema(DATA1_SCHEMA)
+                                .distributedBy(3)
+                                .property(ConfigOptions.TABLE_REPLICATION_FACTOR.key(), "3")
+                                .build());
+        TableBucket tb = new TableBucket(tableId, 0);
+
+        FLUSS_CLUSTER_EXTENSION.waitUtilAllReplicaReady(tb);
+
+        LeaderAndIsr originLeaderAndIsr = FLUSS_CLUSTER_EXTENSION.waitLeaderAndIsrReady(tb);
+        int leader = originLeaderAndIsr.leader();
+        int follower = getOneFollower(originLeaderAndIsr);
+        TabletServerGateway followerGateway =
+                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(follower);
+
+        // 1. first send one NotifyLeaderAndIsr request with same LeaderAndIsr to mock the
+        // coordinator is offline and recovery to send NotifyLeaderAndIsr request with same
+        // leader but leader epoch plus 1.
+        NotifyLeaderAndIsrResponse notifyLeaderAndIsrResponse =
+                followerGateway
+                        .notifyLeaderAndIsr(
+                                makeNotifyLeaderAndIsrRequest(
+                                        DATA1_PHYSICAL_TABLE_PATH,
+                                        tb,
+                                        new LeaderAndIsr(
+                                                leader,
+                                                1,
+                                                originLeaderAndIsr.isr(),
+                                                originLeaderAndIsr.coordinatorEpoch(),
+                                                originLeaderAndIsr.bucketEpoch())))
+                        .get();
+        List<NotifyLeaderAndIsrResultForBucket> result =
+                getNotifyLeaderAndIsrResponseData(notifyLeaderAndIsrResponse);
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.get(0).getErrorCode()).isEqualTo(Errors.NONE.code());
+
+        // 2. send one UpdateMetadata request to followerGateway to mock the tabletServer where the
+        // leader resides is offline.
+        ServerInfo coordinatorServerInfo = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerInfo();
+        Set<ServerInfo> newTabletServerInfos = new HashSet<>();
+        FLUSS_CLUSTER_EXTENSION
+                .getTabletServerInfos()
+                .forEach(
+                        serverNode -> {
+                            if (serverNode.id() != leader) {
+                                newTabletServerInfos.add(serverNode);
+                            }
+                        });
+        followerGateway
+                .updateMetadata(
+                        makeUpdateMetadataRequest(
+                                coordinatorServerInfo,
+                                newTabletServerInfos,
+                                Collections.emptyList(),
+                                Collections.emptyList()))
+                .get();
+
+        // 3. send one NotifyLeaderAndIsr request again with same LeaderAndIsr to mock the
+        // coordinator is offline and recovery again to send NotifyLeaderAndIsr request with
+        // same leader but leader epoch plus 1. Shouldn't throw any exception
+        notifyLeaderAndIsrResponse =
+                followerGateway
+                        .notifyLeaderAndIsr(
+                                makeNotifyLeaderAndIsrRequest(
+                                        DATA1_PHYSICAL_TABLE_PATH,
+                                        tb,
+                                        new LeaderAndIsr(
+                                                leader,
+                                                2,
+                                                originLeaderAndIsr.isr(),
+                                                originLeaderAndIsr.coordinatorEpoch(),
+                                                originLeaderAndIsr.bucketEpoch())))
+                        .get();
+        result = getNotifyLeaderAndIsrResponseData(notifyLeaderAndIsrResponse);
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.get(0).getError().error()).isEqualTo(Errors.NONE);
+    }
+
     private static void assertPutKvResponse(PutKvResponse putKvResponse) {
         assertThat(putKvResponse.getBucketsRespsCount()).isEqualTo(1);
         PbPutKvRespForBucket putKvRespForBucket = putKvResponse.getBucketsRespsList().get(0);
@@ -776,5 +927,27 @@ public class TabletServiceITCase {
         assertThat(prefixLookupRespForBucket.hasErrorCode()).isTrue();
         assertThat(prefixLookupRespForBucket.getErrorCode()).isEqualTo(expectedError.code());
         assertThat(prefixLookupRespForBucket.getErrorMessage()).contains(expectErrMessage);
+    }
+
+    private int getOneFollower(LeaderAndIsr leaderAndIsr) {
+        int leader = leaderAndIsr.leader();
+        for (int follower : leaderAndIsr.isr()) {
+            if (follower != leader) {
+                return follower;
+            }
+        }
+        throw new FlussRuntimeException("No follower found");
+    }
+
+    private NotifyLeaderAndIsrRequest makeNotifyLeaderAndIsrRequest(
+            PhysicalTablePath physicalTablePath,
+            TableBucket tableBucket,
+            LeaderAndIsr leaderAndIsr) {
+        PbNotifyLeaderAndIsrReqForBucket reqForBucket =
+                makeNotifyBucketLeaderAndIsr(
+                        new NotifyLeaderAndIsrData(
+                                physicalTablePath, tableBucket, leaderAndIsr.isr(), leaderAndIsr));
+        return ServerRpcMessageUtils.makeNotifyLeaderAndIsrRequest(
+                0, Collections.singletonList(reqForBucket));
     }
 }

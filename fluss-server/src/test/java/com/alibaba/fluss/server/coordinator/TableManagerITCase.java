@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,7 @@
 
 package com.alibaba.fluss.server.coordinator;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.AutoPartitionTimeUnit;
@@ -24,7 +26,6 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
-import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
@@ -35,8 +36,13 @@ import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.metrics.registry.MetricRegistry;
+import com.alibaba.fluss.rpc.GatewayClientProxy;
+import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.gateway.AdminGateway;
 import com.alibaba.fluss.rpc.gateway.AdminReadOnlyGateway;
+import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
+import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
 import com.alibaba.fluss.rpc.messages.GetTableInfoResponse;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesRequest;
@@ -44,13 +50,16 @@ import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
 import com.alibaba.fluss.rpc.messages.PbBucketMetadata;
 import com.alibaba.fluss.rpc.messages.PbPartitionMetadata;
+import com.alibaba.fluss.rpc.messages.PbServerNode;
 import com.alibaba.fluss.rpc.messages.PbTableMetadata;
+import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
+import com.alibaba.fluss.rpc.metrics.ClientMetricGroup;
+import com.alibaba.fluss.server.metadata.ServerInfo;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.BucketAssignment;
 import com.alibaba.fluss.server.zk.data.TableAssignment;
 import com.alibaba.fluss.types.DataTypes;
-import com.alibaba.fluss.utils.AutoPartitionUtils;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,6 +85,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.config.ConfigOptions.DEFAULT_LISTENER_NAME;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newCreateDatabaseRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newCreateTableRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDatabaseExistsRequest;
@@ -85,16 +95,18 @@ import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newGetTable
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newListTablesRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newMetadataRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newTableExistsRequest;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeUpdateMetadataRequest;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.toServerNode;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.toTablePath;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeUpdateMetadataRequest;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toServerNode;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.toTablePath;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.waitValue;
+import static com.alibaba.fluss.utils.PartitionUtils.generateAutoPartition;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** ITCase for {@link TableManager}. */
 class TableManagerITCase {
+    public static final String CLIENT_LISTENER = "CLIENT";
 
     private ZooKeeperClient zkClient;
     private Configuration clientConf;
@@ -103,6 +115,14 @@ class TableManagerITCase {
     public static final FlussClusterExtension FLUSS_CLUSTER_EXTENSION =
             FlussClusterExtension.builder()
                     .setNumOfTabletServers(3)
+                    .setCoordinatorServerListeners(
+                            String.format(
+                                    "%s://localhost:0, %s://localhost:0",
+                                    DEFAULT_LISTENER_NAME, CLIENT_LISTENER))
+                    .setTabletServerListeners(
+                            String.format(
+                                    "%s://localhost:0, %s://localhost:0",
+                                    DEFAULT_LISTENER_NAME, CLIENT_LISTENER))
                     .setClusterConf(initConf())
                     .build();
 
@@ -370,11 +390,22 @@ class TableManagerITCase {
                         Duration.ofMinutes(1),
                         "partition is not created");
         // check the created partitions
-        List<String> expectAddedPartitions = getExpectAddedPartitions(now, timeUnit, 1);
+        List<String> expectAddedPartitions =
+                getExpectAddedPartitions(Collections.singletonList("dt"), now, timeUnit, 1);
         assertThat(partitions).containsOnlyKeys(expectAddedPartitions);
 
         // let's drop the table
         adminGateway.dropTable(newDropTableRequest(db1, tb1, false)).get();
+        assertThat(zkClient.getPartitions(tablePath)).isEmpty();
+
+        // create a non-auto-partitioned table
+        adminGateway
+                .createTable(
+                        newCreateTableRequest(
+                                tablePath,
+                                newPartitionedTable().withProperties(new HashMap<>()),
+                                false))
+                .get();
 
         // verify the partition assignment is deleted
         for (Long partitionId : partitions.values()) {
@@ -382,6 +413,9 @@ class TableManagerITCase {
                     Duration.ofMinutes(1),
                     () -> assertThat(zkClient.getPartitionAssignment(partitionId)).isEmpty());
         }
+
+        // make sure the auto partition manager won't create partitions for the new table
+        assertThat(zkClient.getPartitions(tablePath)).isEmpty();
     }
 
     @Test
@@ -392,37 +426,6 @@ class TableManagerITCase {
         TablePath tablePath = TablePath.of(db1, tb1);
         // first create a database
         adminGateway.createDatabase(newCreateDatabaseRequest(db1, false)).get();
-        // then create a partitioned table and removes all options
-        TableDescriptor tableWithoutOptions =
-                newPartitionedTable().withProperties(Collections.emptyMap());
-        assertThatThrownBy(
-                        () ->
-                                adminGateway
-                                        .createTable(
-                                                newCreateTableRequest(
-                                                        tablePath, tableWithoutOptions, false))
-                                        .get())
-                .cause()
-                .isInstanceOf(InvalidConfigException.class)
-                .hasMessageContaining(
-                        "Currently, partitioned table must enable auto partition, "
-                                + "please set table property 'table.auto-partition.enabled' to true.");
-
-        TableDescriptor tableWithMultiPartKey =
-                newPartitionedTableBuilder(new Schema.Column("tttt", DataTypes.INT()))
-                        .partitionedBy("id", "dt")
-                        .build();
-        assertThatThrownBy(
-                        () ->
-                                adminGateway
-                                        .createTable(
-                                                newCreateTableRequest(
-                                                        tablePath, tableWithMultiPartKey, false))
-                                        .get())
-                .cause()
-                .isInstanceOf(InvalidTableException.class)
-                .hasMessageContaining(
-                        "Currently, partitioned table only supports one partition key, but got partition keys [id, dt].");
 
         TableDescriptor tableWithIntPartKey =
                 newPartitionedTableBuilder(null).partitionedBy("id").build();
@@ -436,7 +439,7 @@ class TableManagerITCase {
                 .cause()
                 .isInstanceOf(InvalidTableException.class)
                 .hasMessageContaining(
-                        "Currently, auto partition enabled table only supports STRING type partition key, but got partition key 'id' with data type INT NOT NULL.");
+                        "Currently, partitioned table supported partition key type are [STRING], but got partition key 'id' with data type INT NOT NULL.");
     }
 
     @ParameterizedTest
@@ -478,24 +481,31 @@ class TableManagerITCase {
         // now, check the table buckets metadata
         assertThat(tableMetadata.getBucketMetadatasCount()).isEqualTo(expectBucketCount);
 
-        List<ServerNode> tabletServerNodes = FLUSS_CLUSTER_EXTENSION.getTabletServerNodes();
-        ServerNode coordinatorServerNode = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode();
+        List<ServerInfo> tabletServerInfos = FLUSS_CLUSTER_EXTENSION.getTabletServerInfos();
+        ServerInfo coordinatorServerInfo = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerInfo();
 
         checkBucketMetadata(expectBucketCount, tableMetadata.getBucketMetadatasList());
 
         // now, assuming we send update metadata request to the server,
         // we should get the same response
-        gateway.updateMetadata(
-                        makeUpdateMetadataRequest(
-                                Optional.of(coordinatorServerNode),
-                                new HashSet<>(tabletServerNodes)))
-                .get();
+        if (!isCoordinatorServer) {
+            ((TabletServerGateway) gateway)
+                    .updateMetadata(
+                            makeUpdateMetadataRequest(
+                                    coordinatorServerInfo,
+                                    new HashSet<>(tabletServerInfos),
+                                    Collections.emptyList(),
+                                    Collections.emptyList()))
+                    .get();
+        }
+
+        // test lookup metadata from internal view
 
         metadataResponse =
                 gateway.metadata(newMetadataRequest(Collections.singletonList(tablePath))).get();
         // check coordinator server
         assertThat(toServerNode(metadataResponse.getCoordinatorServer(), ServerType.COORDINATOR))
-                .isEqualTo(coordinatorServerNode);
+                .isEqualTo(coordinatorServerInfo.node(DEFAULT_LISTENER_NAME));
         assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
         List<ServerNode> tsNodes =
                 metadataResponse.getTabletServersList().stream()
@@ -504,6 +514,40 @@ class TableManagerITCase {
         assertThat(tsNodes)
                 .containsExactlyInAnyOrderElementsOf(
                         FLUSS_CLUSTER_EXTENSION.getTabletServerNodes());
+
+        // test lookup metadata from client view with another client(because same uid will reuse
+        // same connection)
+        Configuration configuration = new Configuration();
+        try (RpcClient rpcClient =
+                RpcClient.create(
+                        configuration,
+                        new ClientMetricGroup(
+                                MetricRegistry.create(configuration, null),
+                                "fluss-cluster-extension"))) {
+            ServerNode serverNode =
+                    FLUSS_CLUSTER_EXTENSION.getCoordinatorServerNode(CLIENT_LISTENER);
+            AdminGateway adminGatewayForClient =
+                    GatewayClientProxy.createGatewayProxy(
+                            () -> serverNode, rpcClient, CoordinatorGateway.class);
+            metadataResponse =
+                    adminGatewayForClient
+                            .metadata(newMetadataRequest(Collections.singletonList(tablePath)))
+                            .get();
+            // check coordinator server
+            assertThat(
+                            toServerNode(
+                                    metadataResponse.getCoordinatorServer(),
+                                    ServerType.COORDINATOR))
+                    .isEqualTo(coordinatorServerInfo.node(CLIENT_LISTENER));
+            assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
+            tsNodes =
+                    metadataResponse.getTabletServersList().stream()
+                            .map(n -> toServerNode(n, ServerType.TABLET_SERVER))
+                            .collect(Collectors.toList());
+            assertThat(tsNodes)
+                    .containsExactlyInAnyOrderElementsOf(
+                            FLUSS_CLUSTER_EXTENSION.getTabletServerNodes(CLIENT_LISTENER));
+        }
     }
 
     @ParameterizedTest
@@ -572,6 +616,42 @@ class TableManagerITCase {
                         "Table partition 'db1.partitioned_tb(p=not_exist_partition)' does not exist.");
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testMetadataCompatibility(boolean isCoordinatorServer) throws Exception {
+        AdminReadOnlyGateway gateway = getAdminOnlyGateway(isCoordinatorServer);
+
+        List<ServerInfo> tabletServerInfos = FLUSS_CLUSTER_EXTENSION.getTabletServerInfos();
+        ServerInfo coordinatorServerInfo = FLUSS_CLUSTER_EXTENSION.getCoordinatorServerInfo();
+
+        // now, assuming we send update metadata request to the server,
+        // we should get the same response
+        if (!isCoordinatorServer) {
+            ((TabletServerGateway) gateway)
+                    .updateMetadata(
+                            makeLegacyUpdateMetadataRequest(
+                                    Optional.of(coordinatorServerInfo),
+                                    new HashSet<>(tabletServerInfos)))
+                    .get();
+        }
+
+        // test lookup metadata
+        AdminGateway adminGatewayForClient = getAdminGateway();
+        MetadataResponse metadataResponse =
+                adminGatewayForClient.metadata(newMetadataRequest(Collections.emptyList())).get();
+        // check coordinator server
+        assertThat(toServerNode(metadataResponse.getCoordinatorServer(), ServerType.COORDINATOR))
+                .isEqualTo(coordinatorServerInfo.node(DEFAULT_LISTENER_NAME));
+        assertThat(metadataResponse.getTabletServersCount()).isEqualTo(3);
+        List<ServerNode> tsNodes =
+                metadataResponse.getTabletServersList().stream()
+                        .map(n -> toServerNode(n, ServerType.TABLET_SERVER))
+                        .collect(Collectors.toList());
+        assertThat(tsNodes)
+                .containsExactlyInAnyOrderElementsOf(
+                        FLUSS_CLUSTER_EXTENSION.getTabletServerNodes());
+    }
+
     private void checkBucketMetadata(int expectBucketCount, List<PbBucketMetadata> bucketMetadata) {
         Set<Integer> liveServers =
                 FLUSS_CLUSTER_EXTENSION.getTabletServerNodes().stream()
@@ -612,11 +692,16 @@ class TableManagerITCase {
     }
 
     public static List<String> getExpectAddedPartitions(
-            Instant addInstant, AutoPartitionTimeUnit timeUnit, int newPartitions) {
+            List<String> partitionKeys,
+            Instant addInstant,
+            AutoPartitionTimeUnit timeUnit,
+            int newPartitions) {
         ZonedDateTime addDateTime = ZonedDateTime.ofInstant(addInstant, ZoneId.systemDefault());
         List<String> partitions = new ArrayList<>();
         for (int i = 0; i < newPartitions; i++) {
-            partitions.add(AutoPartitionUtils.getPartitionString(addDateTime, i, timeUnit));
+            partitions.add(
+                    generateAutoPartition(partitionKeys, addDateTime, i, timeUnit)
+                            .getPartitionName());
         }
         return partitions;
     }
@@ -678,5 +763,38 @@ class TableManagerITCase {
                 .column("b", DataTypes.STRING())
                 .primaryKey("a")
                 .build();
+    }
+
+    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+    private UpdateMetadataRequest makeLegacyUpdateMetadataRequest(
+            Optional<ServerInfo> coordinatorServer, Set<ServerInfo> aliveTableServers) {
+        UpdateMetadataRequest updateMetadataRequest = new UpdateMetadataRequest();
+        Set<PbServerNode> aliveTableServerNodes = new HashSet<>();
+        for (ServerInfo serverInfo : aliveTableServers) {
+            // Legacy only support one endpoint
+            Endpoint endpoint = serverInfo.endpoints().get(0);
+            PbServerNode pbServerNode =
+                    new PbServerNode()
+                            .setNodeId(serverInfo.id())
+                            .setHost(endpoint.getHost())
+                            .setPort(endpoint.getPort());
+            if (serverInfo.rack() != null) {
+                pbServerNode.setRack(serverInfo.rack());
+            }
+            aliveTableServerNodes.add(pbServerNode);
+        }
+        updateMetadataRequest.addAllTabletServers(aliveTableServerNodes);
+        // Legacy only support one endpoint
+        coordinatorServer.map(
+                node -> {
+                    Endpoint endpoint = node.endpoints().get(0);
+                    updateMetadataRequest
+                            .setCoordinatorServer()
+                            .setNodeId(node.id())
+                            .setHost(endpoint.getHost())
+                            .setPort(endpoint.getPort());
+                    return null;
+                });
+        return updateMetadataRequest;
     }
 }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,9 +26,12 @@ public class DropPartitionEvent implements CoordinatorEvent {
 
     private final long partitionId;
 
-    public DropPartitionEvent(long tableId, long partitionId) {
+    private final String partitionName;
+
+    public DropPartitionEvent(long tableId, long partitionId, String partitionName) {
         this.tableId = tableId;
         this.partitionId = partitionId;
+        this.partitionName = partitionName;
     }
 
     public long getTableId() {
@@ -36,6 +40,10 @@ public class DropPartitionEvent implements CoordinatorEvent {
 
     public long getPartitionId() {
         return partitionId;
+    }
+
+    public String getPartitionName() {
+        return partitionName;
     }
 
     @Override
@@ -47,16 +55,25 @@ public class DropPartitionEvent implements CoordinatorEvent {
             return false;
         }
         DropPartitionEvent that = (DropPartitionEvent) o;
-        return tableId == that.tableId && Objects.equals(partitionId, that.partitionId);
+        return tableId == that.tableId
+                && Objects.equals(partitionId, that.partitionId)
+                && Objects.equals(partitionName, that.partitionName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(tableId, partitionId);
+        return Objects.hash(tableId, partitionId, partitionName);
     }
 
     @Override
     public String toString() {
-        return "DropPartitionEvent{" + "tableId=" + tableId + ", partitionId=" + partitionId + '}';
+        return "DropPartitionEvent{"
+                + "tableId="
+                + tableId
+                + ", partitionId="
+                + partitionId
+                + ", partitionName='"
+                + partitionName
+                + '}';
     }
 }

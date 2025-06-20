@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +22,7 @@ import com.alibaba.fluss.utils.MapUtils;
 
 import java.time.Duration;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -35,6 +37,8 @@ public class TestingCompletedKvSnapshotCommitter implements CompletedKvSnapshotC
 
     protected final Map<TableBucket, Deque<CompletedSnapshot>> snapshots =
             MapUtils.newConcurrentHashMap();
+    protected final Map<TableBucket, Map<Long, Integer>> bucketSnapshotLeaderEpoch =
+            new HashMap<>();
 
     @Override
     public void commitKvSnapshot(
@@ -42,6 +46,9 @@ public class TestingCompletedKvSnapshotCommitter implements CompletedKvSnapshotC
         snapshots
                 .computeIfAbsent(snapshot.getTableBucket(), k -> new LinkedBlockingDeque<>())
                 .add(snapshot);
+        bucketSnapshotLeaderEpoch
+                .computeIfAbsent(snapshot.getTableBucket(), k -> new HashMap<>())
+                .put(snapshot.getSnapshotID(), bucketLeaderEpoch);
     }
 
     public CompletedSnapshot waitUtilSnapshotComplete(
@@ -65,5 +72,17 @@ public class TestingCompletedKvSnapshotCommitter implements CompletedKvSnapshotC
             return bucketSnapshots.peekLast();
         }
         return null;
+    }
+
+    public int getSnapshotLeaderEpoch(TableBucket tableBucket, long snapshotId) {
+        Map<Long, Integer> bucketSnapshotLeaderEpochMap =
+                bucketSnapshotLeaderEpoch.get(tableBucket);
+        if (bucketSnapshotLeaderEpochMap != null) {
+            Integer leaderEpoch = bucketSnapshotLeaderEpochMap.get(snapshotId);
+            if (leaderEpoch != null) {
+                return leaderEpoch;
+            }
+        }
+        return -1;
     }
 }

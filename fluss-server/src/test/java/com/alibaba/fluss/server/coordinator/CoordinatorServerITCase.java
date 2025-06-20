@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,6 +29,8 @@ import com.alibaba.fluss.server.utils.AvailablePortExtension;
 import com.alibaba.fluss.testutils.common.EachCallbackWrapper;
 
 import org.junit.jupiter.api.extension.RegisterExtension;
+
+import static com.alibaba.fluss.config.ConfigOptions.DEFAULT_LISTENER_NAME;
 
 /** IT Case for {@link CoordinatorServer} . */
 class CoordinatorServerITCase extends ServerITCaseBase {
@@ -56,8 +59,9 @@ class CoordinatorServerITCase extends ServerITCaseBase {
     @Override
     protected Configuration getServerConfig() {
         Configuration conf = new Configuration();
-        conf.set(ConfigOptions.COORDINATOR_PORT, getPort() + "");
-        conf.set(ConfigOptions.COORDINATOR_HOST, HOSTNAME);
+        conf.set(
+                ConfigOptions.BIND_LISTENERS,
+                String.format("%s://%s:%d", DEFAULT_LISTENER_NAME, HOSTNAME, getPort()));
         conf.set(ConfigOptions.REMOTE_DATA_DIR, "/tmp/fluss/remote-data");
         return conf;
     }

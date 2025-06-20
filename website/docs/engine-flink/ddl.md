@@ -1,7 +1,26 @@
 ---
 sidebar_label: DDL
+title: Flink DDL
 sidebar_position: 2
 ---
+
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
 
 # Flink DDL
 
@@ -20,11 +39,13 @@ USE CATALOG fluss_catalog;
 
 The following properties can be set if using the Fluss catalog:
 
-| Option            | Required | Default | Description                                                 | 
-|-------------------|----------|---------|-------------------------------------------------------------|
-| type              | required | (none)  | Catalog type, must to be 'fluss' here.                      |
-| bootstrap.servers | required | (none)  | Comma separated list of Fluss servers.                      |
-| default-database  | optional | fluss   | The default database to use when switching to this catalog. |
+| Option                         | Required | Default   | Description                                                                                                                                                                          | 
+|--------------------------------|----------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| type                           | required | (none)    | Catalog type, must to be 'fluss' here.                                                                                                                                               |
+| bootstrap.servers              | required | (none)    | Comma separated list of Fluss servers.                                                                                                                                               |
+| default-database               | optional | fluss     | The default database to use when switching to this catalog.                                                                                                                          |
+| client.security.protocol       | optional | PLAINTEXT | The security protocol used to communicate with brokers. Currently, only `PLAINTEXT` and `SASL` are supported, the configuration value is case insensitive.                           |
+| `client.security.{protocol}.*` | optional | (none)    | Client-side configuration properties for a specific authentication protocol. E.g., client.security.sasl.jaas.config. More Details in [authentication](../security/authentication.md) | (none)        |
 
 The following introduced statements assuming the current catalog is switched to the Fluss catalog using `USE CATALOG <catalog_name>` statement.
 
@@ -58,7 +79,7 @@ DROP DATABASE my_db;
 
 ### PrimaryKey Table
 
-The following SQL statement will create a [PrimaryKey Table](table-design/table-types/pk-table.md) with a primary key consisting of shop_id and user_id.
+The following SQL statement will create a [PrimaryKey Table](table-design/table-types/pk-table/index.md) with a primary key consisting of shop_id and user_id.
 ```sql title="Flink SQL"
 CREATE TABLE my_pk_table (
   shop_id BIGINT,
@@ -88,15 +109,63 @@ CREATE TABLE my_log_table (
 
 ### Partitioned (PrimaryKey/Log) Table
 
-The following SQL statement creates a Partitioned PrimaryKey Table in Fluss. Note that the partitioned field (`dt` in this case) must be a subset of the primary key (`dt, shop_id, user_id` in this case).
-Currently, Fluss only supports one partitioned field with `STRING` type.
-
 :::note
-Currently, partitioned table must enable auto partition and set auto partition time unit.
+1. Currently, Fluss only supports partitioned field with `STRING` type
+2. For the Partitioned PrimaryKey Table, the partitioned field (`dt` in this case) must be a subset of the primary key (`dt, shop_id, user_id` in this case)
 :::
+
+The following SQL statement creates a Partitioned PrimaryKey Table in Fluss.
 
 ```sql title="Flink SQL"
 CREATE TABLE my_part_pk_table (
+  dt STRING,
+  shop_id BIGINT,
+  user_id BIGINT,
+  num_orders INT,
+  total_amount INT,
+  PRIMARY KEY (dt, shop_id, user_id) NOT ENFORCED
+) PARTITIONED BY (dt);
+```
+
+The following SQL statement creates a Partitioned Log Table in Fluss.
+
+```sql title="Flink SQL"
+CREATE TABLE my_part_log_table (
+  order_id BIGINT,
+  item_id BIGINT,
+  amount INT,
+  address STRING,
+  dt STRING
+) PARTITIONED BY (dt);
+```
+:::info
+Fluss partitioned table supports dynamic partition creation, which means you can write data into a partition without pre-creating it.
+You can use the `INSERT INTO` statement to write data into a partitioned table, and Fluss will automatically create the partition if it does not exist.
+See the [Dynamic Partitioning](table-design/data-distribution/partitioning.md#dynamic-partitioning) for more details.
+But you can still use the [Add Partition](engine-flink/ddl.md#add-partition) statement to manually add partitions if needed.
+:::
+
+#### Multi-Fields Partitioned Table
+
+Fluss also support [Multi-Fields Partitioning](table-design/data-distribution/partitioning.md#multi-field-partitioned-tables), the following SQL statement creates a Multi-Fields Partitioned Log Table in Fluss:
+
+```sql title="Flink SQL"
+CREATE TABLE my_multi_fields_part_log_table (
+  order_id BIGINT,
+  item_id BIGINT,
+  amount INT,
+  address STRING,
+  dt STRING,
+  nation STRING
+) PARTITIONED BY (dt, nation);
+```
+
+#### Auto partitioned (PrimaryKey/Log) table
+
+Fluss also support creat Auto Partitioned (PrimaryKey/Log) Table. The following SQL statement creates an Auto Partitioned PrimaryKey Table in Fluss.
+
+```sql title="Flink SQL"
+CREATE TABLE my_auto_part_pk_table (
   dt STRING,
   shop_id BIGINT,
   user_id BIGINT,
@@ -110,10 +179,10 @@ CREATE TABLE my_part_pk_table (
 );
 ```
 
-The following SQL statement creates a Partitioned Log Table in Fluss.
+The following SQL statement creates an Auto Partitioned Log Table in Fluss.
 
 ```sql title="Flink SQL"
-CREATE TABLE my_part_log_table (
+CREATE TABLE my_auto_part_log_table (
   order_id BIGINT,
   item_id BIGINT,
   amount INT,
@@ -126,15 +195,12 @@ CREATE TABLE my_part_log_table (
 );
 ```
 
+For more details about Auto Partitioned (PrimaryKey/Log) Table, refer to [Auto Partitioning](table-design/data-distribution/partitioning.md#auto-partitioning).
 
-The supported option in "with" parameters when creating a table are as follows:
 
-| Option                             | Type     | Required | Default                             | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|------------------------------------|----------|----------|-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| bucket.num                         | int      | optional | The bucket number of Fluss cluster. | The number of buckets of a Fluss table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| bucket.key                         | String   | optional | (none)                              | Specific the distribution policy of the Fluss table. Data will be distributed to each bucket according to the hash value of bucket-key.  If you specify multiple fields, delimiter is ','. If the table is with primary key, you can't specific bucket key currently. The bucket keys will always be the primary key(excluding partition key). If the table is not with primary key, you can specific bucket key, and when the bucket key is not specified, the data will be distributed to each bucket randomly.  |
-| table.*                            |          |          |                                     | All the [`table.` prefix configuration](/docs/maintenance/configuration.md) are supported to be defined in "with" options.                                                                                                                                                                                                                                                                                                                                                                                         |
-| client.*                           |          |          |                                     | All the [`client.` prefix configuration](/docs/maintenance/configuration.md) are supported to be defined in "with" options.                                                                                                                                                                                                                                                                                                                                                                                        |
+### Options
+
+The supported option in `WITH` parameters when creating a table are listed in [Connector Options](engine-flink/options.md) page.
 
 ## Create Table Like
 
@@ -171,5 +237,58 @@ DROP TABLE my_table;
 ```
 
 This will entirely remove all the data of the table in the Fluss cluster.
+
+## Show Partitions
+
+To show all the partitions of a partitioned table, run:
+```sql title="Flink SQL"
+SHOW PARTITIONS my_part_pk_table;
+```
+
+For multi-field partitioned tables, you can use the `SHOW PARTITIONS` command with either **partial** or **full** partition field conditions to list matching partitions.
+
+```sql title="Flink SQL"
+-- Show partitions using a partial partition filter
+SHOW PARTITIONS my_multi_fields_part_log_table PARTITION (dt = '2025-03-05');
+
+-- Show partitions using a full partition filter
+SHOW PARTITIONS my_multi_fields_part_log_table PARTITION (dt = '2025-03-05', nation = 'US');
+```
+
+For more details, refer to the [Flink SHOW PARTITIONS](https://nightlies.apache.org/flink/flink-docs-release-1.20/docs/dev/table/sql/show/#show-partitions) documentation.
+
+## Add Partition
+
+Fluss support manually add partitions to an exists partitioned table by Fluss Catalog. If the specified partition 
+not exists, Fluss will create the partition. If the specified partition already exists, Fluss will ignore the request 
+or throw an exception.
+
+To add partitions, run:
+```sql title="Flink SQL"
+-- Add a partition to a single field partitioned table
+ALTER TABLE my_part_pk_table ADD PARTITION (dt = '2025-03-05');
+
+-- Add a partition to a multi-field partitioned table
+ALTER TABLE my_multi_fields_part_log_table ADD PARTITION (dt = '2025-03-05', nation = 'US');
+```
+
+For more details, refer to the [Flink ALTER TABLE(ADD)](https://nightlies.apache.org/flink/flink-docs-release-1.20/docs/dev/table/sql/alter/#add) documentation.
+
+## Drop Partition
+
+Fluss also support manually drop partitions from an exists partitioned table by Fluss Catalog. If the specified partition 
+not exists, Fluss will ignore the request or throw an exception.
+
+
+To drop partitions, run:
+```sql title="Flink SQL"
+-- Drop a partition from a single field partitioned table
+ALTER TABLE my_part_pk_table DROP PARTITION (dt = '2025-03-05');
+
+-- Drop a partition from a multi-field partitioned table
+ALTER TABLE my_multi_fields_part_log_table DROP PARTITION (dt = '2025-03-05', nation = 'US');
+```
+
+For more details, refer to the [Flink ALTER TABLE(DROP)](https://nightlies.apache.org/flink/flink-docs-release-1.20/docs/dev/table/sql/alter/#drop) documentation.
 
 

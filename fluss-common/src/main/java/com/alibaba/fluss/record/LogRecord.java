@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,7 +21,7 @@ import com.alibaba.fluss.annotation.PublicEvolving;
 import com.alibaba.fluss.row.InternalRow;
 
 /**
- * A log record is a tuple consisting of a unique offset in the log, a rowKind and a row.
+ * A log record is a tuple consisting of a unique offset in the log, a changeType and a row.
  *
  * @since 0.1
  */
@@ -42,11 +43,11 @@ public interface LogRecord {
     long timestamp();
 
     /**
-     * Get the log record's {@link RowKind}.
+     * Get the log record's {@link ChangeType}.
      *
-     * @return the record's {@link RowKind}.
+     * @return the record's {@link ChangeType}.
      */
-    RowKind getRowKind();
+    ChangeType getChangeType();
 
     /**
      * Get the log record's row.

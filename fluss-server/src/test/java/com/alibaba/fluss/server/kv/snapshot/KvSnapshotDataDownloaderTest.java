@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,6 @@
 
 package com.alibaba.fluss.server.kv.snapshot;
 
-import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.utils.CloseableRegistry;
 
 import org.junit.jupiter.api.AfterAll;
@@ -104,7 +104,7 @@ class KvSnapshotDataDownloaderTest {
                         KvFileHandleAndLocalPath.of(
                                 new KvFileHandle(
                                         // a file that doesn't exist should then throw IOException
-                                        new FsPath("file-non-exist"), 0),
+                                        "file-non-exist", 0),
                                 "error-handle"));
 
         CloseableRegistry closeableRegistry = new CloseableRegistry();
@@ -148,7 +148,7 @@ class KvSnapshotDataDownloaderTest {
         for (int i = 0; i < numSubHandles; ++i) {
             Path path = srcPath.resolve(String.format("state-%d-%d", remoteHandleId, i));
             Files.write(path, content[i]);
-            handles.add(new KvFileHandle(FsPath.fromLocalFile(path.toFile()), content.length));
+            handles.add(new KvFileHandle(path.toString(), content.length));
         }
 
         List<KvFileHandleAndLocalPath> sharedStates = new ArrayList<>(numSubHandles);

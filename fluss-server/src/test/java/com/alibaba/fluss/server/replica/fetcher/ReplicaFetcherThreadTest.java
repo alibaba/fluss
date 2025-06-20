@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,14 +27,14 @@ import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.entity.ProduceLogResultForBucket;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
+import com.alibaba.fluss.server.coordinator.MetadataManager;
 import com.alibaba.fluss.server.coordinator.TestCoordinatorGateway;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrResultForBucket;
 import com.alibaba.fluss.server.kv.KvManager;
 import com.alibaba.fluss.server.kv.snapshot.TestingCompletedKvSnapshotCommitter;
 import com.alibaba.fluss.server.log.LogManager;
-import com.alibaba.fluss.server.metadata.ServerMetadataCache;
-import com.alibaba.fluss.server.metadata.ServerMetadataCacheImpl;
+import com.alibaba.fluss.server.metadata.TabletServerMetadataCache;
 import com.alibaba.fluss.server.metrics.group.TabletServerMetricGroup;
 import com.alibaba.fluss.server.metrics.group.TestingMetricGroups;
 import com.alibaba.fluss.server.replica.Replica;
@@ -74,6 +75,7 @@ import static com.alibaba.fluss.server.coordinator.CoordinatorContext.INITIAL_CO
 import static com.alibaba.fluss.server.zk.data.LeaderAndIsr.INITIAL_BUCKET_EPOCH;
 import static com.alibaba.fluss.server.zk.data.LeaderAndIsr.INITIAL_LEADER_EPOCH;
 import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsByObject;
+import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsWithWriterId;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -109,9 +111,12 @@ public class ReplicaFetcherThreadTest {
         leaderRM = createReplicaManager(leaderServerId);
         followerRM = createReplicaManager(followerServerId);
         // with local test leader end point.
-        leader = new ServerNode(leaderServerId, "localhost", 9099, ServerType.TABLET_SERVER);
+        leader =
+                new ServerNode(
+                        leaderServerId, "localhost", 9099, ServerType.TABLET_SERVER, "rack1");
         ServerNode follower =
-                new ServerNode(followerServerId, "localhost", 10001, ServerType.TABLET_SERVER);
+                new ServerNode(
+                        followerServerId, "localhost", 10001, ServerType.TABLET_SERVER, "rack2");
         followerFetcher =
                 new ReplicaFetcherThread(
                         "test-fetcher-thread",
@@ -136,7 +141,9 @@ public class ReplicaFetcherThreadTest {
         assertThat(future.get()).containsOnly(new ProduceLogResultForBucket(tb, 0, 10L));
 
         followerFetcher.addBuckets(
-                Collections.singletonMap(tb, new InitialFetchStatus(DATA1_TABLE_ID, leader, 0L)));
+                Collections.singletonMap(
+                        tb,
+                        new InitialFetchStatus(DATA1_TABLE_ID, DATA1_TABLE_PATH, leader.id(), 0L)));
         assertThat(followerRM.getReplicaOrException(tb).getLocalLogEndOffset()).isEqualTo(0L);
 
         // begin fetcher thread.
@@ -160,6 +167,114 @@ public class ReplicaFetcherThreadTest {
                 () ->
                         assertThat(followerRM.getReplicaOrException(tb).getLocalLogEndOffset())
                                 .isEqualTo(20L));
+    }
+
+    @Test
+    void testFollowerHighWatermarkHigherThanOrEqualToLeader() throws Exception {
+        Replica leaderReplica = leaderRM.getReplicaOrException(tb);
+        Replica followerReplica = followerRM.getReplicaOrException(tb);
+
+        followerFetcher.addBuckets(
+                Collections.singletonMap(
+                        tb,
+                        new InitialFetchStatus(DATA1_TABLE_ID, DATA1_TABLE_PATH, leader.id(), 0L)));
+        assertThat(leaderReplica.getLocalLogEndOffset()).isEqualTo(0L);
+        assertThat(leaderReplica.getLogHighWatermark()).isEqualTo(0L);
+        assertThat(followerReplica.getLocalLogEndOffset()).isEqualTo(0L);
+        assertThat(followerReplica.getLogHighWatermark()).isEqualTo(0L);
+        // begin fetcher thread.
+        followerFetcher.start();
+
+        CompletableFuture<List<ProduceLogResultForBucket>> future;
+        for (int i = 0; i < 1000; i++) {
+            long baseOffset = i * 10L;
+            future = new CompletableFuture<>();
+            leaderRM.appendRecordsToLog(
+                    1000,
+                    1, // don't wait ack
+                    Collections.singletonMap(tb, genMemoryLogRecordsByObject(DATA1)),
+                    future::complete);
+            assertThat(future.get())
+                    .containsOnly(new ProduceLogResultForBucket(tb, baseOffset, baseOffset + 10L));
+            retry(
+                    Duration.ofSeconds(20),
+                    () ->
+                            assertThat(followerReplica.getLocalLogEndOffset())
+                                    .isEqualTo(baseOffset + 10L));
+            assertThat(followerReplica.getLogHighWatermark())
+                    .isGreaterThanOrEqualTo(leaderReplica.getLogHighWatermark());
+        }
+    }
+
+    // TODO this test need to be removed after we introduce leader epoch cache. Trace by
+    // https://github.com/alibaba/fluss/issues/673
+    @Test
+    void testAppendAsFollowerThrowDuplicatedBatchException() throws Exception {
+        Replica leaderReplica = leaderRM.getReplicaOrException(tb);
+        Replica followerReplica = followerRM.getReplicaOrException(tb);
+
+        // 1. append same batches to leader and follower with different writer id.
+        CompletableFuture<List<ProduceLogResultForBucket>> future;
+        List<Long> writerIds = Arrays.asList(100L, 101L);
+        long baseOffset = 0L;
+        for (long writerId : writerIds) {
+            for (int i = 0; i < 5; i++) {
+                future = new CompletableFuture<>();
+                leaderRM.appendRecordsToLog(
+                        1000,
+                        1,
+                        Collections.singletonMap(
+                                tb, genMemoryLogRecordsWithWriterId(DATA1, writerId, i, 0)),
+                        future::complete);
+                assertThat(future.get())
+                        .containsOnly(
+                                new ProduceLogResultForBucket(tb, baseOffset, baseOffset + 10L));
+
+                followerReplica.appendRecordsToFollower(
+                        genMemoryLogRecordsWithWriterId(DATA1, writerId, i, baseOffset));
+                assertThat(followerReplica.getLocalLogEndOffset()).isEqualTo(baseOffset + 10L);
+                baseOffset = baseOffset + 10L;
+            }
+        }
+
+        // 2. append one batch to follower with (writerId=100L, batchSequence=5 offset=100L) to mock
+        // follower have one batch ahead of leader.
+        followerReplica.appendRecordsToFollower(
+                genMemoryLogRecordsWithWriterId(DATA1, 100L, 5, 100L));
+        assertThat(followerReplica.getLocalLogEndOffset()).isEqualTo(110L);
+
+        // 3. mock becomeLeaderAndFollower as follower end.
+        leaderReplica.updateLeaderEndOffsetSnapshot();
+        followerFetcher.addBuckets(
+                Collections.singletonMap(
+                        tb,
+                        new InitialFetchStatus(
+                                DATA1_TABLE_ID, DATA1_TABLE_PATH, leader.id(), 110L)));
+        followerFetcher.start();
+
+        // 4. mock append to leader with different writer id (writerId=101L, batchSequence=5
+        // offset=100L) to mock leader receive different batch from recovery follower.
+        future = new CompletableFuture<>();
+        leaderRM.appendRecordsToLog(
+                1000,
+                1,
+                Collections.singletonMap(tb, genMemoryLogRecordsWithWriterId(DATA1, 101L, 5, 100L)),
+                future::complete);
+        assertThat(future.get()).containsOnly(new ProduceLogResultForBucket(tb, 100L, 110L));
+
+        // 5. mock append to leader with (writerId=100L, batchSequence=5 offset=110L) to mock
+        // follower fetch duplicated batch from leader. In this case follower will truncate to
+        // LeaderEndOffsetSnapshot and fetch again.
+        future = new CompletableFuture<>();
+        leaderRM.appendRecordsToLog(
+                1000,
+                1,
+                Collections.singletonMap(tb, genMemoryLogRecordsWithWriterId(DATA1, 100L, 5, 110L)),
+                future::complete);
+        assertThat(future.get()).containsOnly(new ProduceLogResultForBucket(tb, 110L, 120L));
+        retry(
+                Duration.ofSeconds(20),
+                () -> assertThat(followerReplica.getLocalLogEndOffset()).isEqualTo(120L));
     }
 
     private void registerTableInZkClient() throws Exception {
@@ -218,7 +333,7 @@ public class ReplicaFetcherThreadTest {
                         null,
                         zkClient,
                         serverId,
-                        new ServerMetadataCacheImpl(),
+                        new TabletServerMetadataCache(new MetadataManager(null, conf), null),
                         RpcClient.create(conf, TestingClientMetricGroup.newInstance()),
                         TestingMetricGroups.TABLET_SERVER_METRICS,
                         SystemClock.getInstance());
@@ -238,7 +353,7 @@ public class ReplicaFetcherThreadTest {
                 KvManager kvManager,
                 ZooKeeperClient zkClient,
                 int serverId,
-                ServerMetadataCache metadataCache,
+                TabletServerMetadataCache metadataCache,
                 RpcClient rpcClient,
                 TabletServerMetricGroup serverMetricGroup,
                 Clock clock)

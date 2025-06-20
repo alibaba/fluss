@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,16 +30,16 @@ public class KvFileHandle implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /** The path to the kv file. */
-    private final FsPath filePath;
+    private final String filePath;
 
     private final long size;
 
-    public KvFileHandle(FsPath fileHandle, long size) {
+    public KvFileHandle(String fileHandle, long size) {
         this.filePath = fileHandle;
         this.size = size;
     }
 
-    public FsPath getFilePath() {
+    public String getFilePath() {
         return filePath;
     }
 
@@ -75,35 +76,26 @@ public class KvFileHandle implements Serializable {
      * @throws Exception Thrown, if the file deletion (not the directory deletion) fails.
      */
     public void discard() throws Exception {
-        final FileSystem fs = getFileSystem();
+        FsPath fsPath = new FsPath(filePath);
+        final FileSystem fs = fsPath.getFileSystem();
 
         IOException actualException = null;
         boolean success = true;
         try {
-            success = fs.delete(filePath, false);
+            success = fs.delete(fsPath, false);
         } catch (IOException e) {
             actualException = e;
         }
 
         if (!success || actualException != null) {
-            if (fs.exists(filePath)) {
+            if (fs.exists(fsPath)) {
                 throw Optional.ofNullable(actualException)
                         .orElse(
                                 new IOException(
                                         "Unknown error caused the file '"
-                                                + filePath
+                                                + fsPath
                                                 + "' to not be deleted."));
             }
         }
-    }
-
-    /**
-     * Gets the file system that stores the file state.
-     *
-     * @return The file system that stores the file state.
-     * @throws IOException Thrown if the file system cannot be accessed.
-     */
-    private FileSystem getFileSystem() throws IOException {
-        return FileSystem.get(filePath.toUri());
     }
 }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,9 +29,6 @@ import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.Unpooled;
 import com.alibaba.fluss.utils.ProtoCodecUtils;
 
-import org.jibx.schema.codegen.extend.DefaultNameConverter;
-import org.jibx.schema.codegen.extend.NameConverter;
-
 import java.io.PrintWriter;
 
 import static com.alibaba.fluss.shaded.guava32.com.google.common.base.CaseFormat.LOWER_CAMEL;
@@ -41,13 +39,14 @@ public class ProtoGenUtil {
     private static final String[] HEADER =
             new String[] {
                 "/*",
-                " * Copyright (c) 2024 Alibaba Group Holding Ltd.",
+                " * Licensed to the Apache Software Foundation (ASF) under one or more",
+                " * contributor license agreements.  See the NOTICE file distributed with",
+                " * this work for additional information regarding copyright ownership.",
+                " * The ASF licenses this file to You under the Apache License, Version 2.0",
+                " * (the \"License\"); you may not use this file except in compliance with",
+                " * the License.  You may obtain a copy of the License at",
                 " *",
-                " * Licensed under the Apache License, Version 2.0 (the \"License\");",
-                " * you may not use this file except in compliance with the License.",
-                " * You may obtain a copy of the License at",
-                " *",
-                " *      http://www.apache.org/licenses/LICENSE-2.0",
+                " *    http://www.apache.org/licenses/LICENSE-2.0",
                 " *",
                 " * Unless required by applicable law or agreed to in writing, software",
                 " * distributed under the License is distributed on an \"AS IS\" BASIS,",
@@ -135,13 +134,11 @@ public class ProtoGenUtil {
         return sb.toString().toUpperCase();
     }
 
-    private static final NameConverter nameTools = new DefaultNameConverter();
-
     public static String plural(String s) {
-        return nameTools.pluralize(s);
+        return NameUtilities.pluralize(s);
     }
 
     public static String singular(String s) {
-        return nameTools.depluralize(s);
+        return NameUtilities.depluralize(s);
     }
 }

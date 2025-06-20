@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -60,7 +61,7 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
         List<IndexedRow> rows = new ArrayList<>();
         for (int i = 0; i < recordNumber; i++) {
             IndexedRow row = TestInternalRowGenerator.genIndexedRowForAllType();
-            builder.append(RowKind.INSERT, row);
+            builder.append(ChangeType.INSERT, row);
             rows.add(row);
         }
 
@@ -88,7 +89,7 @@ public class DefaultLogRecordBatchTest extends LogTestBase {
             while (iter.hasNext()) {
                 LogRecord record = iter.next();
                 assertThat(record.logOffset()).isEqualTo(i);
-                assertThat(record.getRowKind()).isEqualTo(RowKind.INSERT);
+                assertThat(record.getChangeType()).isEqualTo(ChangeType.INSERT);
                 assertThat(record.getRow()).isEqualTo(rows.get(i));
                 i++;
             }

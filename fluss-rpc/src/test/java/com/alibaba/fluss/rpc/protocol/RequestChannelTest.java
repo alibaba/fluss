@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +19,7 @@ package com.alibaba.fluss.rpc.protocol;
 
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
+import com.alibaba.fluss.rpc.netty.server.FlussRequest;
 import com.alibaba.fluss.rpc.netty.server.RequestChannel;
 import com.alibaba.fluss.rpc.netty.server.RpcRequest;
 import com.alibaba.fluss.shaded.netty4.io.netty.buffer.EmptyByteBuf;
@@ -27,6 +29,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,14 +45,18 @@ public class RequestChannelTest {
         // push rpc requests
         for (int i = 0; i < 100; i++) {
             RpcRequest rpcRequest =
-                    new RpcRequest(
+                    new FlussRequest(
                             ApiKeys.GET_TABLE_INFO.id,
                             (short) 0,
                             i,
                             null,
                             new GetTableInfoRequest(),
                             new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
-                            null);
+                            "FLUSS",
+                            true,
+                            null,
+                            null,
+                            new CompletableFuture<>());
             channel.putRequest(rpcRequest);
             rpcRequests.add(rpcRequest);
         }
@@ -61,23 +68,31 @@ public class RequestChannelTest {
 
         // 2. Different request type, Use FIFO.
         RpcRequest rpcRequest1 =
-                new RpcRequest(
+                new FlussRequest(
                         ApiKeys.GET_TABLE_INFO.id,
                         (short) 0,
                         3,
                         null,
                         new GetTableInfoRequest(),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
-                        null);
+                        "FLUSS",
+                        true,
+                        null,
+                        null,
+                        new CompletableFuture<>());
         RpcRequest rpcRequest2 =
-                new RpcRequest(
+                new FlussRequest(
                         ApiKeys.FETCH_LOG.id,
                         (short) 0,
                         100,
                         null,
                         new FetchLogRequest().setMaxBytes(100).setFollowerServerId(2),
                         new EmptyByteBuf(new UnpooledByteBufAllocator(true, true)),
-                        null);
+                        "FLUSS",
+                        true,
+                        null,
+                        null,
+                        new CompletableFuture<>());
         channel.putRequest(rpcRequest1);
         channel.putRequest(rpcRequest2);
         RpcRequest rpcRequest = channel.pollRequest(100);

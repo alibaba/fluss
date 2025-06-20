@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +22,7 @@ import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.table.scanner.ScanRecord;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
+import com.alibaba.fluss.exception.AuthorizationException;
 import com.alibaba.fluss.exception.FetchException;
 import com.alibaba.fluss.exception.LogOffsetOutOfRangeException;
 import com.alibaba.fluss.metadata.TableBucket;
@@ -248,7 +250,6 @@ public class LogFetchCollector {
             CompletedFetch completedFetch, Errors error, String errorMessage) {
         TableBucket tb = completedFetch.tableBucket;
         long fetchOffset = completedFetch.nextFetchOffset();
-
         if (error == Errors.NOT_LEADER_OR_FOLLOWER
                 || error == Errors.LOG_STORAGE_EXCEPTION
                 || error == Errors.KV_STORAGE_EXCEPTION
@@ -261,7 +262,11 @@ public class LogFetchCollector {
             LOG.warn("Received unknown table or bucket error in fetch for bucket {}", tb);
             metadataUpdater.checkAndUpdateMetadata(tablePath, tb);
         } else if (error == Errors.LOG_OFFSET_OUT_OF_RANGE_EXCEPTION) {
-            throw new LogOffsetOutOfRangeException(errorMessage);
+            throw new FetchException(
+                    String.format("The fetching offset %s is out of range", fetchOffset),
+                    error.exception());
+        } else if (error == Errors.AUTHORIZATION_EXCEPTION) {
+            throw new AuthorizationException(errorMessage);
         } else if (error == Errors.UNKNOWN_SERVER_ERROR) {
             LOG.warn(
                     "Unknown server error while fetching offset {} for bucket {}: {}",

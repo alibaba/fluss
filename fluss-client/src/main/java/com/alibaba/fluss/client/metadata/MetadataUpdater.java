@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -86,12 +87,12 @@ public class MetadataUpdater {
         return cluster.getTableId(tablePath);
     }
 
-    public Long getPartitionIdOrElseThrow(PhysicalTablePath physicalTablePath) {
-        return cluster.getPartitionIdOrElseThrow(physicalTablePath);
+    public Optional<Long> getPartitionId(PhysicalTablePath physicalTablePath) {
+        return cluster.getPartitionId(physicalTablePath);
     }
 
-    public String getPartitionNameOrElseThrow(long partitionId) {
-        return cluster.getPartitionNameOrElseThrow(partitionId);
+    public Long getPartitionIdOrElseThrow(PhysicalTablePath physicalTablePath) {
+        return cluster.getPartitionIdOrElseThrow(physicalTablePath);
     }
 
     public TableInfo getTableInfoOrElseThrow(TablePath tablePath) {
@@ -186,10 +187,11 @@ public class MetadataUpdater {
      *
      * <p>and update partition metadata .
      */
-    public void checkAndUpdatePartitionMetadata(PhysicalTablePath physicalTablePath) {
+    public boolean checkAndUpdatePartitionMetadata(PhysicalTablePath physicalTablePath) {
         if (!cluster.getPartitionId(physicalTablePath).isPresent()) {
             updateMetadata(null, Collections.singleton(physicalTablePath), null);
         }
+        return cluster.getPartitionId(physicalTablePath).isPresent();
     }
 
     /**
@@ -245,7 +247,8 @@ public class MetadataUpdater {
         updateMetadata(updateTablePaths, updatePartitionPath, null);
     }
 
-    private void updateMetadata(
+    @VisibleForTesting
+    protected void updateMetadata(
             @Nullable Set<TablePath> tablePaths,
             @Nullable Collection<PhysicalTablePath> tablePartitionNames,
             @Nullable Collection<Long> tablePartitionIds) {
@@ -277,43 +280,41 @@ public class MetadataUpdater {
         List<InetSocketAddress> inetSocketAddresses =
                 ClientUtils.parseAndValidateAddresses(conf.get(ConfigOptions.BOOTSTRAP_SERVERS));
         Cluster cluster = null;
+        Exception lastException = null;
         for (InetSocketAddress address : inetSocketAddresses) {
-            cluster = tryToInitializeCluster(rpcClient, address);
-            if (cluster != null) {
+            try {
+                cluster = tryToInitializeCluster(rpcClient, address);
                 break;
+            } catch (Exception e) {
+                LOG.error(
+                        "Failed to initialize fluss client connection to bootstrap server: {}",
+                        address,
+                        e);
+                lastException = e;
             }
         }
 
-        if (cluster == null) {
+        if (cluster == null && lastException != null) {
             String errorMsg =
                     "Failed to initialize fluss client connection to server because no "
                             + "bootstrap server is validate. bootstrap servers: "
                             + inetSocketAddresses;
             LOG.error(errorMsg);
-            throw new IllegalStateException(errorMsg);
+            throw new IllegalStateException(errorMsg, lastException);
         }
 
         return cluster;
     }
 
-    private static @Nullable Cluster tryToInitializeCluster(
-            RpcClient rpcClient, InetSocketAddress address) {
+    private static Cluster tryToInitializeCluster(RpcClient rpcClient, InetSocketAddress address)
+            throws Exception {
         ServerNode serverNode =
                 new ServerNode(
-                        -1, address.getHostName(), address.getPort(), ServerType.TABLET_SERVER);
-        try {
-            AdminReadOnlyGateway adminReadOnlyGateway =
-                    GatewayClientProxy.createGatewayProxy(
-                            () -> serverNode, rpcClient, AdminReadOnlyGateway.class);
-            return sendMetadataRequestAndRebuildCluster(
-                    adminReadOnlyGateway, Collections.emptySet());
-        } catch (Exception e) {
-            LOG.error(
-                    "Failed to initialize fluss client connection to bootstrap server: {}",
-                    address,
-                    e);
-            return null;
-        }
+                        -1, address.getHostString(), address.getPort(), ServerType.COORDINATOR);
+        AdminReadOnlyGateway adminReadOnlyGateway =
+                GatewayClientProxy.createGatewayProxy(
+                        () -> serverNode, rpcClient, AdminReadOnlyGateway.class);
+        return sendMetadataRequestAndRebuildCluster(adminReadOnlyGateway, Collections.emptySet());
     }
 
     /** Invalid the bucket metadata for the given physical table paths. */

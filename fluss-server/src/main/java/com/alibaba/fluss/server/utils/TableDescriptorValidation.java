@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +23,7 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.ReadableConfig;
 import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidTableException;
+import com.alibaba.fluss.exception.TooManyBucketsException;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.MergeEngineType;
@@ -30,18 +32,36 @@ import com.alibaba.fluss.types.DataType;
 import com.alibaba.fluss.types.DataTypeRoot;
 import com.alibaba.fluss.types.RowType;
 import com.alibaba.fluss.utils.AutoPartitionStrategy;
+import com.alibaba.fluss.utils.StringUtils;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.config.FlussConfigUtils.TABLE_OPTIONS;
+import static com.alibaba.fluss.metadata.TableDescriptor.BUCKET_COLUMN_NAME;
+import static com.alibaba.fluss.metadata.TableDescriptor.OFFSET_COLUMN_NAME;
+import static com.alibaba.fluss.metadata.TableDescriptor.TIMESTAMP_COLUMN_NAME;
+import static com.alibaba.fluss.utils.PartitionUtils.PARTITION_KEY_SUPPORTED_TYPES;
 
 /** Validator of {@link TableDescriptor}. */
 public class TableDescriptorValidation {
 
+    private static final Set<String> SYSTEM_COLUMNS =
+            Collections.unmodifiableSet(
+                    new LinkedHashSet<>(
+                            Arrays.asList(
+                                    OFFSET_COLUMN_NAME,
+                                    TIMESTAMP_COLUMN_NAME,
+                                    BUCKET_COLUMN_NAME)));
+
     /** Validate table descriptor to create is valid and contain all necessary information. */
-    public static void validateTableDescriptor(TableDescriptor tableDescriptor) {
+    public static void validateTableDescriptor(TableDescriptor tableDescriptor, int maxBucketNum) {
         boolean hasPrimaryKey = tableDescriptor.getSchema().getPrimaryKey().isPresent();
         RowType schema = tableDescriptor.getSchema().getRowType();
         Configuration tableConf = Configuration.fromMap(tableDescriptor.getProperties());
@@ -61,7 +81,7 @@ public class TableDescriptorValidation {
         }
 
         // check distribution
-        checkDistribution(tableDescriptor);
+        checkDistribution(tableDescriptor, maxBucketNum);
 
         // check individual options
         checkReplicationFactor(tableConf);
@@ -69,15 +89,39 @@ public class TableDescriptorValidation {
         checkArrowCompression(tableConf);
         checkMergeEngine(tableConf, hasPrimaryKey, schema);
         checkTieredLog(tableConf);
-        checkAutoPartition(tableConf, tableDescriptor.getPartitionKeys(), schema);
+        checkPartition(tableConf, tableDescriptor.getPartitionKeys(), schema);
+        checkSystemColumns(schema);
     }
 
-    private static void checkDistribution(TableDescriptor tableDescriptor) {
+    private static void checkSystemColumns(RowType schema) {
+        List<String> fieldNames = schema.getFieldNames();
+        List<String> unsupportedColumns =
+                fieldNames.stream().filter(SYSTEM_COLUMNS::contains).collect(Collectors.toList());
+        if (!unsupportedColumns.isEmpty()) {
+            throw new InvalidTableException(
+                    String.format(
+                            "%s cannot be used as column names, "
+                                    + "because they are reserved system columns in Fluss. "
+                                    + "Please use other names for these columns. "
+                                    + "The reserved system columns are: %s",
+                            String.join(", ", unsupportedColumns),
+                            String.join(", ", SYSTEM_COLUMNS)));
+        }
+    }
+
+    private static void checkDistribution(TableDescriptor tableDescriptor, int maxBucketNum) {
         if (!tableDescriptor.getTableDistribution().isPresent()) {
             throw new InvalidTableException("Table distribution is required.");
         }
         if (!tableDescriptor.getTableDistribution().get().getBucketCount().isPresent()) {
             throw new InvalidTableException("Bucket number must be set.");
+        }
+        int bucketCount = tableDescriptor.getTableDistribution().get().getBucketCount().get();
+        if (bucketCount > maxBucketNum) {
+            throw new TooManyBucketsException(
+                    String.format(
+                            "Bucket count %s exceeds the maximum limit %s.",
+                            bucketCount, maxBucketNum));
         }
     }
 
@@ -170,7 +214,7 @@ public class TableDescriptorValidation {
         }
     }
 
-    private static void checkAutoPartition(
+    private static void checkPartition(
             Configuration tableConf, List<String> partitionKeys, RowType rowType) {
         boolean isPartitioned = !partitionKeys.isEmpty();
         AutoPartitionStrategy autoPartition = AutoPartitionStrategy.from(tableConf);
@@ -183,36 +227,54 @@ public class TableDescriptorValidation {
         }
 
         if (isPartitioned) {
-            if (partitionKeys.size() > 1) {
-                throw new InvalidTableException(
-                        String.format(
-                                "Currently, partitioned table only supports one partition key, but got partition keys %s.",
-                                partitionKeys));
+            for (String partitionKey : partitionKeys) {
+                int partitionIndex = rowType.getFieldIndex(partitionKey);
+                DataType partitionDataType = rowType.getTypeAt(partitionIndex);
+                if (!PARTITION_KEY_SUPPORTED_TYPES.contains(partitionDataType.getTypeRoot())) {
+                    throw new InvalidTableException(
+                            String.format(
+                                    "Currently, partitioned table supported partition key type are %s, "
+                                            + "but got partition key '%s' with data type %s.",
+                                    PARTITION_KEY_SUPPORTED_TYPES,
+                                    partitionKey,
+                                    partitionDataType));
+                }
             }
 
-            // TODO: support general partitioned table
-            if (!autoPartition.isAutoPartitionEnabled()) {
-                throw new InvalidConfigException(
-                        String.format(
-                                "Currently, partitioned table must enable auto partition, please set table property '%s' to true.",
-                                ConfigOptions.TABLE_AUTO_PARTITION_ENABLED.key()));
-            }
+            if (autoPartition.isAutoPartitionEnabled()) {
+                if (partitionKeys.size() > 1) {
+                    // must specify auto partition key for auto partition table when optional keys
+                    // size > 1
+                    if (StringUtils.isNullOrWhitespaceOnly(autoPartition.key())) {
+                        throw new InvalidTableException(
+                                String.format(
+                                        "Currently, auto partitioned table must set one auto partition key when it "
+                                                + "has multiple partition keys. Please set table property '%s'.",
+                                        ConfigOptions.TABLE_AUTO_PARTITION_KEY.key()));
+                    }
 
-            if (autoPartition.timeUnit() == null) {
-                throw new InvalidConfigException(
-                        String.format(
-                                "Currently, partitioned table must set auto partition time unit when auto partition is enabled, please set table property '%s'.",
-                                ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT.key()));
-            }
+                    if (!partitionKeys.contains(autoPartition.key())) {
+                        throw new InvalidTableException(
+                                String.format(
+                                        "The specified key for auto partitioned table is not a partition key. "
+                                                + "Your key '%s' is not in key list %s",
+                                        autoPartition.key(), partitionKeys));
+                    }
 
-            String partitionKey = partitionKeys.get(0);
-            int partitionIndex = rowType.getFieldIndex(partitionKey);
-            DataType partitionDataType = rowType.getTypeAt(partitionIndex);
-            if (partitionDataType.getTypeRoot() != DataTypeRoot.STRING) {
-                throw new InvalidTableException(
-                        String.format(
-                                "Currently, auto partition enabled table only supports STRING type partition key, but got partition key '%s' with data type %s.",
-                                partitionKey, partitionDataType));
+                    if (autoPartition.numPreCreate() > 0) {
+                        throw new InvalidTableException(
+                                "For a partitioned table with multiple partition keys, auto pre-create is unsupported and this value must be set to 0, but is "
+                                        + autoPartition.numPreCreate());
+                    }
+                }
+
+                if (autoPartition.timeUnit() == null) {
+                    throw new InvalidTableException(
+                            String.format(
+                                    "Currently, auto partitioned table must set auto partition time unit when auto "
+                                            + "partition is enabled, please set table property '%s'.",
+                                    ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT.key()));
+                }
             }
         }
     }
