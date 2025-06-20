@@ -422,12 +422,6 @@ public class ConfigOptions {
                     .withDescription(
                             "Defines how long the buffer pool will block when waiting for segments to become available.");
 
-    public static final ConfigOption<Boolean> TABLET_SERVER_CONTROLLED_SHUTDOWN_ENABLED =
-            key("tablet-server.controlled-shutdown.enabled")
-                    .booleanType()
-                    .defaultValue(true)
-                    .withDescription("Whether to enable controlled shutdown for TabletServer.");
-
     // ------------------------------------------------------------------
     // ZooKeeper Settings
     // ------------------------------------------------------------------

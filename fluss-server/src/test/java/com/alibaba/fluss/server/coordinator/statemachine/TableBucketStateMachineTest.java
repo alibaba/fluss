@@ -346,7 +346,7 @@ class TableBucketStateMachineTest {
         // check state is online.
         tableBucketStateMachine.handleStateChange(Collections.singleton(tb), OnlineBucket);
         assertThat(coordinatorContext.getBucketState(tb)).isEqualTo(OnlineBucket);
-        assertThat(coordinatorContext.liveTabletServerSet())
+        assertThat(coordinatorContext.liveTabletServerIds())
                 .containsExactlyInAnyOrderElementsOf(aliveServers);
         assertThat(coordinatorContext.shuttingDownTabletServers()).isEmpty();
         assertThat(coordinatorContext.liveOrShuttingDownTabletServers())
@@ -358,7 +358,7 @@ class TableBucketStateMachineTest {
 
         // trigger controlled shutdown for oldLeader.
         coordinatorContext.shuttingDownTabletServers().add(oldLeader);
-        assertThat(coordinatorContext.liveTabletServerSet())
+        assertThat(coordinatorContext.liveTabletServerIds())
                 .containsExactlyInAnyOrderElementsOf(aliveServers);
         assertThat(coordinatorContext.shuttingDownTabletServers())
                 .containsExactlyInAnyOrder(oldLeader);

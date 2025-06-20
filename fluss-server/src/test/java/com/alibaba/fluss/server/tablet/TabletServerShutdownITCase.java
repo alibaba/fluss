@@ -139,6 +139,9 @@ public class TabletServerShutdownITCase {
                         assertThat(zkClient.getLeaderAndIsr(tb))
                                 .map(LeaderAndIsr::leader)
                                 .isNotEqualTo(leader));
+
+        // restart the shutdown server
+        FLUSS_CLUSTER_EXTENSION.startTabletServer(leader, true);
     }
 
     @Test

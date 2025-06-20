@@ -427,8 +427,9 @@ public class TableBucketStateMachine {
         }
         // For the case that the table bucket has been initialized, we use all the live assigned
         // servers as inSyncReplica set.
+        List<Integer> isr = liveServers;
         Optional<Integer> leaderOpt =
-                defaultReplicaLeaderElection(assignedServers, liveServers, liveServers);
+                defaultReplicaLeaderElection(assignedServers, liveServers, isr);
         if (!leaderOpt.isPresent()) {
             LOG.error(
                     "The leader election for table bucket {} is empty.",
@@ -439,8 +440,7 @@ public class TableBucketStateMachine {
 
         // Register the initial leader and isr.
         LeaderAndIsr leaderAndIsr =
-                new LeaderAndIsr(
-                        leader, 0, liveServers, coordinatorContext.getCoordinatorEpoch(), 0);
+                new LeaderAndIsr(leader, 0, isr, coordinatorContext.getCoordinatorEpoch(), 0);
 
         return Optional.of(new ElectionResult(liveServers, leaderAndIsr));
     }
@@ -582,10 +582,10 @@ public class TableBucketStateMachine {
      *
      * <p>The elect cases including:
      *
-     * <ul>
-     *   <li>1. new or offline bucket
-     *   <li>2. tabletServer controlled shutdown
-     * </ul>
+     * <ol>
+     *   <li>new or offline bucket
+     *   <li>tabletServer controlled shutdown
+     * </ol>
      */
     private Optional<ElectionResult> electLeader(
             TableBucket tableBucket,
@@ -633,7 +633,18 @@ public class TableBucketStateMachine {
                 new LeaderAndIsr(
                         leaderOpt.get(),
                         leaderAndIsr.leaderEpoch() + 1,
-                        leaderAndIsr.isr(),
+                        leaderAndIsr.isr().stream()
+                                .filter(
+                                        isr -> {
+                                            if (electionStrategy == CONTROLLED_SHUTDOWN_ELECTION) {
+                                                return !coordinatorContext
+                                                        .shuttingDownTabletServers()
+                                                        .contains(isr);
+                                            } else {
+                                                return true;
+                                            }
+                                        })
+                                .collect(Collectors.toList()),
                         coordinatorContext.getCoordinatorEpoch(),
                         leaderAndIsr.bucketEpoch() + 1);
 

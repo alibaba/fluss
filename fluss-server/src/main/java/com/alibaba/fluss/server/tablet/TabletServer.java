@@ -104,8 +104,6 @@ public class TabletServer extends ServerBase {
      */
     private final @Nullable String rack;
 
-    private final boolean controlledShutdownEnabled;
-
     /** The lock to guard startup / shutdown / manipulation methods. */
     private final Object lock = new Object();
 
@@ -171,8 +169,6 @@ public class TabletServer extends ServerBase {
         this.terminationFuture = new CompletableFuture<>();
         this.serverId = conf.getInt(ConfigOptions.TABLET_SERVER_ID);
         this.rack = conf.getString(ConfigOptions.TABLET_SERVER_RACK);
-        this.controlledShutdownEnabled =
-                conf.getBoolean(ConfigOptions.TABLET_SERVER_CONTROLLED_SHUTDOWN_ENABLED);
         this.interListenerName = conf.getString(ConfigOptions.INTERNAL_LISTENER_NAME);
         this.clock = clock;
     }
@@ -433,10 +429,6 @@ public class TabletServer extends ServerBase {
     }
 
     private void controlledShutDown() {
-        if (!controlledShutdownEnabled) {
-            return;
-        }
-
         LOG.info("Starting controlled shutdown.");
         serverState = ServerState.PENDING_CONTROLLED_SHUTDOWN;
 
@@ -463,7 +455,7 @@ public class TabletServer extends ServerBase {
                                             remainingLeaderBuckets.add(
                                                     toTableBucket(pbTableBucket)));
                     LOG.warn(
-                            "TabletServer {} is still the leader for the following buckets: {} After Controlled Shutdown",
+                            "TabletServer {} is still the leader for the following buckets: {} after Controlled Shutdown",
                             serverId,
                             remainingLeaderBuckets);
                 } else {
