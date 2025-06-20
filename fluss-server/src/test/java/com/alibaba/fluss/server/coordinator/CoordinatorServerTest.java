@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -54,7 +55,7 @@ class CoordinatorServerTest extends ServerTestBase {
     @Override
     protected ServerBase getStartFailServer() {
         Configuration configuration = createConfiguration();
-        configuration.setString(ConfigOptions.COORDINATOR_PORT, "-12");
+        configuration.set(ConfigOptions.BIND_LISTENERS, "CLIENT://localhost:-12");
         return new CoordinatorServer(configuration);
     }
 
@@ -64,8 +65,8 @@ class CoordinatorServerTest extends ServerTestBase {
         // check the data put in zk after coordinator server start
         Optional<CoordinatorAddress> optCoordinatorAddr = zookeeperClient.getCoordinatorAddress();
         assertThat(optCoordinatorAddr).isNotEmpty();
-        CoordinatorAddress coordinatorAddress = optCoordinatorAddr.get();
-        assertThat(coordinatorAddress.getHost())
-                .isEqualTo(coordinatorServer.getRpcServer().getHostname());
+        verifyEndpoint(
+                optCoordinatorAddr.get().getEndpoints(),
+                coordinatorServer.getRpcServer().getBindEndpoints());
     }
 }

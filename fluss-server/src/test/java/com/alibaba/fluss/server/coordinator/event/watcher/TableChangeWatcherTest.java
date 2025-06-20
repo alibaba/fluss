@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,9 @@
 
 package com.alibaba.fluss.server.coordinator.event.watcher;
 
+import com.alibaba.fluss.cluster.TabletServerInfo;
 import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
@@ -30,7 +33,6 @@ import com.alibaba.fluss.server.coordinator.event.CreateTableEvent;
 import com.alibaba.fluss.server.coordinator.event.DropPartitionEvent;
 import com.alibaba.fluss.server.coordinator.event.DropTableEvent;
 import com.alibaba.fluss.server.coordinator.event.TestingEventManager;
-import com.alibaba.fluss.server.utils.TableAssignmentUtils;
 import com.alibaba.fluss.server.zk.NOPErrorHandler;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.ZooKeeperExtension;
@@ -49,6 +51,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.fluss.server.utils.TableAssignmentUtils.generateAssignment;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,7 +82,7 @@ class TableChangeWatcherTest {
                 ZOO_KEEPER_EXTENSION_WRAPPER
                         .getCustomExtension()
                         .getZooKeeperClient(NOPErrorHandler.INSTANCE);
-        metadataManager = new MetadataManager(zookeeperClient);
+        metadataManager = new MetadataManager(zookeeperClient, new Configuration());
         metadataManager.createDatabase(DEFAULT_DB, DatabaseDescriptor.builder().build(), false);
     }
 
@@ -104,7 +107,14 @@ class TableChangeWatcherTest {
         for (int i = 0; i < 10; i++) {
             TablePath tablePath = TablePath.of(DEFAULT_DB, "table_" + i);
             TableAssignment tableAssignment =
-                    TableAssignmentUtils.generateAssignment(3, 3, new int[] {0, 1, 2});
+                    generateAssignment(
+                            3,
+                            3,
+                            new TabletServerInfo[] {
+                                new TabletServerInfo(0, "rack0"),
+                                new TabletServerInfo(1, "rack1"),
+                                new TabletServerInfo(2, "rack2")
+                            });
             long tableId =
                     metadataManager.createTable(tablePath, TEST_TABLE, tableAssignment, false);
             SchemaInfo schemaInfo = metadataManager.getLatestSchema(tablePath);
@@ -133,7 +143,7 @@ class TableChangeWatcherTest {
             CreateTableEvent createTableEvent = (CreateTableEvent) coordinatorEvent;
             TableInfo tableInfo = createTableEvent.getTableInfo();
             metadataManager.dropTable(tableInfo.getTablePath(), false);
-            expectedTableEvents.add(new DropTableEvent(tableInfo.getTableId(), false));
+            expectedTableEvents.add(new DropTableEvent(tableInfo.getTableId(), false, false));
         }
 
         // collect all events and check the all events
@@ -182,7 +192,14 @@ class TableChangeWatcherTest {
         PartitionAssignment partitionAssignment =
                 new PartitionAssignment(
                         tableId,
-                        TableAssignmentUtils.generateAssignment(3, 3, new int[] {0, 1, 2})
+                        generateAssignment(
+                                        3,
+                                        3,
+                                        new TabletServerInfo[] {
+                                            new TabletServerInfo(0, "rack0"),
+                                            new TabletServerInfo(1, "rack1"),
+                                            new TabletServerInfo(2, "rack2")
+                                        })
                                 .getBucketAssignments());
         // register assignment
         zookeeperClient.registerPartitionAssignment(1L, partitionAssignment);
@@ -210,7 +227,7 @@ class TableChangeWatcherTest {
         expectedEvents.add(new DropPartitionEvent(tableId, 1L, "2011"));
         expectedEvents.add(new DropPartitionEvent(tableId, 2L, "2022"));
         // drop table event
-        expectedEvents.add(new DropTableEvent(tableId, true));
+        expectedEvents.add(new DropTableEvent(tableId, true, false));
 
         retry(
                 Duration.ofMinutes(1),

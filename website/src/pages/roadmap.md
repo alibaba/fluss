@@ -1,3 +1,21 @@
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
 # Fluss Roadmap
 
 This roadmap means to provide users and contributors with a high-level summary of ongoing efforts in the Fluss community.
@@ -33,7 +51,7 @@ This transition aims to streamline operations and enhance system reliability.
 
 - Support for complex data types: Array ([#168](https://github.com/alibaba/fluss/issues/168)), Map ([#169](https://github.com/alibaba/fluss/issues/169)), Struct ([#170](https://github.com/alibaba/fluss/issues/170)), Variant/JSON.
 - Support for schema evolution.
-- Support for secondary index for Delta Join with Flink ([#65](https://github.com/alibaba/fluss/issues/65)).
+- Support for secondary index for Delta Join with Flink (~~[#65](https://github.com/alibaba/fluss/issues/65)~~).
 - Support for buckets rescale.
 
 ## Zero Disks

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,7 +32,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.UUID;
 
@@ -96,6 +100,34 @@ class RemoteLogIndexCacheTest extends RemoteLogTestBase {
         LogTablet logTablet = makeLogTabletAndAddSegments(partitionTable);
         // 1. first upload one segment to remote.
         RemoteLogSegment remoteLogSegment = copyLogSegmentToRemote(logTablet, remoteLogStorage, 0);
+        TimeIndex timeIndex = rlIndexCache.getIndexEntry(remoteLogSegment).timeIndex();
+        TimestampOffset timestampOffset = timeIndex.entry(0);
+
+        OffsetIndex offsetIndex = rlIndexCache.getIndexEntry(remoteLogSegment).offsetIndex();
+        OffsetPosition offsetPosition = offsetIndex.lookup(timestampOffset.offset);
+        long resultOffset =
+                rlIndexCache.lookupOffsetForTimestamp(remoteLogSegment, timestampOffset.timestamp);
+        assertThat(offsetPosition.getOffset()).isEqualTo(resultOffset);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testInitWithCorruptIndex(boolean partitionTable) throws Exception {
+        LogTablet logTablet = makeLogTabletAndAddSegments(partitionTable);
+        // 1. first upload one segment to remote.
+        RemoteLogSegment remoteLogSegment = copyLogSegmentToRemote(logTablet, remoteLogStorage, 0);
+
+        rlIndexCache = new RemoteLogIndexCache(1024 * 1024L, remoteLogStorage, tempDir);
+        File file = rlIndexCache.getIndexEntry(remoteLogSegment).timeIndex().file();
+        // mock corrupt index
+        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.APPEND)) {
+            for (int i = 0; i < 12; i++) {
+                fileChannel.write(ByteBuffer.wrap(new byte[] {0}));
+            }
+        }
+
+        // re-initialize index cache and lookup offset
+        rlIndexCache = new RemoteLogIndexCache(1024 * 1024L, remoteLogStorage, tempDir);
         TimeIndex timeIndex = rlIndexCache.getIndexEntry(remoteLogSegment).timeIndex();
         TimestampOffset timestampOffset = timeIndex.entry(0);
 

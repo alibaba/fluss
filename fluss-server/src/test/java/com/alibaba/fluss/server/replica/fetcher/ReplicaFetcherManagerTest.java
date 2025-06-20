@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,6 +37,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_ID;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_PATH;
@@ -58,7 +60,10 @@ class ReplicaFetcherManagerTest extends ReplicaTestBase {
                         "test-fetcher-thread",
                         replicaManager,
                         new RemoteLeaderEndpoint(
-                                conf, TABLET_SERVER_ID, leader, new TestTabletServerGateway(false)),
+                                conf,
+                                TABLET_SERVER_ID,
+                                leader.id(),
+                                new TestTabletServerGateway(false)),
                         (int)
                                 conf.get(ConfigOptions.LOG_REPLICA_FETCH_BACKOFF_INTERVAL)
                                         .toMillis());
@@ -91,7 +96,7 @@ class ReplicaFetcherManagerTest extends ReplicaTestBase {
                 result -> {});
 
         InitialFetchStatus initialFetchStatus =
-                new InitialFetchStatus(DATA1_TABLE_ID, leader, fetchOffset);
+                new InitialFetchStatus(DATA1_TABLE_ID, DATA1_TABLE_PATH, leader.id(), fetchOffset);
 
         Map<TableBucket, InitialFetchStatus> initialFetchStateMap = new HashMap<>();
         initialFetchStateMap.put(tb, initialFetchStatus);
@@ -116,18 +121,18 @@ class ReplicaFetcherManagerTest extends ReplicaTestBase {
         assertThat(fetcherThreadMap.size()).isEqualTo(0);
     }
 
-    private static class TestingReplicaFetcherManager extends ReplicaFetcherManager {
+    private class TestingReplicaFetcherManager extends ReplicaFetcherManager {
 
         private final ReplicaFetcherThread fetcherThread;
 
         public TestingReplicaFetcherManager(
                 int serverId, ReplicaManager replicaManager, ReplicaFetcherThread fetcherThread) {
-            super(new Configuration(), null, serverId, replicaManager);
+            super(new Configuration(), null, serverId, replicaManager, (id) -> Optional.of(leader));
             this.fetcherThread = fetcherThread;
         }
 
         @Override
-        public ReplicaFetcherThread createFetcherThread(int fetcherId, ServerNode remoteNode) {
+        public ReplicaFetcherThread createFetcherThread(int fetcherId, int leaderId) {
             return fetcherThread;
         }
     }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +18,10 @@
 package com.alibaba.fluss.server.coordinator.event;
 
 import com.alibaba.fluss.annotation.Internal;
+import com.alibaba.fluss.metrics.DescriptiveStatisticsHistogram;
+import com.alibaba.fluss.metrics.Histogram;
+import com.alibaba.fluss.metrics.MetricNames;
+import com.alibaba.fluss.server.metrics.group.CoordinatorMetricGroup;
 import com.alibaba.fluss.utils.concurrent.ShutdownableThread;
 
 import org.slf4j.Logger;
@@ -40,14 +45,38 @@ public final class CoordinatorEventManager implements EventManager {
     private static final String COORDINATOR_EVENT_THREAD_NAME = "coordinator-event-thread";
 
     private final EventProcessor eventProcessor;
+    private final CoordinatorMetricGroup coordinatorMetricGroup;
 
-    private final LinkedBlockingQueue<CoordinatorEvent> queue = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<QueuedEvent> queue = new LinkedBlockingQueue<>();
     private final CoordinatorEventThread thread =
             new CoordinatorEventThread(COORDINATOR_EVENT_THREAD_NAME);
     private final Lock putLock = new ReentrantLock();
 
-    public CoordinatorEventManager(EventProcessor eventProcessor) {
+    // metrics
+    private Histogram eventProcessTime;
+    private Histogram eventQueueTime;
+
+    private static final int WINDOW_SIZE = 100;
+
+    public CoordinatorEventManager(
+            EventProcessor eventProcessor, CoordinatorMetricGroup coordinatorMetricGroup) {
         this.eventProcessor = eventProcessor;
+        this.coordinatorMetricGroup = coordinatorMetricGroup;
+        registerMetrics();
+    }
+
+    private void registerMetrics() {
+        coordinatorMetricGroup.gauge(MetricNames.EVENT_QUEUE_SIZE, queue::size);
+
+        eventProcessTime =
+                coordinatorMetricGroup.histogram(
+                        MetricNames.EVENT_PROCESS_TIME_MS,
+                        new DescriptiveStatisticsHistogram(WINDOW_SIZE));
+
+        eventQueueTime =
+                coordinatorMetricGroup.histogram(
+                        MetricNames.EVENT_QUEUE_TIME_MS,
+                        new DescriptiveStatisticsHistogram(WINDOW_SIZE));
     }
 
     public void start() {
@@ -69,7 +98,9 @@ public final class CoordinatorEventManager implements EventManager {
                 putLock,
                 () -> {
                     try {
-                        queue.put(event);
+                        QueuedEvent queuedEvent =
+                                new QueuedEvent(event, System.currentTimeMillis());
+                        queue.put(queuedEvent);
                     } catch (InterruptedException e) {
                         LOG.error("Fail to put coordinator event {}.", event, e);
                     }
@@ -93,14 +124,32 @@ public final class CoordinatorEventManager implements EventManager {
 
         @Override
         public void doWork() throws Exception {
-            CoordinatorEvent event = queue.take();
+            QueuedEvent queuedEvent = queue.take();
+            CoordinatorEvent coordinatorEvent = queuedEvent.event;
+
+            long eventStartTimeMs = System.currentTimeMillis();
+
             try {
-                if (!(event instanceof ShutdownEventThreadEvent)) {
-                    eventProcessor.process(event);
+                if (!(coordinatorEvent instanceof ShutdownEventThreadEvent)) {
+                    eventQueueTime.update(System.currentTimeMillis() - queuedEvent.enqueueTimeMs);
+                    eventProcessor.process(coordinatorEvent);
                 }
             } catch (Throwable e) {
-                log.error("Uncaught error processing event {}.", event, e);
+                log.error("Uncaught error processing event {}.", coordinatorEvent, e);
+            } finally {
+                long eventFinishTimeMs = System.currentTimeMillis();
+                eventProcessTime.update(eventFinishTimeMs - eventStartTimeMs);
             }
+        }
+    }
+
+    private static class QueuedEvent {
+        private final CoordinatorEvent event;
+        private final long enqueueTimeMs;
+
+        public QueuedEvent(CoordinatorEvent event, long enqueueTimeMs) {
+            this.event = event;
+            this.enqueueTimeMs = enqueueTimeMs;
         }
     }
 }

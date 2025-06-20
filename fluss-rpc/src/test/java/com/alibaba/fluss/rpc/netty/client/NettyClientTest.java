@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,7 @@
 
 package com.alibaba.fluss.rpc.netty.client;
 
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.config.ConfigOptions;
@@ -41,6 +43,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -181,6 +184,55 @@ final class NettyClientTest {
         assertThat(NettyUtils.isBindFailure(ex)).isFalse();
     }
 
+    @Test
+    void testMultipleEndpoint() throws Exception {
+        MetricGroup metricGroup = NOPMetricsGroup.newInstance();
+        try (NetUtils.Port availablePort1 = getAvailablePort();
+                NetUtils.Port availablePort2 = getAvailablePort();
+                NettyServer multipleEndpointsServer =
+                        new NettyServer(
+                                conf,
+                                Arrays.asList(
+                                        new Endpoint(
+                                                "localhost", availablePort1.getPort(), "INTERNAL"),
+                                        new Endpoint(
+                                                "localhost", availablePort2.getPort(), "CLIENT")),
+                                service,
+                                metricGroup,
+                                RequestsMetrics.createCoordinatorServerRequestMetrics(
+                                        metricGroup)); ) {
+            multipleEndpointsServer.start();
+            ApiVersionsRequest request =
+                    new ApiVersionsRequest()
+                            .setClientSoftwareName("testing_client_100")
+                            .setClientSoftwareVersion("1.0");
+            nettyClient
+                    .sendRequest(
+                            new ServerNode(
+                                    2,
+                                    "localhost",
+                                    availablePort1.getPort(),
+                                    ServerType.COORDINATOR),
+                            ApiKeys.API_VERSIONS,
+                            request)
+                    .get();
+            assertThat(nettyClient.connections().size()).isEqualTo(1);
+            try (NettyClient client =
+                    new NettyClient(conf, TestingClientMetricGroup.newInstance()); ) {
+                client.sendRequest(
+                                new ServerNode(
+                                        2,
+                                        "localhost",
+                                        availablePort2.getPort(),
+                                        ServerType.COORDINATOR),
+                                ApiKeys.API_VERSIONS,
+                                request)
+                        .get();
+                assertThat(client.connections().size()).isEqualTo(1);
+            }
+        }
+    }
+
     private void buildNettyServer(int serverId) throws Exception {
         try (NetUtils.Port availablePort = getAvailablePort()) {
             serverNode =
@@ -191,8 +243,8 @@ final class NettyClientTest {
             nettyServer =
                     new NettyServer(
                             conf,
-                            serverNode.host(),
-                            String.valueOf(serverNode.port()),
+                            Collections.singleton(
+                                    new Endpoint(serverNode.host(), serverNode.port(), "INTERNAL")),
                             service,
                             metricGroup,
                             RequestsMetrics.createCoordinatorServerRequestMetrics(metricGroup));

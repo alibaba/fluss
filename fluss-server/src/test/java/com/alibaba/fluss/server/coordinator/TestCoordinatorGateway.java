@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,7 @@
 
 package com.alibaba.fluss.server.coordinator;
 
+import com.alibaba.fluss.exception.FencedLeaderEpochException;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.messages.AdjustIsrRequest;
@@ -28,6 +30,8 @@ import com.alibaba.fluss.rpc.messages.CommitLakeTableSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.CommitLakeTableSnapshotResponse;
 import com.alibaba.fluss.rpc.messages.CommitRemoteLogManifestRequest;
 import com.alibaba.fluss.rpc.messages.CommitRemoteLogManifestResponse;
+import com.alibaba.fluss.rpc.messages.CreateAclsRequest;
+import com.alibaba.fluss.rpc.messages.CreateAclsResponse;
 import com.alibaba.fluss.rpc.messages.CreateDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.CreateDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.CreatePartitionRequest;
@@ -36,8 +40,8 @@ import com.alibaba.fluss.rpc.messages.CreateTableRequest;
 import com.alibaba.fluss.rpc.messages.CreateTableResponse;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
+import com.alibaba.fluss.rpc.messages.DropAclsRequest;
+import com.alibaba.fluss.rpc.messages.DropAclsResponse;
 import com.alibaba.fluss.rpc.messages.DropDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.DropDatabaseResponse;
 import com.alibaba.fluss.rpc.messages.DropPartitionRequest;
@@ -58,6 +62,10 @@ import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
 import com.alibaba.fluss.rpc.messages.GetTableInfoResponse;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaRequest;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaResponse;
+import com.alibaba.fluss.rpc.messages.LakeTieringHeartbeatRequest;
+import com.alibaba.fluss.rpc.messages.LakeTieringHeartbeatResponse;
+import com.alibaba.fluss.rpc.messages.ListAclsRequest;
+import com.alibaba.fluss.rpc.messages.ListAclsResponse;
 import com.alibaba.fluss.rpc.messages.ListDatabasesRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesResponse;
 import com.alibaba.fluss.rpc.messages.ListPartitionInfosRequest;
@@ -68,8 +76,7 @@ import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.rpc.messages.MetadataResponse;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
-import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
-import com.alibaba.fluss.rpc.messages.UpdateMetadataResponse;
+import com.alibaba.fluss.rpc.protocol.ApiError;
 import com.alibaba.fluss.server.entity.AdjustIsrResultForBucket;
 import com.alibaba.fluss.server.entity.CommitRemoteLogManifestData;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
@@ -79,14 +86,15 @@ import com.alibaba.fluss.server.zk.data.RemoteLogManifestHandle;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.getAdjustIsrData;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.getCommitRemoteLogManifestData;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeAdjustIsrResponse;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getAdjustIsrData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getCommitRemoteLogManifestData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeAdjustIsrResponse;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
 /** A {@link CoordinatorGateway} for test purpose. */
@@ -94,6 +102,7 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
 
     private final @Nullable ZooKeeperClient zkClient;
     public final AtomicBoolean commitRemoteLogManifestFail = new AtomicBoolean(false);
+    public final Map<TableBucket, Integer> currentLeaderEpoch = new HashMap<>();
 
     public TestCoordinatorGateway() {
         this(null);
@@ -136,12 +145,6 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
 
     @Override
     public CompletableFuture<DropPartitionResponse> dropPartition(DropPartitionRequest request) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public CompletableFuture<DescribeLakeStorageResponse> describeLakeStorage(
-            DescribeLakeStorageRequest request) {
         throw new UnsupportedOperationException();
     }
 
@@ -193,11 +196,6 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
     }
 
     @Override
-    public CompletableFuture<UpdateMetadataResponse> updateMetadata(UpdateMetadataRequest request) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public CompletableFuture<GetLatestKvSnapshotsResponse> getLatestKvSnapshots(
             GetLatestKvSnapshotsRequest request) {
         throw new UnsupportedOperationException();
@@ -225,17 +223,34 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
     public CompletableFuture<AdjustIsrResponse> adjustIsr(AdjustIsrRequest request) {
         Map<TableBucket, LeaderAndIsr> adjustIsrData = getAdjustIsrData(request);
         List<AdjustIsrResultForBucket> resultForBuckets = new ArrayList<>();
+
         adjustIsrData.forEach(
-                (tb, leaderAndIsr) ->
-                        resultForBuckets.add(
+                (tb, leaderAndIsr) -> {
+                    Integer currentLeaderEpoch = this.currentLeaderEpoch.getOrDefault(tb, 0);
+                    int requestLeaderEpoch = leaderAndIsr.leaderEpoch();
+
+                    AdjustIsrResultForBucket adjustIsrResultForBucket;
+                    if (requestLeaderEpoch < currentLeaderEpoch) {
+                        adjustIsrResultForBucket =
+                                new AdjustIsrResultForBucket(
+                                        tb,
+                                        ApiError.fromThrowable(
+                                                new FencedLeaderEpochException(
+                                                        "request leader epoch is fenced.")));
+                    } else {
+                        adjustIsrResultForBucket =
                                 new AdjustIsrResultForBucket(
                                         tb,
                                         new LeaderAndIsr(
                                                 leaderAndIsr.leader(),
-                                                leaderAndIsr.leaderEpoch(),
+                                                currentLeaderEpoch,
                                                 leaderAndIsr.isr(),
                                                 leaderAndIsr.coordinatorEpoch(),
-                                                leaderAndIsr.bucketEpoch() + 1))));
+                                                leaderAndIsr.bucketEpoch() + 1));
+                    }
+
+                    resultForBuckets.add(adjustIsrResultForBucket);
+                });
         return CompletableFuture.completedFuture(makeAdjustIsrResponse(resultForBuckets));
     }
 
@@ -273,5 +288,30 @@ public class TestCoordinatorGateway implements CoordinatorGateway {
     public CompletableFuture<CommitLakeTableSnapshotResponse> commitLakeTableSnapshot(
             CommitLakeTableSnapshotRequest request) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<LakeTieringHeartbeatResponse> lakeTieringHeartbeat(
+            LakeTieringHeartbeatRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<ListAclsResponse> listAcls(ListAclsRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<CreateAclsResponse> createAcls(CreateAclsRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<DropAclsResponse> dropAcls(DropAclsRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    public void setCurrentLeaderEpoch(TableBucket tableBucket, int leaderEpoch) {
+        currentLeaderEpoch.put(tableBucket, leaderEpoch);
     }
 }

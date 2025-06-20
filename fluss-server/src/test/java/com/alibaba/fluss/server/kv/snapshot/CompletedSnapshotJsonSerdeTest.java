@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,22 +36,18 @@ class CompletedSnapshotJsonSerdeTest extends JsonSerdeTestBase<CompletedSnapshot
         List<KvFileHandleAndLocalPath> sharedFileHandles =
                 Arrays.asList(
                         KvFileHandleAndLocalPath.of(
-                                new KvFileHandle(
-                                        new FsPath("oss://bucket/snapshot/shared/t1.sst"), 1),
+                                new KvFileHandle("oss://bucket/snapshot/shared/t1.sst", 1),
                                 "localPath1"),
                         KvFileHandleAndLocalPath.of(
-                                new KvFileHandle(
-                                        new FsPath("oss://bucket/snapshot/shared/t2.sst"), 2),
+                                new KvFileHandle("oss://bucket/snapshot/shared/t2.sst", 2),
                                 "localPath2"));
         List<KvFileHandleAndLocalPath> privateFileHandles =
                 Arrays.asList(
                         KvFileHandleAndLocalPath.of(
-                                new KvFileHandle(
-                                        new FsPath("oss://bucket/snapshot/snapshot1/t3"), 3),
+                                new KvFileHandle("oss://bucket/snapshot/snapshot1/t3", 3),
                                 "localPath3"),
                         KvFileHandleAndLocalPath.of(
-                                new KvFileHandle(
-                                        new FsPath("oss://bucket/snapshot/snapshot1/t4"), 4),
+                                new KvFileHandle("oss://bucket/snapshot/snapshot1/t4", 4),
                                 "localPath4"));
         CompletedSnapshot completedSnapshot1 =
                 new CompletedSnapshot(

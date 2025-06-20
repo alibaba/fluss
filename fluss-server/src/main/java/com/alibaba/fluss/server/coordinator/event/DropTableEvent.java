@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,10 +26,12 @@ public class DropTableEvent implements CoordinatorEvent {
 
     // true if the table is with auto partition enabled
     private final boolean isAutoPartitionTable;
+    private final boolean isDataLakeEnabled;
 
-    public DropTableEvent(long tableId, boolean isAutoPartitionTable) {
+    public DropTableEvent(long tableId, boolean isAutoPartitionTable, boolean isDataLakeEnabled) {
         this.tableId = tableId;
         this.isAutoPartitionTable = isAutoPartitionTable;
+        this.isDataLakeEnabled = isDataLakeEnabled;
     }
 
     public long getTableId() {
@@ -39,21 +42,27 @@ public class DropTableEvent implements CoordinatorEvent {
         return isAutoPartitionTable;
     }
 
+    public boolean isDataLakeEnabled() {
+        return isDataLakeEnabled;
+    }
+
     @Override
-    public boolean equals(Object o) {
-        if (this == o) {
+    public boolean equals(Object object) {
+        if (this == object) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
+        if (!(object instanceof DropTableEvent)) {
             return false;
         }
-        DropTableEvent that = (DropTableEvent) o;
-        return tableId == that.tableId && isAutoPartitionTable == that.isAutoPartitionTable;
+        DropTableEvent that = (DropTableEvent) object;
+        return tableId == that.tableId
+                && isAutoPartitionTable == that.isAutoPartitionTable
+                && isDataLakeEnabled == that.isDataLakeEnabled;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(tableId, isAutoPartitionTable);
+        return Objects.hash(tableId, isAutoPartitionTable, isDataLakeEnabled);
     }
 
     @Override
@@ -63,6 +72,8 @@ public class DropTableEvent implements CoordinatorEvent {
                 + tableId
                 + ", isAutoPartitionTable="
                 + isAutoPartitionTable
+                + ", isDataLakeEnabled="
+                + isDataLakeEnabled
                 + '}';
     }
 }

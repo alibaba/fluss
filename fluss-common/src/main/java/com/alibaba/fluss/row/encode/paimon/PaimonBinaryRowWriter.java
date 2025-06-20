@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2025 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,7 +18,7 @@
 package com.alibaba.fluss.row.encode.paimon;
 
 import com.alibaba.fluss.memory.MemorySegment;
-import com.alibaba.fluss.record.RowKind;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.row.BinarySegmentUtils;
 import com.alibaba.fluss.row.BinaryString;
 import com.alibaba.fluss.row.Decimal;
@@ -31,6 +32,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 import static com.alibaba.fluss.types.DataTypeChecks.getPrecision;
+
+/* This file is based on source code of Apache Paimon Project (https://paimon.apache.org/), licensed by the Apache
+ * Software Foundation (ASF) under the Apache License, Version 2.0. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership. */
 
 /**
  * A writer to encode Fluss's {@link InternalRow} using Paimon's BinaryRow encoding way.
@@ -78,8 +83,8 @@ class PaimonBinaryRowWriter {
         BinarySegmentUtils.bitSet(segment, 0, pos + HEADER_SIZE_IN_BITS);
     }
 
-    public void writeRowKind(RowKind kind) {
-        // convert Fluss rowKind to Paimon rowKind byte value
+    public void writeChangeType(ChangeType kind) {
+        // convert Fluss changeType to Paimon rowKind byte value
         byte paimonRowKindByte;
         switch (kind) {
             case APPEND_ONLY:
@@ -96,7 +101,7 @@ class PaimonBinaryRowWriter {
                 paimonRowKindByte = 3;
                 break;
             default:
-                throw new IllegalArgumentException("Unsupported row kind: " + kind);
+                throw new IllegalArgumentException("Unsupported change type: " + kind);
         }
         segment.put(0, paimonRowKindByte);
     }

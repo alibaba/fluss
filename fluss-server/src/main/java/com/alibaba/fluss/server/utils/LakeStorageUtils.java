@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,45 +19,45 @@ package com.alibaba.fluss.server.utils;
 
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.config.Configuration;
-import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 
-import java.util.HashMap;
+import javax.annotation.Nullable;
+
 import java.util.Map;
+import java.util.Optional;
+
+import static com.alibaba.fluss.utils.PropertiesUtils.asPrefixedMap;
+import static com.alibaba.fluss.utils.PropertiesUtils.extractAndRemovePrefix;
+import static com.alibaba.fluss.utils.PropertiesUtils.extractPrefix;
 
 /** Utils for Fluss lake storage. */
 public class LakeStorageUtils {
 
-    private static final String DATALAKE_PAIMON_PREFIX = "datalake.paimon.";
+    @Nullable
+    public static Map<String, String> generateDefaultTableLakeOptions(Configuration clusterConf) {
+        Optional<DataLakeFormat> optDataLakeFormat =
+                clusterConf.getOptional(ConfigOptions.DATALAKE_FORMAT);
+        if (!optDataLakeFormat.isPresent()) {
+            return null;
+        }
 
-    public static LakeStorageInfo getLakeStorageInfo(Configuration configuration) {
+        String dataLakePrefix = "datalake." + optDataLakeFormat.get() + ".";
+        return asPrefixedMap(extractPrefix(clusterConf.toMap(), dataLakePrefix), "table.");
+    }
+
+    /**
+     * Extract the datalake properties configured from the configuration. Return null if datalake is
+     * not configured.
+     */
+    @Nullable
+    public static Map<String, String> extractLakeProperties(Configuration configuration) {
         DataLakeFormat datalakeFormat = configuration.get(ConfigOptions.DATALAKE_FORMAT);
         if (datalakeFormat == null) {
-            throw new IllegalArgumentException(
-                    String.format(
-                            "The lakehouse storage is not set, please set it by %s",
-                            ConfigOptions.DATALAKE_FORMAT.key()));
+            return null;
         }
 
-        if (datalakeFormat != DataLakeFormat.PAIMON) {
-            throw new UnsupportedOperationException(
-                    String.format(
-                            "The lakehouse storage %s "
-                                    + " is not supported. Only %s is supported.",
-                            datalakeFormat, DataLakeFormat.PAIMON));
-        }
-
-        // currently, extract catalog config
-        Map<String, String> datalakeConfig = new HashMap<>();
-        Map<String, String> flussConfig = configuration.toMap();
-        for (Map.Entry<String, String> configEntry : flussConfig.entrySet()) {
-            String configKey = configEntry.getKey();
-            String configValue = configEntry.getValue();
-            if (configKey.startsWith(DATALAKE_PAIMON_PREFIX)) {
-                datalakeConfig.put(
-                        configKey.substring(DATALAKE_PAIMON_PREFIX.length()), configValue);
-            }
-        }
-        return new LakeStorageInfo(datalakeFormat.toString(), datalakeConfig);
+        Map<String, String> configMap = configuration.toMap();
+        String datalakePrefix = "datalake." + datalakeFormat + ".";
+        return extractAndRemovePrefix(configMap, datalakePrefix);
     }
 }

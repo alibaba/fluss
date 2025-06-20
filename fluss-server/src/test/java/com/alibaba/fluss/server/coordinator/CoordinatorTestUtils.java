@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,10 +17,11 @@
 
 package com.alibaba.fluss.server.coordinator;
 
-import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.cluster.Endpoint;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
+import com.alibaba.fluss.server.metadata.ServerInfo;
 import com.alibaba.fluss.server.tablet.TestTabletServerGateway;
 import com.alibaba.fluss.server.zk.ZooKeeperClient;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
@@ -81,10 +83,15 @@ public class CoordinatorTestUtils {
         return gateways;
     }
 
-    public static List<ServerNode> createServers(List<Integer> servers) {
-        List<ServerNode> tabletServes = new ArrayList<>();
+    public static List<ServerInfo> createServers(List<Integer> servers) {
+        List<ServerInfo> tabletServes = new ArrayList<>();
         for (int server : servers) {
-            tabletServes.add(new ServerNode(server, "host", 100, ServerType.TABLET_SERVER));
+            tabletServes.add(
+                    new ServerInfo(
+                            server,
+                            "RACK" + server,
+                            Endpoint.fromListenersString("CLIENT://host:100"),
+                            ServerType.TABLET_SERVER));
         }
         return tabletServes;
     }

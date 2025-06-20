@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,7 +25,6 @@ import com.alibaba.fluss.rpc.messages.AdjustIsrRequest;
 import com.alibaba.fluss.rpc.messages.AdjustIsrResponse;
 import com.alibaba.fluss.rpc.protocol.Errors;
 import com.alibaba.fluss.server.entity.AdjustIsrResultForBucket;
-import com.alibaba.fluss.server.utils.RpcMessageUtils;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.utils.MapUtils;
 import com.alibaba.fluss.utils.concurrent.Scheduler;
@@ -38,6 +38,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getAdjustIsrResponseData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeAdjustIsrRequest;
 
 /* This file is based on source code of Apache Kafka Project (https://kafka.apache.org/), licensed by the Apache
  * Software Foundation (ASF) under the Apache License, Version 2.0. See the NOTICE file distributed with this work for
@@ -107,7 +110,7 @@ public class AdjustIsrManager {
         Map<TableBucket, LeaderAndIsr> isrMap = new HashMap<>();
         adjustIsrItemList.forEach(
                 adjustIsrItem -> isrMap.put(adjustIsrItem.tableBucket, adjustIsrItem.leaderAndIsr));
-        AdjustIsrRequest adjustIsrRequest = RpcMessageUtils.makeAdjustIsrRequest(serverId, isrMap);
+        AdjustIsrRequest adjustIsrRequest = makeAdjustIsrRequest(serverId, isrMap);
         LOG.debug(
                 "Sending adjust isr request {} to coordinator server from tablet server {}",
                 adjustIsrRequest,
@@ -147,7 +150,7 @@ public class AdjustIsrManager {
     private void handleAdjustIsrResponse(
             AdjustIsrResponse response, List<AdjustIsrItem> adjustIsrItemList) {
         Map<TableBucket, AdjustIsrResultForBucket> resultForBucketMap =
-                RpcMessageUtils.getAdjustIsrResponseData(response);
+                getAdjustIsrResponseData(response);
         // Iterate across the items we sent rather than what we received to ensure we run the
         // callback even if a replica was somehow erroneously excluded from the response. Note that
         // these callbacks are run from the leaderIsrUpdateLock write lock in

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -151,12 +152,10 @@ class SnapshotsCleanerTest {
         for (int i = 0; i < 4; i++) {
             sharedFileHandles.add(
                     KvFileHandleAndLocalPath.of(
-                            new KvFileHandle(new FsPath("share_remote_path"), 1),
-                            "share_local_path"));
+                            new KvFileHandle("share_remote_path", 1), "share_local_path"));
             privateFileHandles.add(
                     KvFileHandleAndLocalPath.of(
-                            new KvFileHandle(new FsPath("private_remote_path"), 1),
-                            "private_local_path"));
+                            new KvFileHandle("private_remote_path", 1), "private_local_path"));
         }
 
         TestKvSnapshotHandle kvSnapshotHandle =

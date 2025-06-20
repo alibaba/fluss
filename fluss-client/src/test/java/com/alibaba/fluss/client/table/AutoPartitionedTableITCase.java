@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,6 +39,7 @@ import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.types.DataTypes;
 import com.alibaba.fluss.types.RowType;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -63,11 +65,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** IT case for auto partitioned table. */
 class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
 
+    @BeforeEach
+    void beforeEach() throws Exception {
+        super.setup();
+        // Auto partitioned table related tests will close dynamic partition creation default.
+        clientConf.set(ConfigOptions.CLIENT_WRITER_DYNAMIC_CREATE_PARTITION_ENABLED, false);
+    }
+
     @Test
     void testPartitionedPrimaryKeyTable() throws Exception {
         Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(DATA1_TABLE_PATH_PK);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(DATA1_TABLE_PATH_PK);
         Table table = conn.getTable(DATA1_TABLE_PATH_PK);
         UpsertWriter upsertWriter = table.newUpsert().createWriter();
         int recordsPerPartition = 5;
@@ -126,7 +135,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
         RowType rowType = schema.getRowType();
         createTable(tablePath, descriptor, false);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
 
         Table table = conn.getTable(tablePath);
         for (String partition : partitionIdByNames.keySet()) {
@@ -198,7 +207,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
     void testPartitionedLogTable() throws Exception {
         Schema schema = createPartitionedTable(DATA1_TABLE_PATH, false);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(DATA1_TABLE_PATH);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(DATA1_TABLE_PATH);
         Table table = conn.getTable(DATA1_TABLE_PATH);
         AppendWriter appendWriter = table.newAppend().createWriter();
         int recordsPerPartition = 5;
@@ -224,7 +233,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
         TablePath tablePath = TablePath.of("test_db_1", "unsubscribe_partition_bucket_table");
         Schema schema = createPartitionedTable(tablePath, false);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
         Table table = conn.getTable(tablePath);
 
         Map<Long, List<InternalRow>> expectPartitionAppendRows =
@@ -296,27 +305,28 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
 
     @Test
     void testOperateNotExistPartitionShouldThrowException() throws Exception {
-        Schema schema = createPartitionedTable(DATA1_TABLE_PATH_PK, true);
+        createPartitionedTable(DATA1_TABLE_PATH_PK, true);
         Table table = conn.getTable(DATA1_TABLE_PATH_PK);
+        String partitionName = "notExistPartition";
         Lookuper lookuper = table.newLookup().createLookuper();
 
         // test get for a not exist partition
-        assertThatThrownBy(() -> lookuper.lookup(row(1, "notExistPartition")).get())
+        assertThatThrownBy(() -> lookuper.lookup(row(1, partitionName)).get())
                 .cause()
                 .isInstanceOf(PartitionNotExistException.class)
                 .hasMessageContaining(
                         "Table partition '%s' does not exist.",
-                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, "notExistPartition"));
+                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, partitionName));
 
         // test write to not exist partition
         UpsertWriter upsertWriter = table.newUpsert().createWriter();
-        GenericRow row = row(1, "a", "notExistPartition");
+        GenericRow row = row(1, "a", partitionName);
         assertThatThrownBy(() -> upsertWriter.upsert(row).get())
                 .cause()
                 .isInstanceOf(PartitionNotExistException.class)
                 .hasMessageContaining(
                         "Table partition '%s' does not exist.",
-                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, "notExistPartition"));
+                        PhysicalTablePath.of(DATA1_TABLE_PATH_PK, partitionName));
 
         // test scan a not exist partition's log
         LogScanner logScanner = table.newScan().createLogScanner();
@@ -343,7 +353,7 @@ class AutoPartitionedTableITCase extends ClientToServerITCaseBase {
                         tablePath, newPartitionSpec("c", String.valueOf(currentYear + 10)), false)
                 .get();
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath, 3);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath, 3);
 
         List<PartitionInfo> partitionInfos = admin.listPartitionInfos(tablePath).get();
         List<String> expectedPartitions = new ArrayList<>(partitionIdByNames.keySet());

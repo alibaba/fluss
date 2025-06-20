@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -62,8 +63,12 @@ public class AdjustIsrITCase {
         zkClient = FLUSS_CLUSTER_EXTENSION.getZooKeeperClient();
     }
 
+    /**
+     * The test is used to verify that isr will be changed due to follower lags behind leader and
+     * catch up with leader.
+     */
     @Test
-    void testIsrShrinkAndExpend() throws Exception {
+    void testIsrShrinkAndExpand() throws Exception {
         long tableId = createLogTable();
         TableBucket tb = new TableBucket(tableId, 0);
 
@@ -77,7 +82,11 @@ public class AdjustIsrITCase {
 
         int leader = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
         Integer stopFollower = isr.stream().filter(i -> i != leader).findFirst().get();
-        FLUSS_CLUSTER_EXTENSION.stopTabletServer(stopFollower);
+
+        FLUSS_CLUSTER_EXTENSION.waitAndGetFollowerReplica(tb, stopFollower);
+        // stop follower replica for the bucket
+        FLUSS_CLUSTER_EXTENSION.stopReplica(stopFollower, tb, currentLeaderAndIsr.leaderEpoch());
+
         isr.remove(stopFollower);
 
         // send one batch data to check the stop follower will become out of sync replica.
@@ -89,7 +98,7 @@ public class AdjustIsrITCase {
                                 RpcMessageTestUtils.newProduceLogRequest(
                                         tableId,
                                         tb.getBucket(),
-                                        1, // need not ack in this test.
+                                        -1,
                                         genMemoryLogRecordsByObject(DATA1)))
                         .get(),
                 0,
@@ -120,10 +129,17 @@ public class AdjustIsrITCase {
                                                 .getHighWatermark())
                                 .isEqualTo(10L));
 
-        // make this tablet server re-start.
-        FLUSS_CLUSTER_EXTENSION.startTabletServer(stopFollower);
+        currentLeaderAndIsr = zkClient.getLeaderAndIsr(tb).get();
+        LeaderAndIsr newLeaderAndIsr =
+                new LeaderAndIsr(
+                        currentLeaderAndIsr.leader(),
+                        currentLeaderAndIsr.leaderEpoch() + 1,
+                        isr,
+                        currentLeaderAndIsr.coordinatorEpoch(),
+                        currentLeaderAndIsr.bucketEpoch());
         isr.add(stopFollower);
-
+        FLUSS_CLUSTER_EXTENSION.notifyLeaderAndIsr(
+                stopFollower, DATA1_TABLE_PATH, tb, newLeaderAndIsr, isr);
         // retry until the stop follower add back to ISR.
         retry(
                 Duration.ofMinutes(1),

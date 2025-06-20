@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -52,7 +53,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_ROWKIND_OFFSET;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.APPEND_ONLY_FLAG_MASK;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_CHANGETYPE_OFFSET;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.ATTRIBUTES_OFFSET;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.LENGTH_OFFSET;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.LOG_OVERHEAD;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.RECORDS_COUNT_OFFSET;
@@ -185,8 +188,19 @@ public class FileLogProjection {
                 continue;
             }
 
-            int rowKindBytes = logHeaderBuffer.getInt(RECORDS_COUNT_OFFSET);
-            long arrowHeaderOffset = position + RECORD_BATCH_HEADER_SIZE + rowKindBytes;
+            boolean isAppendOnly =
+                    (logHeaderBuffer.get(ATTRIBUTES_OFFSET) & APPEND_ONLY_FLAG_MASK) > 0;
+
+            final int changeTypeBytes;
+            final long arrowHeaderOffset;
+            if (isAppendOnly) {
+                changeTypeBytes = 0;
+                arrowHeaderOffset = position + RECORD_BATCH_HEADER_SIZE;
+            } else {
+                changeTypeBytes = logHeaderBuffer.getInt(RECORDS_COUNT_OFFSET);
+                arrowHeaderOffset = position + RECORD_BATCH_HEADER_SIZE + changeTypeBytes;
+            }
+
             // read arrow header
             arrowHeaderBuffer.rewind();
             readFullyOrFail(channel, arrowHeaderBuffer, arrowHeaderOffset, "arrow header");
@@ -213,7 +227,7 @@ public class FileLogProjection {
 
             int newBatchSizeInBytes =
                     RECORD_BATCH_HEADER_SIZE
-                            + rowKindBytes
+                            + changeTypeBytes
                             + currentProjection.arrowMetadataLength
                             + (int) arrowBodyLength; // safe to cast to int
             if (newBatchSizeInBytes > maxBytes) {
@@ -235,13 +249,15 @@ public class FileLogProjection {
             logHeaderBuffer.position(LENGTH_OFFSET);
             logHeaderBuffer.putInt(newBatchSizeInBytes - LOG_OVERHEAD);
             logHeaderBuffer.rewind();
+            // the logHeader can't be reused, as it will be sent to network
             byte[] logHeader = new byte[RECORD_BATCH_HEADER_SIZE];
             logHeaderBuffer.get(logHeader);
 
             // 5. build log records
             builder.addBytes(logHeader);
-            // TODO: we can eliminate the rowkind in the future
-            builder.addBytes(channel, position + ARROW_ROWKIND_OFFSET, rowKindBytes);
+            if (!isAppendOnly) {
+                builder.addBytes(channel, position + ARROW_CHANGETYPE_OFFSET, changeTypeBytes);
+            }
             builder.addBytes(headerMetadata);
             final long bufferOffset = arrowHeaderOffset + ARROW_HEADER_SIZE + arrowMetadataSize;
             projectedArrowBatch.buffers.forEach(

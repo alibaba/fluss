@@ -1,9 +1,11 @@
 ################################################################################
-# Copyright (c) 2024 Alibaba Group Holding Ltd.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
 #      http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -13,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-name: Tests on JDK 8
+name: CI
 on:
   push:
     branches:
@@ -31,13 +33,23 @@ concurrency:
 jobs:
   build:
     runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [ core, flink ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Build
+        run: |
+          mvn -T 1C -B clean install -DskipTests
       - name: Test
         timeout-minutes: 60
         run: |
-          mvn -B verify -Ptest-coverage -Dlog.dir=${{ runner.temp }}/fluss-logs -Dlog4j.configurationFile=${{ github.workspace }}/tools/ci/log4j.properties
+          TEST_MODULES=$(./.github/workflows/stage.sh ${{ matrix.module }})
+          echo "github ref: ${{ github.ref }}"
+          echo "Start testing modules: $TEST_MODULES"
+          mvn -B verify $TEST_MODULES -Ptest-coverage -Ptest-${{ matrix.module }} -Dlog.dir=${{ runner.temp }}/fluss-logs -Dlog4j.configurationFile=${{ github.workspace }}/tools/ci/log4j.properties
         env:
           MAVEN_OPTS: -Xmx4096m
           ARTIFACTS_OSS_ENDPOINT: ${{ secrets.ARTIFACTS_OSS_ENDPOINT }}
@@ -51,5 +63,11 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:
-          name: logs-test-${{ github.run_number}}#${{ github.run_attempt }}
+          name: logs-test-${{ matrix.module }}-${{ github.run_number}}#${{ github.run_attempt }}
           path: ${{ runner.temp }}/fluss-logs/*
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v4
+        if: ${{ success() && github.ref == 'refs/heads/main' }}
+        with:
+          name: jacoco-report-${{ matrix.module }}-${{ github.run_number}}#${{ github.run_attempt }}
+          path: ${{ github.workspace }}/fluss-test-coverage/target/site/jacoco-aggregate/*

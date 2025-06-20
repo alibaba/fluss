@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -171,6 +172,11 @@ public class WriterStateManager {
         lastMapOffset = offset;
     }
 
+    public void reloadSnapshots() throws IOException {
+        LOG.info("Reloading the writer state snapshots");
+        snapshots = loadSnapshots();
+    }
+
     public void truncateFullyAndReloadSnapshots() throws IOException {
         LOG.info("Reloading the writer state snapshots");
         truncateFullyAndStartAt(0L);
@@ -182,20 +188,12 @@ public class WriterStateManager {
      * change to the device.
      */
     public void takeSnapshot() throws IOException {
-        takeSnapshot(true);
-    }
-
-    /**
-     * Take a snapshot at the current end offset if one does not already exist, then return the
-     * snapshot file if taken.
-     */
-    public Optional<File> takeSnapshot(boolean sync) throws IOException {
         // If not a new offset, then it is not worth taking another snapshot
         if (lastMapOffset > lastSnapOffset) {
             SnapshotFile snapshotFile =
                     new SnapshotFile(writerSnapshotFile(logTabletDir, lastMapOffset));
             long start = System.currentTimeMillis();
-            writeSnapshot(snapshotFile.file(), writers, sync);
+            writeSnapshot(snapshotFile.file(), writers);
             LOG.info(
                     "Wrote writer snapshot at offset {} with {} producer ids for table bucket {} in {} ms.",
                     lastMapOffset,
@@ -207,10 +205,7 @@ public class WriterStateManager {
 
             // Update the last snap offset according to the serialized map
             lastSnapOffset = lastMapOffset;
-
-            return Optional.of(snapshotFile.file());
         }
-        return Optional.empty();
     }
 
     /**
@@ -437,6 +432,7 @@ public class WriterStateManager {
                                             snapshotEntry.writerId,
                                             snapshotEntry.lastBatchTimestamp,
                                             new WriterStateEntry.BatchMetadata(
+                                                    snapshotEntry.writerId,
                                                     snapshotEntry.lastBatchSequence,
                                                     snapshotEntry.lastBatchBaseOffset,
                                                     snapshotEntry.lastBatchOffsetDelta,
@@ -447,7 +443,7 @@ public class WriterStateManager {
         }
     }
 
-    private static void writeSnapshot(File file, Map<Long, WriterStateEntry> entries, boolean sync)
+    private static void writeSnapshot(File file, Map<Long, WriterStateEntry> entries)
             throws IOException {
         List<WriterSnapshotEntry> snapshotEntries = new ArrayList<>();
         entries.forEach(
@@ -469,9 +465,7 @@ public class WriterStateManager {
                 FileChannel.open(
                         file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
             fileChannel.write(buffer);
-            if (sync) {
-                fileChannel.force(true);
-            }
+            fileChannel.force(true);
         }
     }
 

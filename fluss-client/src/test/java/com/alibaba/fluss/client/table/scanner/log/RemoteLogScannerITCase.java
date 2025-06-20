@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -33,7 +34,7 @@ import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.record.RowKind;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
@@ -104,7 +105,7 @@ public class RemoteLogScannerITCase {
         while (rowList.size() < recordSize) {
             ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
             for (ScanRecord scanRecord : scanRecords) {
-                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                 InternalRow row = scanRecord.getRow();
                 rowList.add(row(row.getInt(0), row.getString(1)));
             }
@@ -155,7 +156,7 @@ public class RemoteLogScannerITCase {
         while (count < expectedSize) {
             ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
             for (ScanRecord scanRecord : scanRecords) {
-                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                 assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(2);
                 assertThat(scanRecord.getRow().getInt(0)).isEqualTo(count);
                 if (count % 2 == 0) {
@@ -178,7 +179,7 @@ public class RemoteLogScannerITCase {
         while (count < expectedSize) {
             ScanRecords scanRecords = logScanner.poll(Duration.ofSeconds(1));
             for (ScanRecord scanRecord : scanRecords) {
-                assertThat(scanRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+                assertThat(scanRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
                 assertThat(scanRecord.getRow().getFieldCount()).isEqualTo(2);
                 assertThat(scanRecord.getRow().getInt(1)).isEqualTo(count);
                 if (count % 2 == 0) {
@@ -220,7 +221,7 @@ public class RemoteLogScannerITCase {
                         .build();
         long tableId = createTable(tablePath, partitionTableDescriptor);
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
         Table table = conn.getTable(tablePath);
         AppendWriter appendWriter = table.newAppend().createWriter();
         int recordsPerPartition = 5;

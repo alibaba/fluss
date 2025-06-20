@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +16,9 @@
  */
 
 package com.alibaba.fluss.server.utils.timer;
+
+import com.alibaba.fluss.utils.clock.Clock;
+import com.alibaba.fluss.utils.clock.SystemClock;
 
 import javax.annotation.concurrent.ThreadSafe;
 
@@ -32,13 +36,19 @@ import java.util.function.Consumer;
 @ThreadSafe
 class TimerTaskList implements Delayed {
     private final AtomicInteger taskCounter;
+    private final Clock clock;
     private final TimerTaskEntry root = new TimerTaskEntry(null, -1);
     private final AtomicLong expiration = new AtomicLong(-1L);
 
     TimerTaskList(AtomicInteger taskCounter) {
+        this(taskCounter, SystemClock.getInstance());
+    }
+
+    TimerTaskList(AtomicInteger taskCounter, Clock clock) {
         this.taskCounter = taskCounter;
         this.root.next = root;
         this.root.prev = root;
+        this.clock = clock;
     }
 
     /**
@@ -121,7 +131,7 @@ class TimerTaskList implements Delayed {
     @Override
     public long getDelay(TimeUnit unit) {
         return unit.convert(
-                Math.max(getExpiration() - TimeUnit.NANOSECONDS.toMillis(System.nanoTime()), 0),
+                Math.max(getExpiration() - TimeUnit.NANOSECONDS.toMillis(clock.nanoseconds()), 0),
                 TimeUnit.MILLISECONDS);
     }
 

@@ -1,17 +1,36 @@
 ---
 sidebar_label: "Getting Started"
+title: "Getting Started with Flink"
 sidebar_position: 1
 ---
 
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
 # Getting Started with Flink Engine
 ## Quick Start
-For a quick introduction to running Flink, refer to the [Quick Start](/docs/quickstart/flink.md) guide.
+For a quick introduction to running Flink, refer to the [Quick Start](quickstart/flink.md) guide.
 
 
 ## Support Flink Versions
 | Fluss Connector Versions | Supported Flink Versions |
 |--------------------------|--------------------------| 
-| 0.5                      | 1.18, 1.19, 1.20         |
+| $FLUSS_VERSION_SHORT$    | 1.18, 1.19, 1.20         |
 
 
 ## Feature Support
@@ -25,9 +44,15 @@ Fluss only supports Apache Flink's Table API.
 | [SQL drop database](ddl.md#drop-database)         | ✔️    |                                        |
 | [SQL create table](ddl.md#create-table)           | ✔️    |                                        |
 | [SQL create table like](ddl.md#create-table-like) | ✔️    |                                        |
-| [SQL drop table](ddl.md#drop-table)               | ✔️    |                                        |                                                                   |
+| [SQL drop table](ddl.md#drop-table)               | ✔️    |                                        |
+| [SQL show partitions](ddl.md#show-partitions)     | ✔️    |                                        |
+| [SQL add partiiton](ddl.md#add-partition)         | ✔️    |                                        |
+| [SQL drop partiiton](ddl.md#drop-partition)       | ✔️    |                                        |
 | [SQL select](reads.md)                            | ✔️    | Support both streaming and batch mode. |
+| [SQL limit](reads.md#limit-read)                  | ✔️    | Only for Log Table                     |
 | [SQL insert into](writes.md)                      | ✔️    | Support both streaming and batch mode. |
+| [SQL delete from](writes.md#delete-from)          | ✔️    | Only in batch mode.                    |
+| [SQL update](writes.md#update)                    | ✔️    | Only in batch mode.                    |
 | [SQL lookup join](lookups.md)                     | ✔️    |                                        |
 
 ## Preparation when using Flink SQL Client
@@ -38,15 +63,15 @@ If you haven’t downloaded Flink, you can download [the binary release](https:/
 ```shell
 tar -xzf flink-1.20.1-bin-scala_2.12.tgz
 ```
-- **Copy Fluss Connector Jar**
+- **Copy Fluss Flink Bundled Jar**
 
-Download [Fluss connector jar](/downloads#fluss-connector) and copy to the lib directory of your Flink home.
+Download [Fluss Flink Bundled jar](/downloads) and copy to the `lib` directory of your Flink home.
 
 ```shell
-cp fluss-connector-flink-<fluss-version>.jar <FLINK_HOME>/lib/
+cp fluss-flink-$FLUSS_VERSION$.jar <FLINK_HOME>/lib/
 ```
 :::note
-If you use [Amazon S3](http://aws.amazon.com/s3/), [Aliyun OSS](https://www.aliyun.com/product/oss) or [HDFS(Hadoop Distributed File System)](https://hadoop.apache.org/docs/stable/) as Fluss's [remote storage](/docs/maintenance/tiered-storage/remote-storage), 
+If you use [Amazon S3](http://aws.amazon.com/s3/), [Aliyun OSS](https://www.aliyun.com/product/oss) or [HDFS(Hadoop Distributed File System)](https://hadoop.apache.org/docs/stable/) as Fluss's [remote storage](maintenance/tiered-storage/remote-storage.md),
 you should download the corresponding [Fluss filesystem jar](/downloads#filesystem-jars) and also copy it to the lib directory of your Flink home.
 :::
 
@@ -79,7 +104,7 @@ CREATE CATALOG fluss_catalog WITH (
 
 :::note
 1. The `bootstrap.servers` means the Fluss server address. Before you config the `bootstrap.servers`,
-   you should start the Fluss server first. See [Deploying Fluss](/docs/install-deploy/overview/#how-to-deploy-fluss)
+   you should start the Fluss server first. See [Deploying Fluss](install-deploy/overview.md#how-to-deploy-fluss)
    for how to build a Fluss cluster.
    Here, it is assumed that there is a Fluss cluster running on your local machine and the CoordinatorServer port is 9123.
 2. The` bootstrap.servers` configuration is used to discover all nodes within the Fluss cluster. It can be set with one or more (up to three) Fluss server addresses (either CoordinatorServer or TabletServer) separated by commas.

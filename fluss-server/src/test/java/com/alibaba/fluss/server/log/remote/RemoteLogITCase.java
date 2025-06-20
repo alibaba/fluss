@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,17 +24,25 @@ import com.alibaba.fluss.fs.FileSystem;
 import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
 import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
+import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.server.entity.FetchData;
+import com.alibaba.fluss.server.log.FetchParams;
 import com.alibaba.fluss.server.tablet.TabletServer;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
 import com.alibaba.fluss.utils.FlussPaths;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Duration;
-import java.util.Objects;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static com.alibaba.fluss.record.TestData.DATA1;
 import static com.alibaba.fluss.record.TestData.DATA1_TABLE_DESCRIPTOR;
@@ -43,6 +52,7 @@ import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.createTable
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newDropTableRequest;
 import static com.alibaba.fluss.server.testutils.RpcMessageTestUtils.newProduceLogRequest;
 import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsByObject;
+import static com.alibaba.fluss.testutils.DataTestUtils.genMemoryLogRecordsWithWriterId;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,34 +65,56 @@ public class RemoteLogITCase {
                     .setClusterConf(initConfig())
                     .build();
 
-    @Test
-    void testDeleteRemoteLog() throws Exception {
+    private TableBucket setupTableBucket() throws Exception {
         long tableId =
                 createTable(FLUSS_CLUSTER_EXTENSION, DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR);
         TableBucket tb = new TableBucket(tableId, 0);
-
         FLUSS_CLUSTER_EXTENSION.waitUtilAllReplicaReady(tb);
-        int leader =
-                Objects.requireNonNull(
-                        FLUSS_CLUSTER_EXTENSION.waitAndGetLeaderReplica(tb).getLeaderId());
-        TabletServerGateway leaderGateWay =
-                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leader);
-        // produce many records to trigger remote log copy.
+        return tb;
+    }
+
+    private void produceRecordsAndWaitRemoteLogCopy(
+            TabletServerGateway leaderGateway, TableBucket tb) throws Exception {
         for (int i = 0; i < 10; i++) {
             assertProduceLogResponse(
-                    leaderGateWay
+                    leaderGateway
                             .produceLog(
                                     newProduceLogRequest(
-                                            tableId, 0, 1, genMemoryLogRecordsByObject(DATA1)))
+                                            tb.getTableId(),
+                                            0,
+                                            1,
+                                            genMemoryLogRecordsByObject(DATA1)))
                             .get(),
                     0,
                     i * 10L);
         }
+        FLUSS_CLUSTER_EXTENSION.waitUtilSomeLogSegmentsCopyToRemote(
+                new TableBucket(tb.getTableId(), 0));
+    }
 
-        FLUSS_CLUSTER_EXTENSION.waitUtilSomeLogSegmentsCopyToRemote(new TableBucket(tableId, 0));
+    @Test
+    public void remoteLogMiscTest() throws Exception {
+        TableBucket tb = setupTableBucket();
+        long tableId = tb.getTableId();
 
-        // get leader.
-        TabletServer tabletServer = FLUSS_CLUSTER_EXTENSION.getTabletServerById(leader);
+        int leaderId = FLUSS_CLUSTER_EXTENSION.waitAndGetLeader(tb);
+        TabletServerGateway leaderGateway =
+                FLUSS_CLUSTER_EXTENSION.newTabletServerClientForNode(leaderId);
+
+        // produce test records
+        produceRecordsAndWaitRemoteLogCopy(leaderGateway, tb);
+
+        // test metadata updated: verify manifest in metadata
+        TabletServer tabletServer = FLUSS_CLUSTER_EXTENSION.getTabletServerById(leaderId);
+        RemoteLogManager remoteLogManager = tabletServer.getReplicaManager().getRemoteLogManager();
+        RemoteLogTablet remoteLogTablet = remoteLogManager.remoteLogTablet(tb);
+
+        RemoteLogManifest manifest = remoteLogTablet.currentManifest();
+        assertThat(manifest.getPhysicalTablePath().getTablePath()).isEqualTo(DATA1_TABLE_PATH);
+        assertThat(manifest.getTableBucket()).isEqualTo(tb);
+        assertThat(manifest.getRemoteLogSegmentList().size()).isGreaterThan(0);
+
+        // test create: verify remote log created
         FsPath fsPath =
                 FlussPaths.remoteLogTabletDir(
                         tabletServer.getReplicaManager().getRemoteLogManager().remoteLogDir(),
@@ -90,8 +122,27 @@ public class RemoteLogITCase {
                         tb);
         FileSystem fileSystem = fsPath.getFileSystem();
         assertThat(fileSystem.exists(fsPath)).isTrue();
-        assertThat(fileSystem.listStatus(fsPath).length).isGreaterThan(1);
+        assertThat(fileSystem.listStatus(fsPath).length).isGreaterThan(0);
 
+        // test download remote log
+        CompletableFuture<Map<TableBucket, FetchLogResultForBucket>> future =
+                new CompletableFuture<>();
+
+        tabletServer
+                .getReplicaManager()
+                .fetchLogRecords(
+                        new FetchParams(-1, Integer.MAX_VALUE),
+                        Collections.singletonMap(tb, new FetchData(tableId, 0, 10240)),
+                        future::complete);
+
+        Map<TableBucket, FetchLogResultForBucket> result = future.get();
+        assertThat(result).hasSize(1);
+
+        FetchLogResultForBucket fetchLogResult = result.get(tb);
+        assertThat(fetchLogResult.getError()).isEqualTo(ApiError.NONE);
+        assertThat(fetchLogResult.fetchFromRemote()).isTrue();
+
+        // test drop remote log
         CoordinatorGateway coordinatorGateway = FLUSS_CLUSTER_EXTENSION.newCoordinatorClient();
         coordinatorGateway
                 .dropTable(
@@ -103,8 +154,9 @@ public class RemoteLogITCase {
         retry(Duration.ofMinutes(2), () -> assertThat(fileSystem.exists(fsPath)).isFalse());
     }
 
-    @Test
-    void testFollowerFetchAlreadyMoveToRemoteLog() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void testFollowerFetchAlreadyMoveToRemoteLog(boolean withWriterId) throws Exception {
         long tableId =
                 createTable(FLUSS_CLUSTER_EXTENSION, DATA1_TABLE_PATH, DATA1_TABLE_DESCRIPTOR);
         TableBucket tb = new TableBucket(tableId, 0);
@@ -129,7 +181,13 @@ public class RemoteLogITCase {
                     leaderGateWay
                             .produceLog(
                                     newProduceLogRequest(
-                                            tableId, 0, 1, genMemoryLogRecordsByObject(DATA1)))
+                                            tableId,
+                                            0,
+                                            1,
+                                            withWriterId
+                                                    ? genMemoryLogRecordsWithWriterId(
+                                                            DATA1, 100, i, 0L)
+                                                    : genMemoryLogRecordsByObject(DATA1)))
                             .get(),
                     0,
                     i * 10L);

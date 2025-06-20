@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,6 +28,7 @@ import java.util.TimeZone;
 public class AutoPartitionStrategy {
 
     private final boolean autoPartitionEnable;
+    private final String key;
     private final AutoPartitionTimeUnit timeUnit;
     private final int numPreCreate;
     private final int numToRetain;
@@ -34,11 +36,13 @@ public class AutoPartitionStrategy {
 
     private AutoPartitionStrategy(
             boolean autoPartitionEnable,
+            String key,
             AutoPartitionTimeUnit autoPartitionTimeUnit,
             int numPreCreate,
             int numToRetain,
             TimeZone timeZone) {
         this.autoPartitionEnable = autoPartitionEnable;
+        this.key = key;
         this.timeUnit = autoPartitionTimeUnit;
         this.numPreCreate = numPreCreate;
         this.numToRetain = numToRetain;
@@ -52,6 +56,7 @@ public class AutoPartitionStrategy {
     public static AutoPartitionStrategy from(Configuration conf) {
         return new AutoPartitionStrategy(
                 conf.getBoolean(ConfigOptions.TABLE_AUTO_PARTITION_ENABLED),
+                conf.getString(ConfigOptions.TABLE_AUTO_PARTITION_KEY),
                 conf.get(ConfigOptions.TABLE_AUTO_PARTITION_TIME_UNIT),
                 conf.getInt(ConfigOptions.TABLE_AUTO_PARTITION_NUM_PRECREATE),
                 conf.getInt(ConfigOptions.TABLE_AUTO_PARTITION_NUM_RETENTION),
@@ -60,6 +65,10 @@ public class AutoPartitionStrategy {
 
     public boolean isAutoPartitionEnabled() {
         return autoPartitionEnable;
+    }
+
+    public String key() {
+        return key;
     }
 
     public AutoPartitionTimeUnit timeUnit() {

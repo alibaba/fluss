@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,11 +29,11 @@ import com.alibaba.fluss.utils.crc.Crc32C;
 
 import java.io.IOException;
 
-import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_ROWKIND_OFFSET;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_CHANGETYPE_OFFSET;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.BASE_OFFSET_LENGTH;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.CRC_OFFSET;
-import static com.alibaba.fluss.record.DefaultLogRecordBatch.LAST_OFFSET_DELTA_OFFSET;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.LENGTH_LENGTH;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.RECORD_BATCH_HEADER_SIZE;
 import static com.alibaba.fluss.record.DefaultLogRecordBatch.SCHEMA_ID_OFFSET;
 import static com.alibaba.fluss.record.LogRecordBatch.CURRENT_LOG_MAGIC_VALUE;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_BATCH_SEQUENCE;
@@ -49,25 +50,30 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
     private final byte magic;
     private final ArrowWriter arrowWriter;
     private final long writerEpoch;
-    private final RowKindVectorWriter rowKindWriter;
+    private final ChangeTypeVectorWriter changeTypeWriter;
     private final MemorySegment firstSegment;
     private final AbstractPagedOutputView pagedOutputView;
+    private final boolean appendOnly;
 
-    private MultiBytesView bytesView = null;
+    private volatile MultiBytesView bytesView = null;
+
     private long writerId;
     private int batchSequence;
     private int estimatedSizeInBytes;
     private int recordCount;
-    private boolean isClosed;
+    private volatile boolean isClosed;
     private boolean reCalculateSizeInBytes = false;
     private boolean resetBatchHeader = false;
+    private boolean aborted = false;
 
     private MemoryLogRecordsArrowBuilder(
             long baseLogOffset,
             int schemaId,
             byte magic,
             ArrowWriter arrowWriter,
-            AbstractPagedOutputView pagedOutputView) {
+            AbstractPagedOutputView pagedOutputView,
+            boolean appendOnly) {
+        this.appendOnly = appendOnly;
         checkArgument(
                 schemaId <= Short.MAX_VALUE,
                 "schemaId shouldn't be greater than the max value of short: " + Short.MAX_VALUE);
@@ -84,12 +90,12 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
         this.pagedOutputView = pagedOutputView;
         this.firstSegment = pagedOutputView.getCurrentSegment();
         checkArgument(
-                firstSegment.size() >= ARROW_ROWKIND_OFFSET,
+                firstSegment.size() >= ARROW_CHANGETYPE_OFFSET,
                 "The size of first segment of pagedOutputView is too small, need at least "
-                        + ARROW_ROWKIND_OFFSET
+                        + ARROW_CHANGETYPE_OFFSET
                         + " bytes.");
-        this.rowKindWriter = new RowKindVectorWriter(firstSegment, ARROW_ROWKIND_OFFSET);
-        this.estimatedSizeInBytes = ARROW_ROWKIND_OFFSET;
+        this.changeTypeWriter = new ChangeTypeVectorWriter(firstSegment, ARROW_CHANGETYPE_OFFSET);
+        this.estimatedSizeInBytes = RECORD_BATCH_HEADER_SIZE;
         this.recordCount = 0;
     }
 
@@ -100,17 +106,29 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
             ArrowWriter arrowWriter,
             AbstractPagedOutputView outputView) {
         return new MemoryLogRecordsArrowBuilder(
-                baseLogOffset, schemaId, CURRENT_LOG_MAGIC_VALUE, arrowWriter, outputView);
+                baseLogOffset, schemaId, CURRENT_LOG_MAGIC_VALUE, arrowWriter, outputView, false);
     }
 
     /** Builder with limited write size and the memory segment used to serialize records. */
     public static MemoryLogRecordsArrowBuilder builder(
-            int schemaId, ArrowWriter arrowWriter, AbstractPagedOutputView outputView) {
+            int schemaId,
+            ArrowWriter arrowWriter,
+            AbstractPagedOutputView outputView,
+            boolean appendOnly) {
         return new MemoryLogRecordsArrowBuilder(
-                BUILDER_DEFAULT_OFFSET, schemaId, CURRENT_LOG_MAGIC_VALUE, arrowWriter, outputView);
+                BUILDER_DEFAULT_OFFSET,
+                schemaId,
+                CURRENT_LOG_MAGIC_VALUE,
+                arrowWriter,
+                outputView,
+                appendOnly);
     }
 
     public MultiBytesView build() throws IOException {
+        if (aborted) {
+            throw new IllegalStateException("Attempting to build an aborted record batch");
+        }
+
         if (bytesView != null) {
             if (resetBatchHeader) {
                 writeBatchHeader();
@@ -121,7 +139,7 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
 
         // serialize the arrow batch to dynamically allocated memory segments
         arrowWriter.serializeToOutputView(
-                pagedOutputView, ARROW_ROWKIND_OFFSET + rowKindWriter.sizeInBytes());
+                pagedOutputView, ARROW_CHANGETYPE_OFFSET + changeTypeWriter.sizeInBytes());
         recordCount = arrowWriter.getRecordsCount();
         bytesView =
                 MultiBytesView.builder()
@@ -142,14 +160,26 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
      * Try to append a record to the builder. Return true if the record is appended successfully,
      * false if the builder is full.
      */
-    public void append(RowKind rowKind, InternalRow row) throws Exception {
+    public void append(ChangeType changeType, InternalRow row) throws Exception {
+        if (aborted) {
+            throw new IllegalStateException(
+                    "Tried to append a record, but MemoryLogRecordsArrowBuilder has already been aborted");
+        }
+
         if (isClosed) {
             throw new IllegalStateException(
                     "Tried to append a record, but MemoryLogRecordsArrowBuilder is closed for record appends");
         }
+        if (appendOnly && changeType != ChangeType.APPEND_ONLY) {
+            throw new IllegalArgumentException(
+                    "Only append-only change type is allowed for append-only arrow log builder, but got "
+                            + changeType);
+        }
 
         arrowWriter.writeRow(row);
-        rowKindWriter.writeRowKind(rowKind);
+        if (!appendOnly) {
+            changeTypeWriter.writeChangeType(changeType);
+        }
         reCalculateSizeInBytes = true;
     }
 
@@ -162,15 +192,15 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
     }
 
     public void setWriterState(long writerId, int batchBaseSequence) {
+        // trigger to rewrite batch header when next build.
+        this.resetBatchHeader = true;
         this.writerId = writerId;
         this.batchSequence = batchBaseSequence;
     }
 
-    public void resetWriterState(long writerId, int batchSequence) {
-        // trigger to rewrite batch header when next build.
-        this.resetBatchHeader = true;
-        this.writerId = writerId;
-        this.batchSequence = batchSequence;
+    public void abort() {
+        arrowWriter.recycle(writerEpoch);
+        aborted = true;
     }
 
     public boolean isClosed() {
@@ -179,11 +209,19 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        if (aborted) {
+            throw new IllegalStateException(
+                    "Cannot close MemoryLogRecordsArrowBuilder as it has already been aborted");
+        }
+
         if (isClosed) {
             return;
         }
 
         isClosed = true;
+
+        // Build arrowBatch when batch close to recycle arrow writer.
+        build();
     }
 
     public void recycleArrowWriter() {
@@ -199,8 +237,8 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
         if (reCalculateSizeInBytes) {
             // make size in bytes up-to-date
             estimatedSizeInBytes =
-                    ARROW_ROWKIND_OFFSET
-                            + rowKindWriter.sizeInBytes()
+                    ARROW_CHANGETYPE_OFFSET
+                            + changeTypeWriter.sizeInBytes()
                             + arrowWriter.estimatedSizeInBytes();
         }
 
@@ -223,10 +261,11 @@ public class MemoryLogRecordsArrowBuilder implements AutoCloseable {
         outputView.writeLong(0);
         // write empty crc first.
         outputView.writeUnsignedInt(0);
-
+        // write schema id
         outputView.writeShort((short) schemaId);
-        // skip write attributes
-        outputView.setPosition(LAST_OFFSET_DELTA_OFFSET);
+        // write attributes (currently only appendOnly flag)
+        outputView.writeBoolean(appendOnly);
+        // write lastOffsetDelta
         if (recordCount > 0) {
             outputView.writeInt(recordCount - 1);
         } else {

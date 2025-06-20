@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,12 +22,12 @@ import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.record.KvRecordBatch;
 import com.alibaba.fluss.record.KvRecordTestUtils;
 import com.alibaba.fluss.record.LogRecordBatch;
 import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
-import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.kv.KvTablet;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
@@ -52,8 +53,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
-import static com.alibaba.fluss.compression.ArrowCompressionInfo.NO_COMPRESSION;
+import static com.alibaba.fluss.compression.ArrowCompressionInfo.DEFAULT_COMPRESSION;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_BATCH_SEQUENCE;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_WRITER_ID;
 import static com.alibaba.fluss.record.TestData.DATA1;
@@ -101,7 +104,6 @@ final class ReplicaTest extends ReplicaTestBase {
         assertThat(kvReplica.getLogTablet()).isNotNull();
         makeKvReplicaAsLeader(kvReplica);
         assertThat(kvReplica.getLogTablet()).isNotNull();
-        // TODO get kv is true.
         assertThat(kvReplica.getKvTablet()).isNotNull();
     }
 
@@ -122,7 +124,7 @@ final class ReplicaTest extends ReplicaTestBase {
                                 conf.get(ConfigOptions.CLIENT_SCANNER_LOG_FETCH_MAX_BYTES)
                                         .getBytes());
         fetchParams.setCurrentFetch(
-                DATA1_TABLE_ID, 0, Integer.MAX_VALUE, DATA1_ROW_TYPE, NO_COMPRESSION, null);
+                DATA1_TABLE_ID, 0, Integer.MAX_VALUE, DATA1_ROW_TYPE, DEFAULT_COMPRESSION, null);
         LogReadInfo logReadInfo = logReplica.fetchRecords(fetchParams);
         assertLogRecordsEquals(DATA1_ROW_TYPE, logReadInfo.getFetchedData().getRecords(), DATA1);
     }
@@ -162,12 +164,12 @@ final class ReplicaTest extends ReplicaTestBase {
                 logRecords(
                         4,
                         Arrays.asList(
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER),
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER),
                         Arrays.asList(
                                 // for k1
                                 new Object[] {2, null},
@@ -206,10 +208,10 @@ final class ReplicaTest extends ReplicaTestBase {
                 logRecords(
                         0L,
                         Arrays.asList(
-                                RowKind.INSERT,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER,
-                                RowKind.INSERT),
+                                ChangeType.INSERT,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER,
+                                ChangeType.INSERT),
                         Arrays.asList(
                                 new Object[] {1, "a"},
                                 new Object[] {1, "a"},
@@ -233,11 +235,11 @@ final class ReplicaTest extends ReplicaTestBase {
                 logRecords(
                         currentOffset,
                         Arrays.asList(
-                                RowKind.DELETE,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER),
+                                ChangeType.DELETE,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER),
                         Arrays.asList(
                                 // for k1
                                 new Object[] {2, "b"},
@@ -264,7 +266,7 @@ final class ReplicaTest extends ReplicaTestBase {
         expected =
                 logRecords(
                         currentOffset,
-                        Arrays.asList(RowKind.INSERT, RowKind.DELETE, RowKind.INSERT),
+                        Arrays.asList(ChangeType.INSERT, ChangeType.DELETE, ChangeType.INSERT),
                         Arrays.asList(
                                 // for k1
                                 new Object[] {1, "a1"},
@@ -298,7 +300,7 @@ final class ReplicaTest extends ReplicaTestBase {
         expected =
                 logRecords(
                         currentOffset,
-                        Arrays.asList(RowKind.DELETE, RowKind.INSERT),
+                        Arrays.asList(ChangeType.DELETE, ChangeType.INSERT),
                         Arrays.asList(new Object[] {1, "a1"}, new Object[] {1, "aaa"}));
         assertThatLogRecords(fetchRecords(kvReplica, currentOffset))
                 .withSchema(DATA1_ROW_TYPE)
@@ -311,7 +313,7 @@ final class ReplicaTest extends ReplicaTestBase {
 
         // create test context
         TestSnapshotContext testKvSnapshotContext =
-                new TestSnapshotContext(tableBucket, snapshotKvTabletDir.getPath());
+                new TestSnapshotContext(snapshotKvTabletDir.getPath());
         ManuallyTriggeredScheduledExecutorService scheduledExecutorService =
                 testKvSnapshotContext.scheduledExecutorService;
         TestingCompletedKvSnapshotCommitter kvSnapshotStore =
@@ -371,8 +373,7 @@ final class ReplicaTest extends ReplicaTestBase {
 
         // make a new kv replica
         testKvSnapshotContext =
-                new TestSnapshotContext(
-                        tableBucket, snapshotKvTabletDir.getPath(), kvSnapshotStore);
+                new TestSnapshotContext(snapshotKvTabletDir.getPath(), kvSnapshotStore);
         kvReplica = makeKvReplica(DATA1_PHYSICAL_TABLE_PATH_PK, tableBucket, testKvSnapshotContext);
         scheduledExecutorService = testKvSnapshotContext.scheduledExecutorService;
         kvSnapshotStore = testKvSnapshotContext.testKvSnapshotStore;
@@ -406,10 +407,43 @@ final class ReplicaTest extends ReplicaTestBase {
     }
 
     @Test
+    void testSnapshotUseLatestLeaderEpoch(@TempDir File snapshotKvTabletDir) throws Exception {
+        TableBucket tableBucket = new TableBucket(DATA1_TABLE_ID_PK, 1);
+        // create test context
+        ImmediateTriggeredScheduledExecutorService immediateTriggeredScheduledExecutorService =
+                new ImmediateTriggeredScheduledExecutorService();
+        TestSnapshotContext testKvSnapshotContext =
+                new TestSnapshotContext(
+                        snapshotKvTabletDir.getPath(), immediateTriggeredScheduledExecutorService);
+        TestingCompletedKvSnapshotCommitter kvSnapshotStore =
+                testKvSnapshotContext.testKvSnapshotStore;
+
+        // make a kv replica
+        Replica kvReplica =
+                makeKvReplica(DATA1_PHYSICAL_TABLE_PATH_PK, tableBucket, testKvSnapshotContext);
+        // now, make the replica as leader
+        makeKvReplicaAsLeader(kvReplica, 0);
+        KvRecordBatch kvRecords =
+                genKvRecordBatch(
+                        Tuple2.of("k1", new Object[] {1, "a"}),
+                        Tuple2.of("k2", new Object[] {2, "b"}));
+        putRecordsToLeader(kvReplica, kvRecords);
+
+        // make leader again with a new epoch, check the snapshot should use the new epoch
+        immediateTriggeredScheduledExecutorService.reset();
+        int latestLeaderEpoch = 1;
+        int snapshot = 0;
+        makeKvReplicaAsLeader(kvReplica, latestLeaderEpoch);
+        kvSnapshotStore.waitUtilSnapshotComplete(tableBucket, snapshot);
+        assertThat(kvSnapshotStore.getSnapshotLeaderEpoch(tableBucket, snapshot))
+                .isEqualTo(latestLeaderEpoch);
+    }
+
+    @Test
     void testRestore(@TempDir Path snapshotKvTabletDirPath) throws Exception {
         TableBucket tableBucket = new TableBucket(DATA1_TABLE_ID_PK, 1);
         TestSnapshotContext testKvSnapshotContext =
-                new TestSnapshotContext(tableBucket, snapshotKvTabletDirPath.toString());
+                new TestSnapshotContext(snapshotKvTabletDirPath.toString());
         ManuallyTriggeredScheduledExecutorService scheduledExecutorService =
                 testKvSnapshotContext.scheduledExecutorService;
         TestingCompletedKvSnapshotCommitter kvSnapshotStore =
@@ -524,14 +558,14 @@ final class ReplicaTest extends ReplicaTestBase {
                 offset,
                 Integer.MAX_VALUE,
                 replica.getRowType(),
-                NO_COMPRESSION,
+                DEFAULT_COMPRESSION,
                 null);
         LogReadInfo logReadInfo = replica.fetchRecords(fetchParams);
         return logReadInfo.getFetchedData().getRecords();
     }
 
     private static MemoryLogRecords logRecords(
-            long baseOffset, List<RowKind> rowKinds, List<Object[]> values) throws Exception {
+            long baseOffset, List<ChangeType> changeTypes, List<Object[]> values) throws Exception {
         return createBasicMemoryLogRecords(
                 DATA1_ROW_TYPE,
                 DEFAULT_SCHEMA_ID,
@@ -539,9 +573,10 @@ final class ReplicaTest extends ReplicaTestBase {
                 -1L,
                 NO_WRITER_ID,
                 NO_BATCH_SEQUENCE,
-                rowKinds,
+                changeTypes,
                 values,
-                LogFormat.ARROW);
+                LogFormat.ARROW,
+                DEFAULT_COMPRESSION);
     }
 
     private LogAppendInfo putRecordsToLeader(
@@ -567,5 +602,28 @@ final class ReplicaTest extends ReplicaTestBase {
             expectValues.add(expectedKeyValue.f1);
         }
         assertThat(kvTablet.multiGet(keys)).containsExactlyElementsOf(expectValues);
+    }
+
+    /** A scheduledExecutorService that will execute the scheduled task immediately. */
+    private static class ImmediateTriggeredScheduledExecutorService
+            extends ManuallyTriggeredScheduledExecutorService {
+        private boolean isScheduled = false;
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            // we only schedule task for once, if has scheduled, return null to skip schedule
+            // the task
+            if (isScheduled) {
+                return null;
+            }
+            isScheduled = true;
+            ScheduledFuture<?> scheduledFuture = super.schedule(command, delay, unit);
+            triggerNonPeriodicScheduledTask();
+            return scheduledFuture;
+        }
+
+        public void reset() {
+            isScheduled = false;
+        }
     }
 }

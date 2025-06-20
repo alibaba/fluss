@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,6 @@
 
 package com.alibaba.fluss.row.arrow;
 
-import com.alibaba.fluss.compression.ArrowCompressionInfo;
 import com.alibaba.fluss.memory.AbstractPagedOutputView;
 import com.alibaba.fluss.memory.ManagedPagedOutputView;
 import com.alibaba.fluss.memory.MemorySegment;
@@ -42,7 +42,9 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_ROWKIND_OFFSET;
+import static com.alibaba.fluss.compression.ArrowCompressionInfo.DEFAULT_COMPRESSION;
+import static com.alibaba.fluss.compression.ArrowCompressionInfo.NO_COMPRESSION;
+import static com.alibaba.fluss.record.DefaultLogRecordBatch.ARROW_CHANGETYPE_OFFSET;
 import static com.alibaba.fluss.record.TestData.DATA1;
 import static com.alibaba.fluss.record.TestData.DATA1_ROW_TYPE;
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
@@ -136,11 +138,7 @@ class ArrowReaderWriterTest {
                 ArrowWriterPool provider = new ArrowWriterPool(allocator);
                 ArrowWriter writer =
                         provider.getOrCreateWriter(
-                                1L,
-                                1,
-                                Integer.MAX_VALUE,
-                                rowType,
-                                ArrowCompressionInfo.NO_COMPRESSION)) {
+                                1L, 1, Integer.MAX_VALUE, rowType, NO_COMPRESSION)) {
             for (InternalRow row : TEST_DATA) {
                 writer.writeRow(row);
             }
@@ -149,12 +147,12 @@ class ArrowReaderWriterTest {
                     new ManagedPagedOutputView(new TestingMemorySegmentPool(10 * 1024));
 
             // skip arrow batch header.
-            int size = writer.serializeToOutputView(pagedOutputView, ARROW_ROWKIND_OFFSET);
+            int size = writer.serializeToOutputView(pagedOutputView, ARROW_CHANGETYPE_OFFSET);
             MemorySegment segment = MemorySegment.allocateHeapMemory(writer.estimatedSizeInBytes());
 
             assertThat(pagedOutputView.getWrittenSegments().size()).isEqualTo(1);
             MemorySegment firstSegment = pagedOutputView.getCurrentSegment();
-            firstSegment.copyTo(ARROW_ROWKIND_OFFSET, segment, 0, size);
+            firstSegment.copyTo(ARROW_CHANGETYPE_OFFSET, segment, 0, size);
 
             ArrowReader reader =
                     ArrowUtils.createArrowReader(segment, 0, size, root, allocator, rowType);
@@ -163,7 +161,42 @@ class ArrowReaderWriterTest {
             for (int i = 0; i < rowCount; i++) {
                 row.setRowId(i);
                 assertThatRow(row).withSchema(rowType).isEqualTo(TEST_DATA.get(i));
+
+                InternalRow rowData = TEST_DATA.get(i);
+                assertThat(row.getBoolean(0)).isEqualTo(rowData.getBoolean(0));
+                assertThat(row.getByte(1)).isEqualTo(rowData.getByte(1));
+                assertThat(row.getShort(2)).isEqualTo(rowData.getShort(2));
+                if (!row.isNullAt(3)) {
+                    assertThat(row.getInt(3)).isEqualTo(rowData.getInt(3));
+                }
+                assertThat(row.getLong(4)).isEqualTo(rowData.getLong(4));
+                assertThat(row.getFloat(5)).isEqualTo(rowData.getFloat(5));
+                assertThat(row.getDouble(6)).isEqualTo(rowData.getDouble(6));
+                assertThat(row.getDecimal(7, 10, 3)).isEqualTo(rowData.getDecimal(7, 10, 3));
+                assertThat(row.getChar(8, 3)).isEqualTo(rowData.getChar(8, 3));
+                if (!row.isNullAt(9)) {
+                    assertThat(row.getString(9)).isEqualTo(rowData.getString(9));
+                }
+                assertThat(row.getBinary(10, 5)).isEqualTo(rowData.getBinary(10, 5));
+                assertThat(row.getBytes(11)).isEqualTo(rowData.getBytes(11));
+                assertThat(row.getInt(12)).isEqualTo(rowData.getInt(12));
+                assertThat(row.getInt(13)).isEqualTo(rowData.getInt(13));
+                if (!row.isNullAt(14)) {
+                    assertThat(row.getTimestampNtz(14, 0))
+                            .isEqualTo(rowData.getTimestampNtz(14, 0));
+                }
+                assertThat(row.getTimestampNtz(15, 3)).isEqualTo(rowData.getTimestampNtz(15, 3));
+                assertThat(row.getTimestampNtz(16, 6)).isEqualTo(rowData.getTimestampNtz(16, 6));
+                assertThat(row.getTimestampNtz(17, 9)).isEqualTo(rowData.getTimestampNtz(17, 9));
+                if (!row.isNullAt(18)) {
+                    assertThat(row.getTimestampLtz(18, 0))
+                            .isEqualTo(rowData.getTimestampLtz(18, 0));
+                }
+                assertThat(row.getTimestampLtz(19, 3)).isEqualTo(rowData.getTimestampLtz(19, 3));
+                assertThat(row.getTimestampLtz(20, 6)).isEqualTo(rowData.getTimestampLtz(20, 6));
+                assertThat(row.getTimestampLtz(21, 9)).isEqualTo(rowData.getTimestampLtz(21, 9));
             }
+            reader.close();
         }
     }
 
@@ -173,7 +206,7 @@ class ArrowReaderWriterTest {
                 ArrowWriterPool provider = new ArrowWriterPool(allocator);
                 ArrowWriter writer =
                         provider.getOrCreateWriter(
-                                1L, 1, 1024, DATA1_ROW_TYPE, ArrowCompressionInfo.NO_COMPRESSION)) {
+                                1L, 1, 1024, DATA1_ROW_TYPE, DEFAULT_COMPRESSION)) {
             while (!writer.isFull()) {
                 writer.writeRow(row(DATA1.get(0)));
             }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,23 +24,16 @@ import com.alibaba.fluss.client.metadata.KvSnapshotMetadata;
 import com.alibaba.fluss.client.metadata.KvSnapshots;
 import com.alibaba.fluss.client.metadata.LakeSnapshot;
 import com.alibaba.fluss.client.write.KvWriteBatch;
-import com.alibaba.fluss.client.write.WriteBatch;
+import com.alibaba.fluss.client.write.ReadyWriteBatch;
 import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.fs.FsPathAndFileName;
 import com.alibaba.fluss.fs.token.ObtainedSecurityToken;
-import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.record.LogRecords;
-import com.alibaba.fluss.record.MemoryLogRecords;
-import com.alibaba.fluss.remote.RemoteLogFetchInfo;
-import com.alibaba.fluss.remote.RemoteLogSegment;
-import com.alibaba.fluss.rpc.entity.FetchLogResultForBucket;
 import com.alibaba.fluss.rpc.messages.CreatePartitionRequest;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.DropPartitionRequest;
 import com.alibaba.fluss.rpc.messages.GetFileSystemSecurityTokenResponse;
 import com.alibaba.fluss.rpc.messages.GetKvSnapshotMetadataResponse;
@@ -49,28 +43,21 @@ import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
 import com.alibaba.fluss.rpc.messages.ListPartitionInfosResponse;
 import com.alibaba.fluss.rpc.messages.LookupRequest;
 import com.alibaba.fluss.rpc.messages.MetadataRequest;
-import com.alibaba.fluss.rpc.messages.PbFetchLogRespForBucket;
 import com.alibaba.fluss.rpc.messages.PbKeyValue;
 import com.alibaba.fluss.rpc.messages.PbKvSnapshot;
 import com.alibaba.fluss.rpc.messages.PbLakeSnapshotForBucket;
-import com.alibaba.fluss.rpc.messages.PbLakeStorageInfo;
 import com.alibaba.fluss.rpc.messages.PbLookupReqForBucket;
-import com.alibaba.fluss.rpc.messages.PbPhysicalTablePath;
+import com.alibaba.fluss.rpc.messages.PbPartitionSpec;
 import com.alibaba.fluss.rpc.messages.PbPrefixLookupReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbProduceLogReqForBucket;
 import com.alibaba.fluss.rpc.messages.PbPutKvReqForBucket;
-import com.alibaba.fluss.rpc.messages.PbRemoteLogFetchInfo;
-import com.alibaba.fluss.rpc.messages.PbRemoteLogSegment;
 import com.alibaba.fluss.rpc.messages.PbRemotePathAndLocalFile;
 import com.alibaba.fluss.rpc.messages.PrefixLookupRequest;
 import com.alibaba.fluss.rpc.messages.ProduceLogRequest;
 import com.alibaba.fluss.rpc.messages.PutKvRequest;
-import com.alibaba.fluss.rpc.protocol.ApiError;
-import com.alibaba.fluss.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import javax.annotation.Nullable;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -78,9 +65,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.toResolvedPartitionSpec;
 import static com.alibaba.fluss.utils.Preconditions.checkState;
 
 /**
@@ -89,35 +76,20 @@ import static com.alibaba.fluss.utils.Preconditions.checkState;
  */
 public class ClientRpcMessageUtils {
 
-    public static ByteBuffer toByteBuffer(ByteBuf buf) {
-        if (buf.isDirect()) {
-            return buf.nioBuffer();
-        } else if (buf.hasArray()) {
-            int offset = buf.arrayOffset() + buf.readerIndex();
-            int length = buf.readableBytes();
-            return ByteBuffer.wrap(buf.array(), offset, length);
-        } else {
-            // fallback to deep copy
-            byte[] bytes = new byte[buf.readableBytes()];
-            buf.getBytes(buf.readerIndex(), bytes);
-            return ByteBuffer.wrap(bytes);
-        }
-    }
-
     public static ProduceLogRequest makeProduceLogRequest(
-            long tableId, int acks, int maxRequestTimeoutMs, List<WriteBatch> batches) {
+            long tableId, int acks, int maxRequestTimeoutMs, List<ReadyWriteBatch> readyBatches) {
         ProduceLogRequest request =
                 new ProduceLogRequest()
                         .setTableId(tableId)
                         .setAcks(acks)
                         .setTimeoutMs(maxRequestTimeoutMs);
-        batches.forEach(
-                batch -> {
+        readyBatches.forEach(
+                readyBatch -> {
+                    TableBucket tableBucket = readyBatch.tableBucket();
                     PbProduceLogReqForBucket pbProduceLogReqForBucket =
                             request.addBucketsReq()
-                                    .setBucketId(batch.tableBucket().getBucket())
-                                    .setRecordsBytesView(batch.build());
-                    TableBucket tableBucket = batch.tableBucket();
+                                    .setBucketId(tableBucket.getBucket())
+                                    .setRecordsBytesView(readyBatch.writeBatch().build());
                     if (tableBucket.getPartitionId() != null) {
                         pbProduceLogReqForBucket.setPartitionId(tableBucket.getPartitionId());
                     }
@@ -125,19 +97,11 @@ public class ClientRpcMessageUtils {
         return request;
     }
 
-    public static PbPhysicalTablePath fromPhysicalTablePath(PhysicalTablePath physicalPath) {
-        PbPhysicalTablePath pbPath =
-                new PbPhysicalTablePath()
-                        .setDatabaseName(physicalPath.getDatabaseName())
-                        .setTableName(physicalPath.getTableName());
-        if (physicalPath.getPartitionName() != null) {
-            pbPath.setPartitionName(physicalPath.getPartitionName());
-        }
-        return pbPath;
-    }
-
     public static PutKvRequest makePutKvRequest(
-            long tableId, int acks, int maxRequestTimeoutMs, List<WriteBatch> batches) {
+            long tableId,
+            int acks,
+            int maxRequestTimeoutMs,
+            List<ReadyWriteBatch> readyWriteBatches) {
         PutKvRequest request =
                 new PutKvRequest()
                         .setTableId(tableId)
@@ -145,9 +109,11 @@ public class ClientRpcMessageUtils {
                         .setTimeoutMs(maxRequestTimeoutMs);
         // check the target columns in the batch list should be the same. If not same,
         // we throw exception directly currently.
-        int[] targetColumns = ((KvWriteBatch) batches.get(0)).getTargetColumns();
-        for (int i = 1; i < batches.size(); i++) {
-            int[] currentBatchTargetColumns = ((KvWriteBatch) batches.get(i)).getTargetColumns();
+        int[] targetColumns =
+                ((KvWriteBatch) readyWriteBatches.get(0).writeBatch()).getTargetColumns();
+        for (int i = 1; i < readyWriteBatches.size(); i++) {
+            int[] currentBatchTargetColumns =
+                    ((KvWriteBatch) readyWriteBatches.get(i).writeBatch()).getTargetColumns();
             if (!Arrays.equals(targetColumns, currentBatchTargetColumns)) {
                 throw new IllegalStateException(
                         String.format(
@@ -160,13 +126,13 @@ public class ClientRpcMessageUtils {
         if (targetColumns != null) {
             request.setTargetColumns(targetColumns);
         }
-        batches.forEach(
-                batch -> {
+        readyWriteBatches.forEach(
+                readyBatch -> {
+                    TableBucket tableBucket = readyBatch.tableBucket();
                     PbPutKvReqForBucket pbPutKvReqForBucket =
                             request.addBucketsReq()
-                                    .setBucketId(batch.tableBucket().getBucket())
-                                    .setRecordsBytesView(batch.build());
-                    TableBucket tableBucket = batch.tableBucket();
+                                    .setBucketId(tableBucket.getBucket())
+                                    .setRecordsBytesView(readyBatch.writeBatch().build());
                     if (tableBucket.getPartitionId() != null) {
                         pbPutKvReqForBucket.setPartitionId(tableBucket.getPartitionId());
                     }
@@ -206,58 +172,6 @@ public class ClientRpcMessageUtils {
         return request;
     }
 
-    public static FetchLogResultForBucket getFetchLogResultForBucket(
-            TableBucket tb, TablePath tp, PbFetchLogRespForBucket respForBucket) {
-        FetchLogResultForBucket fetchLogResultForBucket;
-        if (respForBucket.hasErrorCode()) {
-            fetchLogResultForBucket =
-                    new FetchLogResultForBucket(tb, ApiError.fromErrorMessage(respForBucket));
-        } else {
-            if (respForBucket.hasRemoteLogFetchInfo()) {
-                PbRemoteLogFetchInfo pbRlfInfo = respForBucket.getRemoteLogFetchInfo();
-                String partitionName =
-                        pbRlfInfo.hasPartitionName() ? pbRlfInfo.getPartitionName() : null;
-                PhysicalTablePath physicalTablePath = PhysicalTablePath.of(tp, partitionName);
-                List<RemoteLogSegment> remoteLogSegmentList = new ArrayList<>();
-                for (PbRemoteLogSegment pbRemoteLogSegment : pbRlfInfo.getRemoteLogSegmentsList()) {
-                    RemoteLogSegment remoteLogSegment =
-                            RemoteLogSegment.Builder.builder()
-                                    .tableBucket(tb)
-                                    .physicalTablePath(physicalTablePath)
-                                    .remoteLogSegmentId(
-                                            UUID.fromString(
-                                                    pbRemoteLogSegment.getRemoteLogSegmentId()))
-                                    .remoteLogEndOffset(pbRemoteLogSegment.getRemoteLogEndOffset())
-                                    .remoteLogStartOffset(
-                                            pbRemoteLogSegment.getRemoteLogStartOffset())
-                                    .segmentSizeInBytes(pbRemoteLogSegment.getSegmentSizeInBytes())
-                                    .maxTimestamp(-1L) // not use.
-                                    .build();
-                    remoteLogSegmentList.add(remoteLogSegment);
-                }
-                RemoteLogFetchInfo rlFetchInfo =
-                        new RemoteLogFetchInfo(
-                                pbRlfInfo.getRemoteLogTabletDir(),
-                                pbRlfInfo.hasPartitionName() ? pbRlfInfo.getPartitionName() : null,
-                                remoteLogSegmentList,
-                                pbRlfInfo.getFirstStartPos());
-                fetchLogResultForBucket =
-                        new FetchLogResultForBucket(
-                                tb, rlFetchInfo, respForBucket.getHighWatermark());
-            } else {
-                ByteBuffer recordsBuffer = toByteBuffer(respForBucket.getRecordsSlice());
-                LogRecords records =
-                        respForBucket.hasRecords()
-                                ? MemoryLogRecords.pointToByteBuffer(recordsBuffer)
-                                : MemoryLogRecords.EMPTY;
-                fetchLogResultForBucket =
-                        new FetchLogResultForBucket(tb, records, respForBucket.getHighWatermark());
-            }
-        }
-
-        return fetchLogResultForBucket;
-    }
-
     public static KvSnapshots toKvSnapshots(GetLatestKvSnapshotsResponse response) {
         long tableId = response.getTableId();
         Long partitionId = response.hasPartitionId() ? response.getPartitionId() : null;
@@ -284,7 +198,6 @@ public class ClientRpcMessageUtils {
     }
 
     public static LakeSnapshot toLakeTableSnapshotInfo(GetLatestLakeSnapshotResponse response) {
-        LakeStorageInfo lakeStorageInfo = toLakeStorageInfo(response.getLakehouseStorageInfo());
         long tableId = response.getTableId();
         long snapshotId = response.getSnapshotId();
         Map<TableBucket, Long> tableBucketsOffset =
@@ -298,7 +211,7 @@ public class ClientRpcMessageUtils {
                     new TableBucket(tableId, partitionId, pbLakeSnapshotForBucket.getBucketId());
             tableBucketsOffset.put(tableBucket, pbLakeSnapshotForBucket.getLogOffset());
         }
-        return new LakeSnapshot(lakeStorageInfo, snapshotId, tableBucketsOffset);
+        return new LakeSnapshot(snapshotId, tableBucketsOffset);
     }
 
     public static List<FsPathAndFileName> toFsPathAndFileName(
@@ -388,14 +301,8 @@ public class ClientRpcMessageUtils {
                 .setTablePath()
                 .setDatabaseName(tablePath.getDatabaseName())
                 .setTableName(tablePath.getTableName());
-        List<PbKeyValue> pbPartitionKeyAndValues = new ArrayList<>();
-        partitionSpec
-                .getPartitionSpec()
-                .forEach(
-                        (partitionKey, value) ->
-                                pbPartitionKeyAndValues.add(
-                                        new PbKeyValue().setKey(partitionKey).setValue(value)));
-        createPartitionRequest.setPartitionSpec().addAllPartitionKeyValues(pbPartitionKeyAndValues);
+        PbPartitionSpec pbPartitionSpec = makePbPartitionSpec(partitionSpec);
+        createPartitionRequest.setPartitionSpec(pbPartitionSpec);
         return createPartitionRequest;
     }
 
@@ -407,14 +314,8 @@ public class ClientRpcMessageUtils {
                 .setTablePath()
                 .setDatabaseName(tablePath.getDatabaseName())
                 .setTableName(tablePath.getTableName());
-        List<PbKeyValue> pbPartitionKeyAndValues = new ArrayList<>();
-        partitionSpec
-                .getPartitionSpec()
-                .forEach(
-                        (partitionKey, value) ->
-                                pbPartitionKeyAndValues.add(
-                                        new PbKeyValue().setKey(partitionKey).setValue(value)));
-        dropPartitionRequest.setPartitionSpec().addAllPartitionKeyValues(pbPartitionKeyAndValues);
+        PbPartitionSpec pbPartitionSpec = makePbPartitionSpec(partitionSpec);
+        dropPartitionRequest.setPartitionSpec(pbPartitionSpec);
         return dropPartitionRequest;
     }
 
@@ -424,18 +325,9 @@ public class ClientRpcMessageUtils {
                         pbPartitionInfo ->
                                 new PartitionInfo(
                                         pbPartitionInfo.getPartitionId(),
-                                        pbPartitionInfo.getPartitionName()))
+                                        toResolvedPartitionSpec(
+                                                pbPartitionInfo.getPartitionSpec())))
                 .collect(Collectors.toList());
-    }
-
-    public static LakeStorageInfo toLakeStorageInfo(DescribeLakeStorageResponse response) {
-        return toLakeStorageInfo(response.getLakehouseStorageInfo());
-    }
-
-    private static LakeStorageInfo toLakeStorageInfo(PbLakeStorageInfo pbLakeStorageInfo) {
-        Map<String, String> dataLakeCatalogConfig =
-                toKeyValueMap(pbLakeStorageInfo.getCatalogPropertiesList());
-        return new LakeStorageInfo(pbLakeStorageInfo.getLakeStorageType(), dataLakeCatalogConfig);
     }
 
     public static Map<String, String> toKeyValueMap(List<PbKeyValue> pbKeyValues) {
@@ -443,5 +335,13 @@ public class ClientRpcMessageUtils {
                 .collect(
                         java.util.stream.Collectors.toMap(
                                 PbKeyValue::getKey, PbKeyValue::getValue));
+    }
+
+    public static PbPartitionSpec makePbPartitionSpec(PartitionSpec partitionSpec) {
+        Map<String, String> partitionSpecMap = partitionSpec.getSpecMap();
+        List<PbKeyValue> pbKeyValues = new ArrayList<>(partitionSpecMap.size());
+        partitionSpecMap.forEach(
+                (key, value) -> pbKeyValues.add(new PbKeyValue().setKey(key).setValue(value)));
+        return new PbPartitionSpec().addAllPartitionKeyValues(pbKeyValues);
     }
 }

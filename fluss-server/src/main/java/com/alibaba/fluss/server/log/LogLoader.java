@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -47,6 +48,7 @@ final class LogLoader {
     private final long recoveryPointCheckpoint;
     private final LogFormat logFormat;
     private final WriterStateManager writerStateManager;
+    private final boolean isCleanShutdown;
 
     public LogLoader(
             File logTabletDir,
@@ -54,13 +56,15 @@ final class LogLoader {
             LogSegments logSegments,
             long recoveryPointCheckpoint,
             LogFormat logFormat,
-            WriterStateManager writerStateManager) {
+            WriterStateManager writerStateManager,
+            boolean isCleanShutdown) {
         this.logTabletDir = logTabletDir;
         this.conf = conf;
         this.logSegments = logSegments;
         this.recoveryPointCheckpoint = recoveryPointCheckpoint;
         this.logFormat = logFormat;
         this.writerStateManager = writerStateManager;
+        this.isCleanShutdown = isCleanShutdown;
     }
 
     /**
@@ -93,8 +97,17 @@ final class LogLoader {
         // WriterStateManager used during log recovery may have deleted some files without the
         // LogLoader.writerStateManager instance witnessing the deletion.
         writerStateManager.removeStraySnapshots(logSegments.baseOffsets());
-        // TODO get the clean shutdown info from LogManager.
-        LogTablet.rebuildWriterState(writerStateManager, logSegments, 0, nextOffset, true);
+
+        // TODO, Here, we use 0 as the logStartOffset passed into rebuildWriterState. The reason is
+        // that the current implementation of logStartOffset in Fluss is not yet fully refined, and
+        // there may be cases where logStartOffset is not updated. As a result, logStartOffset is
+        // not yet reliable. Once the issue with correctly updating logStartOffset is resolved in
+        // issue https://github.com/alibaba/fluss/issues/744, we can use logStartOffset here.
+        // Additionally, using 0 versus using logStartOffset does not affect correctness—they both
+        // can restore the complete WriterState. The only difference is that using logStartOffset
+        // can potentially skip over more segments.
+        LogTablet.rebuildWriterState(
+                writerStateManager, logSegments, 0, nextOffset, isCleanShutdown);
 
         LogSegment activeSegment = logSegments.lastSegment().get();
         activeSegment.resizeIndexes((int) conf.get(ConfigOptions.LOG_INDEX_FILE_SIZE).getBytes());

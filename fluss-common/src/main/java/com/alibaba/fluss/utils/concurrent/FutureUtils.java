@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -283,8 +284,25 @@ public class FutureUtils {
     public static ConjunctFuture<Void> waitForAll(
             Collection<? extends CompletableFuture<?>> futures) {
         checkNotNull(futures, "futures");
+        //noinspection unchecked,rawtypes
+        return new WaitingConjunctFuture(futures, (ignore, throwable) -> {});
+    }
 
-        return new WaitingConjunctFuture(futures);
+    /**
+     * Creates a future that is complete once all of the given futures have completed. The future
+     * fails (completes exceptionally) once one of the given futures fails.
+     *
+     * <p>The ConjunctFuture gives access to how many Futures have already completed successfully,
+     * via {@link ConjunctFuture#getNumFuturesCompleted()}.
+     *
+     * @param futures The futures to wait on. No null entries are allowed.
+     * @return The WaitingFuture that completes once all given futures are complete (or one fails).
+     */
+    public static <T> ConjunctFuture<Void> waitForAll(
+            Collection<? extends CompletableFuture<T>> futures,
+            BiConsumer<T, Throwable> completeAction) {
+        checkNotNull(futures, "futures");
+        return new WaitingConjunctFuture<>(futures, completeAction);
     }
 
     /**
@@ -490,17 +508,11 @@ public class FutureUtils {
         }
     }
 
-    public static <T> CompletableFuture<T> failedFuture(Throwable t) {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        future.completeExceptionally(t);
-        return future;
-    }
-
     /**
      * Implementation of the {@link ConjunctFuture} interface which waits only for the completion of
      * its futures and does not return their values.
      */
-    private static final class WaitingConjunctFuture extends ConjunctFuture<Void> {
+    private static final class WaitingConjunctFuture<T> extends ConjunctFuture<Void> {
 
         /** Number of completed futures. */
         private final AtomicInteger numCompleted = new AtomicInteger(0);
@@ -508,11 +520,18 @@ public class FutureUtils {
         /** Total number of futures to wait on. */
         private final int numTotal;
 
+        private final BiConsumer<T, Throwable> completeAction;
+
         /**
          * Method which increments the atomic completion counter and completes or fails the
          * WaitingFutureImpl.
          */
-        private void handleCompletedFuture(Object ignored, Throwable throwable) {
+        private void handleCompletedFuture(T value, Throwable throwable) {
+            try {
+                completeAction.accept(value, throwable);
+            } catch (Exception e) {
+                // ignore
+            }
             if (throwable == null) {
                 if (numTotal == numCompleted.incrementAndGet()) {
                     complete(null);
@@ -522,13 +541,16 @@ public class FutureUtils {
             }
         }
 
-        private WaitingConjunctFuture(Collection<? extends CompletableFuture<?>> futures) {
+        private WaitingConjunctFuture(
+                Collection<? extends CompletableFuture<T>> futures,
+                BiConsumer<T, Throwable> completeAction) {
             this.numTotal = futures.size();
+            this.completeAction = completeAction;
 
             if (futures.isEmpty()) {
                 complete(null);
             } else {
-                for (java.util.concurrent.CompletableFuture<?> future : futures) {
+                for (CompletableFuture<T> future : futures) {
                     future.whenComplete(this::handleCompletedFuture);
                 }
             }

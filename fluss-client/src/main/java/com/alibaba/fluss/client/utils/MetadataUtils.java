@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +22,7 @@ import com.alibaba.fluss.cluster.Cluster;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.cluster.ServerType;
 import com.alibaba.fluss.exception.FlussRuntimeException;
+import com.alibaba.fluss.exception.StaleMetadataException;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
@@ -103,11 +105,17 @@ public class MetadataUtils {
         return gateway.metadata(metadataRequest)
                 .thenApply(
                         response -> {
-                            ServerNode coordinatorServer = getCoordinatorServer(response);
-
                             // Update the alive table servers.
                             Map<Integer, ServerNode> newAliveTabletServers =
                                     getAliveTabletServers(response);
+                            // when talking to the startup tablet
+                            // server, it maybe receive empty metadata, we'll consider it as
+                            // stale metadata and throw StaleMetadataException which will cause
+                            // to retry later.
+                            if (newAliveTabletServers.isEmpty()) {
+                                throw new StaleMetadataException("Alive tablet server is empty.");
+                            }
+                            ServerNode coordinatorServer = getCoordinatorServer(response);
 
                             Map<TablePath, Long> newTablePathToTableId;
                             Map<TablePath, TableInfo> newTablePathToTableInfo;
@@ -153,7 +161,7 @@ public class MetadataUtils {
                                     newPartitionIdByPath,
                                     newTablePathToTableInfo);
                         })
-                .get(5, TimeUnit.SECONDS); // TODO currently, we don't have timeout logic in
+                .get(30, TimeUnit.SECONDS); // TODO currently, we don't have timeout logic in
         // RpcClient, it will let the get() block forever. So we
         // time out here
     }
@@ -264,9 +272,10 @@ public class MetadataUtils {
         return aliveTabletServers.get(offset);
     }
 
+    @Nullable
     private static ServerNode getCoordinatorServer(MetadataResponse response) {
         if (!response.hasCoordinatorServer()) {
-            throw new FlussRuntimeException("coordinator server is not found");
+            return null;
         } else {
             PbServerNode protoServerNode = response.getCoordinatorServer();
             return new ServerNode(
@@ -289,7 +298,8 @@ public class MetadataUtils {
                                             nodeId,
                                             serverNode.getHost(),
                                             serverNode.getPort(),
-                                            ServerType.TABLET_SERVER));
+                                            ServerType.TABLET_SERVER,
+                                            serverNode.hasRack() ? serverNode.getRack() : null));
                         });
         return aliveTabletServers;
     }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,8 +26,6 @@ import com.alibaba.fluss.rpc.messages.ApiVersionsRequest;
 import com.alibaba.fluss.rpc.messages.ApiVersionsResponse;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageResponse;
 import com.alibaba.fluss.rpc.messages.FetchLogRequest;
 import com.alibaba.fluss.rpc.messages.FetchLogResponse;
 import com.alibaba.fluss.rpc.messages.GetDatabaseInfoRequest;
@@ -47,6 +46,8 @@ import com.alibaba.fluss.rpc.messages.InitWriterRequest;
 import com.alibaba.fluss.rpc.messages.InitWriterResponse;
 import com.alibaba.fluss.rpc.messages.LimitScanRequest;
 import com.alibaba.fluss.rpc.messages.LimitScanResponse;
+import com.alibaba.fluss.rpc.messages.ListAclsRequest;
+import com.alibaba.fluss.rpc.messages.ListAclsResponse;
 import com.alibaba.fluss.rpc.messages.ListDatabasesRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesResponse;
 import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
@@ -99,8 +100,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.getFetchLogData;
-import static com.alibaba.fluss.server.utils.RpcMessageUtils.makeFetchLogResponse;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.getFetchLogData;
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeFetchLogResponse;
 
 /** A {@link TabletServerGateway} for test purpose. */
 public class TestTabletServerGateway implements TabletServerGateway {
@@ -143,12 +144,6 @@ public class TestTabletServerGateway implements TabletServerGateway {
     @Override
     public CompletableFuture<ListPartitionInfosResponse> listPartitionInfos(
             ListPartitionInfosRequest request) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public CompletableFuture<DescribeLakeStorageResponse> describeLakeStorage(
-            DescribeLakeStorageRequest request) {
         throw new UnsupportedOperationException();
     }
 
@@ -299,19 +294,32 @@ public class TestTabletServerGateway implements TabletServerGateway {
     @Override
     public CompletableFuture<NotifyRemoteLogOffsetsResponse> notifyRemoteLogOffsets(
             NotifyRemoteLogOffsetsRequest request) {
-        throw new UnsupportedOperationException();
+        CompletableFuture<NotifyRemoteLogOffsetsResponse> response = new CompletableFuture<>();
+        requests.add(Tuple2.of(request, response));
+        return response;
     }
 
     @Override
     public CompletableFuture<NotifyKvSnapshotOffsetResponse> notifyKvSnapshotOffset(
             NotifyKvSnapshotOffsetRequest request) {
-        throw new UnsupportedOperationException();
+        CompletableFuture<NotifyKvSnapshotOffsetResponse> response = new CompletableFuture<>();
+        requests.add(Tuple2.of(request, response));
+        return response;
     }
 
     @Override
     public CompletableFuture<NotifyLakeTableOffsetResponse> notifyLakeTableOffset(
             NotifyLakeTableOffsetRequest request) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CompletableFuture<ListAclsResponse> listAcls(ListAclsRequest request) {
+        throw new UnsupportedOperationException();
+    }
+
+    public int pendingRequestSize() {
+        return requests.size();
     }
 
     public ApiMessage getRequest(int index) {

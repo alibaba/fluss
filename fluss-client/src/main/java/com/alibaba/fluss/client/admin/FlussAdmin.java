@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,7 +24,6 @@ import com.alibaba.fluss.client.metadata.MetadataUpdater;
 import com.alibaba.fluss.client.utils.ClientRpcMessageUtils;
 import com.alibaba.fluss.cluster.Cluster;
 import com.alibaba.fluss.cluster.ServerNode;
-import com.alibaba.fluss.lakehouse.LakeStorageInfo;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
 import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.PartitionInfo;
@@ -39,11 +39,12 @@ import com.alibaba.fluss.rpc.GatewayClientProxy;
 import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.gateway.AdminGateway;
 import com.alibaba.fluss.rpc.gateway.TabletServerGateway;
+import com.alibaba.fluss.rpc.messages.CreateAclsRequest;
 import com.alibaba.fluss.rpc.messages.CreateDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.CreateTableRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsRequest;
 import com.alibaba.fluss.rpc.messages.DatabaseExistsResponse;
-import com.alibaba.fluss.rpc.messages.DescribeLakeStorageRequest;
+import com.alibaba.fluss.rpc.messages.DropAclsRequest;
 import com.alibaba.fluss.rpc.messages.DropDatabaseRequest;
 import com.alibaba.fluss.rpc.messages.DropTableRequest;
 import com.alibaba.fluss.rpc.messages.GetDatabaseInfoRequest;
@@ -52,6 +53,7 @@ import com.alibaba.fluss.rpc.messages.GetLatestKvSnapshotsRequest;
 import com.alibaba.fluss.rpc.messages.GetLatestLakeSnapshotRequest;
 import com.alibaba.fluss.rpc.messages.GetTableInfoRequest;
 import com.alibaba.fluss.rpc.messages.GetTableSchemaRequest;
+import com.alibaba.fluss.rpc.messages.ListAclsRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesRequest;
 import com.alibaba.fluss.rpc.messages.ListDatabasesResponse;
 import com.alibaba.fluss.rpc.messages.ListOffsetsRequest;
@@ -59,9 +61,13 @@ import com.alibaba.fluss.rpc.messages.ListPartitionInfosRequest;
 import com.alibaba.fluss.rpc.messages.ListTablesRequest;
 import com.alibaba.fluss.rpc.messages.ListTablesResponse;
 import com.alibaba.fluss.rpc.messages.PbListOffsetsRespForBucket;
+import com.alibaba.fluss.rpc.messages.PbPartitionSpec;
+import com.alibaba.fluss.rpc.messages.PbTablePath;
 import com.alibaba.fluss.rpc.messages.TableExistsRequest;
 import com.alibaba.fluss.rpc.messages.TableExistsResponse;
 import com.alibaba.fluss.rpc.protocol.ApiError;
+import com.alibaba.fluss.security.acl.AclBinding;
+import com.alibaba.fluss.security.acl.AclBindingFilter;
 import com.alibaba.fluss.utils.MapUtils;
 
 import javax.annotation.Nullable;
@@ -77,7 +83,12 @@ import java.util.concurrent.CompletableFuture;
 import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeCreatePartitionRequest;
 import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeDropPartitionRequest;
 import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makeListOffsetsRequest;
+import static com.alibaba.fluss.client.utils.ClientRpcMessageUtils.makePbPartitionSpec;
 import static com.alibaba.fluss.client.utils.MetadataUtils.sendMetadataRequestAndRebuildCluster;
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.toAclBindings;
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.toPbAclBindingFilters;
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.toPbAclFilter;
+import static com.alibaba.fluss.rpc.util.CommonRpcMessageUtils.toPbAclInfos;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
 /**
@@ -262,10 +273,22 @@ public class FlussAdmin implements Admin {
 
     @Override
     public CompletableFuture<List<PartitionInfo>> listPartitionInfos(TablePath tablePath) {
+        return listPartitionInfos(tablePath, null);
+    }
+
+    @Override
+    public CompletableFuture<List<PartitionInfo>> listPartitionInfos(
+            TablePath tablePath, PartitionSpec partitionSpec) {
         ListPartitionInfosRequest request = new ListPartitionInfosRequest();
-        request.setTablePath()
-                .setDatabaseName(tablePath.getDatabaseName())
-                .setTableName(tablePath.getTableName());
+        request.setTablePath(
+                new PbTablePath()
+                        .setDatabaseName(tablePath.getDatabaseName())
+                        .setTableName(tablePath.getTableName()));
+
+        if (partitionSpec != null) {
+            PbPartitionSpec pbPartitionSpec = makePbPartitionSpec(partitionSpec);
+            request.setPartialPartitionSpec(pbPartitionSpec);
+        }
         return gateway.listPartitionInfos(request)
                 .thenApply(ClientRpcMessageUtils::toPartitionInfos);
     }
@@ -336,6 +359,20 @@ public class FlussAdmin implements Admin {
 
     @Override
     public ListOffsetsResult listOffsets(
+            TablePath tablePath, Collection<Integer> buckets, OffsetSpec offsetSpec) {
+        return listOffsets(PhysicalTablePath.of(tablePath), buckets, offsetSpec);
+    }
+
+    @Override
+    public ListOffsetsResult listOffsets(
+            TablePath tablePath,
+            String partitionName,
+            Collection<Integer> buckets,
+            OffsetSpec offsetSpec) {
+        return listOffsets(PhysicalTablePath.of(tablePath, partitionName), buckets, offsetSpec);
+    }
+
+    private ListOffsetsResult listOffsets(
             PhysicalTablePath physicalTablePath,
             Collection<Integer> buckets,
             OffsetSpec offsetSpec) {
@@ -361,9 +398,57 @@ public class FlussAdmin implements Admin {
     }
 
     @Override
-    public CompletableFuture<LakeStorageInfo> describeLakeStorage() {
-        return gateway.describeLakeStorage(new DescribeLakeStorageRequest())
-                .thenApply(ClientRpcMessageUtils::toLakeStorageInfo);
+    public CompletableFuture<Collection<AclBinding>> listAcls(AclBindingFilter aclBindingFilter) {
+        CompletableFuture<Collection<AclBinding>> future = new CompletableFuture<>();
+        ListAclsRequest listAclsRequest =
+                new ListAclsRequest().setAclFilter(toPbAclFilter(aclBindingFilter));
+
+        gateway.listAcls(listAclsRequest)
+                .whenComplete(
+                        (r, t) -> {
+                            if (t != null) {
+                                future.completeExceptionally(t);
+                            } else {
+                                future.complete(toAclBindings(r.getAclsList()));
+                            }
+                        });
+        return future;
+    }
+
+    @Override
+    public CreateAclsResult createAcls(Collection<AclBinding> aclBindings) {
+        CreateAclsResult result = new CreateAclsResult(aclBindings);
+        CreateAclsRequest createAclsRequest =
+                new CreateAclsRequest().addAllAcls(toPbAclInfos(aclBindings));
+
+        gateway.createAcls(createAclsRequest)
+                .whenComplete(
+                        (r, t) -> {
+                            if (t != null) {
+                                result.completeExceptionally(t);
+                            } else {
+                                result.complete(r.getAclResList());
+                            }
+                        });
+        return result;
+    }
+
+    @Override
+    public DropAclsResult dropAcls(Collection<AclBindingFilter> filters) {
+        DropAclsResult result = new DropAclsResult(filters);
+        DropAclsRequest dropAclsRequest =
+                new DropAclsRequest()
+                        .addAllAclFilters(toPbAclBindingFilters(result.values().keySet()));
+        gateway.dropAcls(dropAclsRequest)
+                .whenComplete(
+                        (r, t) -> {
+                            if (t != null) {
+                                result.completeExceptionally(t);
+                            } else {
+                                result.complete(r.getFilterResultsList());
+                            }
+                        });
+        return result;
     }
 
     @Override

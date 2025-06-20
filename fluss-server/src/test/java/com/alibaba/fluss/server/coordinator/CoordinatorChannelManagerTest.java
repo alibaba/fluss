@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,28 +23,23 @@ import com.alibaba.fluss.rpc.RpcClient;
 import com.alibaba.fluss.rpc.messages.UpdateMetadataRequest;
 import com.alibaba.fluss.rpc.metrics.TestingClientMetricGroup;
 import com.alibaba.fluss.server.testutils.FlussClusterExtension;
-import com.alibaba.fluss.server.utils.RpcMessageUtils;
 import com.alibaba.fluss.server.zk.ZooKeeperExtension;
 import com.alibaba.fluss.testutils.common.AllCallbackWrapper;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.alibaba.fluss.server.utils.ServerRpcMessageUtils.makeUpdateMetadataRequest;
 import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 /** Test for {@link CoordinatorChannelManager} . */
 class CoordinatorChannelManagerTest {
-
-    private static final Logger LOG = LoggerFactory.getLogger(CoordinatorChannelManagerTest.class);
 
     @RegisterExtension
     public static final AllCallbackWrapper<ZooKeeperExtension> ZOO_KEEPER_EXTENSION_WRAPPER =
@@ -95,7 +91,11 @@ class CoordinatorChannelManagerTest {
         AtomicInteger sendFlag = new AtomicInteger(0);
         // we use update metadata request to test for simplicity
         UpdateMetadataRequest updateMetadataRequest =
-                RpcMessageUtils.makeUpdateMetadataRequest(Optional.empty(), Collections.emptySet());
+                makeUpdateMetadataRequest(
+                        null,
+                        Collections.emptySet(),
+                        Collections.emptyList(),
+                        Collections.emptyList());
         coordinatorChannelManager.sendRequest(
                 targetServerId,
                 updateMetadataRequest,

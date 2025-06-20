@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +17,8 @@
 
 package com.alibaba.fluss.client.admin;
 
+import com.alibaba.fluss.client.Connection;
+import com.alibaba.fluss.client.ConnectionFactory;
 import com.alibaba.fluss.client.metadata.KvSnapshotMetadata;
 import com.alibaba.fluss.client.metadata.KvSnapshots;
 import com.alibaba.fluss.client.table.Table;
@@ -23,9 +26,11 @@ import com.alibaba.fluss.client.table.writer.UpsertWriter;
 import com.alibaba.fluss.cluster.ServerNode;
 import com.alibaba.fluss.config.AutoPartitionTimeUnit;
 import com.alibaba.fluss.config.ConfigOptions;
+import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
 import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
+import com.alibaba.fluss.exception.FlussRuntimeException;
 import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidPartitionException;
@@ -36,6 +41,9 @@ import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
+import com.alibaba.fluss.exception.TooManyBucketsException;
+import com.alibaba.fluss.exception.TooManyPartitionsException;
+import com.alibaba.fluss.fs.FsPath;
 import com.alibaba.fluss.fs.FsPathAndFileName;
 import com.alibaba.fluss.metadata.DataLakeFormat;
 import com.alibaba.fluss.metadata.DatabaseDescriptor;
@@ -43,14 +51,13 @@ import com.alibaba.fluss.metadata.DatabaseInfo;
 import com.alibaba.fluss.metadata.KvFormat;
 import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PartitionInfo;
+import com.alibaba.fluss.metadata.PartitionSpec;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.SchemaInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableDescriptor;
 import com.alibaba.fluss.metadata.TableInfo;
 import com.alibaba.fluss.metadata.TablePath;
-import com.alibaba.fluss.rpc.gateway.CoordinatorGateway;
-import com.alibaba.fluss.rpc.messages.MetadataRequest;
 import com.alibaba.fluss.server.kv.snapshot.CompletedSnapshot;
 import com.alibaba.fluss.server.kv.snapshot.KvSnapshotHandle;
 import com.alibaba.fluss.types.DataTypes;
@@ -72,7 +79,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.alibaba.fluss.testutils.DataTestUtils.row;
-import static com.alibaba.fluss.testutils.common.CommonTestUtils.retry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -351,7 +357,7 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         FLUSS_CLUSTER_EXTENSION.stopTabletServer(0);
 
         // assert the cluster should have tablet server number to be 2
-        assertHasTabletServerNumber(2);
+        FLUSS_CLUSTER_EXTENSION.assertHasTabletServerNumber(2);
 
         // let's set the table's replica.factor to 3, should also throw exception
         TableDescriptor tableDescriptor =
@@ -371,7 +377,7 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         FLUSS_CLUSTER_EXTENSION.startTabletServer(0);
 
         // assert the cluster should have tablet server number to be 3
-        assertHasTabletServerNumber(3);
+        FLUSS_CLUSTER_EXTENSION.assertHasTabletServerNumber(3);
         FLUSS_CLUSTER_EXTENSION.waitUtilAllGatewayHasSameMetadata();
 
         // we can create the table now
@@ -491,7 +497,7 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         TablePath partitionedTablePath = TablePath.of(dbName, "test_partitioned_table");
         admin.createTable(partitionedTablePath, partitionedTable, true).get();
         Map<String, Long> partitionIdByNames =
-                FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(partitionedTablePath);
+                FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(partitionedTablePath);
 
         List<PartitionInfo> partitionInfos = admin.listPartitionInfos(partitionedTablePath).get();
         assertThat(partitionInfos).hasSize(partitionIdByNames.size());
@@ -499,6 +505,78 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
             assertThat(partitionIdByNames.get(partitionInfo.getPartitionName()))
                     .isEqualTo(partitionInfo.getPartitionId());
         }
+    }
+
+    @Test
+    void testListPartitionInfosByPartitionSpec() throws Exception {
+        String dbName = DEFAULT_TABLE_PATH.getDatabaseName();
+
+        TableDescriptor partitionedTable =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("id", DataTypes.STRING())
+                                        .column("name", DataTypes.STRING())
+                                        .column("pt", DataTypes.STRING())
+                                        .column("secondary_partition", DataTypes.STRING())
+                                        .build())
+                        .comment("test table")
+                        .distributedBy(3, "id")
+                        .partitionedBy("pt", "secondary_partition")
+                        .build();
+        TablePath partitionedTablePath = TablePath.of(dbName, "test_partitioned_table");
+        // create table
+        admin.createTable(partitionedTablePath, partitionedTable, true).get();
+        // add three partitions.
+        admin.createPartition(
+                        partitionedTablePath,
+                        newPartitionSpec(
+                                Arrays.asList("pt", "secondary_partition"),
+                                Arrays.asList("2025", "10")),
+                        false)
+                .get();
+        admin.createPartition(
+                        partitionedTablePath,
+                        newPartitionSpec(
+                                Arrays.asList("pt", "secondary_partition"),
+                                Arrays.asList("2025", "11")),
+                        false)
+                .get();
+        admin.createPartition(
+                        partitionedTablePath,
+                        newPartitionSpec(
+                                Arrays.asList("pt", "secondary_partition"),
+                                Arrays.asList("2026", "12")),
+                        false)
+                .get();
+
+        // run listPartitionInfos by partition spec with valid partition name.
+        PartitionSpec partitionSpec = newPartitionSpec("pt", "2025");
+
+        List<PartitionInfo> partitionInfos =
+                admin.listPartitionInfos(partitionedTablePath, partitionSpec).get();
+
+        List<String> actualPartitionNames =
+                partitionInfos.stream()
+                        .map(PartitionInfo::getPartitionName)
+                        .collect(Collectors.toList());
+        assertThat(actualPartitionNames).containsExactlyInAnyOrder("2025$10", "2025$11");
+
+        // run listPartitionInfos by partition spec with invalid partition name.
+        PartitionSpec invalidNamePartitionSpec = newPartitionSpec("pt", "2024");
+        List<PartitionInfo> invalidNamePartitionInfos =
+                admin.listPartitionInfos(partitionedTablePath, invalidNamePartitionSpec).get();
+        assertThat(invalidNamePartitionInfos).hasSize(0);
+
+        // run listPartitionInfos by invalid partition spec.
+        PartitionSpec invalidPartitionSpec = newPartitionSpec("pt1", "2025");
+        assertThatThrownBy(
+                        () ->
+                                admin.listPartitionInfos(partitionedTablePath, invalidPartitionSpec)
+                                        .get())
+                .cause()
+                .isInstanceOf(FlussRuntimeException.class)
+                .hasMessageContaining("table don't contains this partitionKey: pt1");
     }
 
     @Test
@@ -574,18 +652,18 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                                 Schema.newBuilder()
                                         .column("id", DataTypes.STRING())
                                         .column("name", DataTypes.STRING())
-                                        .column("age", DataTypes.STRING())
+                                        .column("dt", DataTypes.DATE())
                                         .build())
                         .distributedBy(3, "id")
-                        .partitionedBy("name", "age")
+                        .partitionedBy("name", "dt")
                         .build();
         TablePath tablePath = TablePath.of(dbName, "test_create_illegal_partitioned_table_1");
         assertThatThrownBy(() -> admin.createTable(tablePath, partitionedTable, true).get())
                 .cause()
                 .isInstanceOf(InvalidTableException.class)
                 .hasMessageContaining(
-                        "Currently, partitioned table only supports one partition key, "
-                                + "but got partition keys [name, age].");
+                        "Currently, partitioned table supported partition key type are [STRING], "
+                                + "but got partition key 'dt' with data type DATE.");
     }
 
     @Test
@@ -707,7 +785,7 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
         TablePath tablePath = TablePath.of(dbName, "test_add_and_drop_partitioned_table_1");
         admin.createTable(tablePath, partitionedTable, true).get();
         // wait all auto partitions created.
-        FLUSS_CLUSTER_EXTENSION.waitUtilPartitionAllReady(tablePath);
+        FLUSS_CLUSTER_EXTENSION.waitUntilPartitionAllReady(tablePath);
 
         // there are four auto created partitions.
         int currentYear = LocalDate.now().getYear();
@@ -742,19 +820,66 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                         String.valueOf(currentYear)));
     }
 
-    private void assertHasTabletServerNumber(int tabletServerNumber) {
-        CoordinatorGateway coordinatorGateway = FLUSS_CLUSTER_EXTENSION.newCoordinatorClient();
-        retry(
-                Duration.ofMinutes(2),
-                () -> {
-                    assertThat(
-                                    coordinatorGateway
-                                            .metadata(new MetadataRequest())
-                                            .get()
-                                            .getTabletServersCount())
-                            .as("Tablet server number should be " + tabletServerNumber)
-                            .isEqualTo(tabletServerNumber);
-                });
+    @Test
+    void testBootstrapServerConfigAsTabletServer() throws Exception {
+        Configuration newConf = clientConf;
+        ServerNode ts0 = FLUSS_CLUSTER_EXTENSION.getTabletServerNodes().get(0);
+        newConf.set(
+                ConfigOptions.BOOTSTRAP_SERVERS,
+                Collections.singletonList(String.format("%s:%d", ts0.host(), ts0.port())));
+        try (Connection conn = ConnectionFactory.createConnection(clientConf)) {
+            Admin newAdmin = conn.getAdmin();
+            String dbName = "test_bootstrap_server_t1";
+            newAdmin.createDatabase(
+                            dbName,
+                            DatabaseDescriptor.builder().comment("test comment").build(),
+                            false)
+                    .get();
+            newAdmin.createTable(
+                            TablePath.of(dbName, "test_table_1"),
+                            TableDescriptor.builder().schema(Schema.newBuilder().build()).build(),
+                            false)
+                    .get();
+            assertThat(newAdmin.getDatabaseInfo(dbName).get().getDatabaseName()).isEqualTo(dbName);
+            assertThat(
+                            newAdmin.getTableInfo(TablePath.of(dbName, "test_table_1"))
+                                    .get()
+                                    .getTablePath()
+                                    .getTableName())
+                    .isEqualTo("test_table_1");
+        }
+    }
+
+    @Test
+    void testAddTooManyPartitions() throws Exception {
+        String dbName = DEFAULT_TABLE_PATH.getDatabaseName();
+        TableDescriptor partitionedTable =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("id", DataTypes.STRING())
+                                        .column("name", DataTypes.STRING())
+                                        .column("age", DataTypes.STRING())
+                                        .build())
+                        .distributedBy(3, "id")
+                        .partitionedBy("age")
+                        .build();
+        TablePath tablePath = TablePath.of(dbName, "test_add_too_many_partitioned_table");
+        admin.createTable(tablePath, partitionedTable, true).get();
+
+        // add 10 partitions.
+        for (int i = 0; i < 10; i++) {
+            admin.createPartition(tablePath, newPartitionSpec("age", String.valueOf(i)), false)
+                    .get();
+        }
+        // add out of limit partition
+        assertThatThrownBy(
+                        () ->
+                                admin.createPartition(
+                                                tablePath, newPartitionSpec("age", "11"), false)
+                                        .get())
+                .cause()
+                .isInstanceOf(TooManyPartitionsException.class);
     }
 
     private void assertNoBucketSnapshot(KvSnapshots snapshots, int expectBucketNum) {
@@ -813,8 +938,112 @@ class FlussAdminITCase extends ClientToServerITCaseBase {
                 .map(
                         kvFileHandleAndLocalPath ->
                                 new FsPathAndFileName(
-                                        kvFileHandleAndLocalPath.getKvFileHandle().getFilePath(),
+                                        new FsPath(
+                                                kvFileHandleAndLocalPath
+                                                        .getKvFileHandle()
+                                                        .getFilePath()),
                                         kvFileHandleAndLocalPath.getLocalPath()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Test that creating a partitioned table with bucket count exceeding the maximum throws
+     * TooManyBucketsException.
+     */
+    @Test
+    public void testAddTooManyBuckets() throws Exception {
+        // Already set low maximum bucket limit to 30 for this test in ClientToServerITCaseBase
+        String dbName = DEFAULT_TABLE_PATH.getDatabaseName();
+        TableDescriptor partitionedTable =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("id", DataTypes.STRING())
+                                        .column("name", DataTypes.STRING())
+                                        .column("age", DataTypes.STRING())
+                                        .build())
+                        .distributedBy(10, "id") // 10 buckets per partition
+                        .partitionedBy("age")
+                        .build();
+        TablePath tablePath = TablePath.of(dbName, "test_add_too_many_buckets_table");
+        admin.createTable(tablePath, partitionedTable, true).get();
+
+        // Add 3 partitions (3 * 10 = 30 buckets, which is the limit)
+        for (int i = 0; i < 3; i++) {
+            admin.createPartition(tablePath, newPartitionSpec("age", String.valueOf(i)), false)
+                    .get();
+        }
+
+        // Try to add one more partition, exceeding the bucket limit (4 * 10 > 30)
+        assertThatThrownBy(
+                        () ->
+                                admin.createPartition(
+                                                tablePath, newPartitionSpec("age", "4"), false)
+                                        .get())
+                .cause()
+                .isInstanceOf(TooManyBucketsException.class)
+                .hasMessageContaining("exceeding the maximum of 30 buckets");
+    }
+
+    /**
+     * Test that creating a non-partitioned table with bucket count exceeding the maximum throws
+     * TooManyBucketsException.
+     */
+    @Test
+    public void testBucketLimitForNonPartitionedTable() throws Exception {
+        // Set a low maximum bucket limit for this test
+        // (Assuming the configuration is already set to 30 in ClientToServerITCaseBase)
+        String dbName = DEFAULT_TABLE_PATH.getDatabaseName();
+
+        // Create a non-partitioned table with 40 buckets (exceeding limit of 30)
+        TableDescriptor nonPartitionedTable =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("id", DataTypes.STRING())
+                                        .column("name", DataTypes.STRING())
+                                        .column("value", DataTypes.STRING())
+                                        .build())
+                        .distributedBy(40, "id") // 40 buckets exceeds the limit of 30
+                        .build(); // No partitionedBy call makes this non-partitioned
+
+        TablePath tablePath = TablePath.of(dbName, "test_too_many_buckets_non_partitioned");
+
+        // Creating this table should throw TooManyBucketsException
+        assertThatThrownBy(() -> admin.createTable(tablePath, nonPartitionedTable, false).get())
+                .cause()
+                .isInstanceOf(TooManyBucketsException.class)
+                .hasMessageContaining("exceeds the maximum limit");
+    }
+
+    /** Test that creating a table with system columns throws InvalidTableException. */
+    @Test
+    public void testSystemsColumns() throws Exception {
+        String dbName = DEFAULT_TABLE_PATH.getDatabaseName();
+
+        TableDescriptor tableDescriptor =
+                TableDescriptor.builder()
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("f0", DataTypes.STRING())
+                                        .column("f1", DataTypes.BIGINT())
+                                        .column("f3", DataTypes.STRING())
+                                        .column("__offset", DataTypes.STRING())
+                                        .column("__timestamp", DataTypes.STRING())
+                                        .column("__bucket", DataTypes.STRING())
+                                        .build())
+                        .build();
+
+        TablePath tablePath = TablePath.of(dbName, "test_system_columns");
+
+        // Creating this table should throw InvalidTableException
+        assertThatThrownBy(() -> admin.createTable(tablePath, tableDescriptor, false).get())
+                .cause()
+                .isInstanceOf(InvalidTableException.class)
+                .hasMessageContaining(
+                        "__offset, __timestamp, __bucket cannot be used as column names, "
+                                + "because they are reserved system columns in Fluss. "
+                                + "Please use other names for these columns. "
+                                + "The reserved system columns are: __offset, __timestamp, __bucket");
     }
 }

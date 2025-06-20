@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +17,6 @@
 
 package com.alibaba.fluss.server.kv;
 
-import com.alibaba.fluss.compression.ArrowCompressionInfo;
 import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.config.TableConfig;
 import com.alibaba.fluss.exception.InvalidTargetColumnException;
@@ -28,6 +28,7 @@ import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TablePath;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.record.FileLogProjection;
 import com.alibaba.fluss.record.KvRecord;
 import com.alibaba.fluss.record.KvRecordBatch;
@@ -35,7 +36,6 @@ import com.alibaba.fluss.record.KvRecordTestUtils;
 import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.LogTestBase;
 import com.alibaba.fluss.record.MemoryLogRecords;
-import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.record.TestData;
 import com.alibaba.fluss.record.bytesview.MultiBytesView;
 import com.alibaba.fluss.row.BinaryRow;
@@ -76,6 +76,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import static com.alibaba.fluss.compression.ArrowCompressionInfo.DEFAULT_COMPRESSION;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_BATCH_SEQUENCE;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_WRITER_ID;
 import static com.alibaba.fluss.record.TestData.DATA1_SCHEMA_PK;
@@ -148,7 +149,8 @@ class KvTabletTest {
                 LogFormat.ARROW,
                 1,
                 true,
-                SystemClock.getInstance());
+                SystemClock.getInstance(),
+                true);
     }
 
     private KvTablet createKvTablet(
@@ -175,7 +177,7 @@ class KvTabletTest {
                 KvFormat.COMPACTED,
                 schema,
                 rowMerger,
-                ArrowCompressionInfo.NO_COMPRESSION);
+                DEFAULT_COMPRESSION);
     }
 
     @Test
@@ -255,10 +257,10 @@ class KvTabletTest {
                                 0,
                                 Arrays.asList(
                                         // -- for batch 1
-                                        RowKind.INSERT,
-                                        RowKind.INSERT,
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER),
+                                        ChangeType.INSERT,
+                                        ChangeType.INSERT,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER),
                                 Arrays.asList(
                                         // for k1
                                         new Object[] {1, null, null},
@@ -293,13 +295,13 @@ class KvTabletTest {
                                 endOffset,
                                 Arrays.asList(
                                         // -- for k1
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
                                         // -- for k2
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER),
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER),
                                 Arrays.asList(
                                         // for k1
                                         new Object[] {1, null, null},
@@ -333,10 +335,10 @@ class KvTabletTest {
                                 endOffset,
                                 Arrays.asList(
                                         // -- for k1
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
                                         // -- for k3
-                                        RowKind.INSERT),
+                                        ChangeType.INSERT),
                                 Arrays.asList(
                                         // for k1
                                         new Object[] {1, "v11", null},
@@ -366,7 +368,7 @@ class KvTabletTest {
                                 endOffset,
                                 Arrays.asList(
                                         // -- for k1
-                                        RowKind.UPDATE_BEFORE, RowKind.UPDATE_AFTER),
+                                        ChangeType.UPDATE_BEFORE, ChangeType.UPDATE_AFTER),
                                 Arrays.asList(
                                         new Object[] {1, "v11", "c3"},
                                         new Object[] {1, null, "c3"})));
@@ -392,7 +394,7 @@ class KvTabletTest {
                                 endOffset,
                                 Collections.singletonList(
                                         // -- for k1
-                                        RowKind.DELETE),
+                                        ChangeType.DELETE),
                                 Collections.singletonList(new Object[] {1, null, "c3"})));
         checkEqual(actualLogRecords, expectedLogs, rowType);
         // now we can not get "k1" from pre-write buffer
@@ -425,10 +427,10 @@ class KvTabletTest {
                                 0L,
                                 Arrays.asList(
                                         // -- for batch 1
-                                        RowKind.INSERT,
-                                        RowKind.INSERT,
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER),
+                                        ChangeType.INSERT,
+                                        ChangeType.INSERT,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER),
                                 Arrays.asList(
                                         // --- cdc log for batch 1
                                         // for k1
@@ -443,12 +445,12 @@ class KvTabletTest {
                                 Arrays.asList(
                                         // -- for batch2
                                         // for k2
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
                                         // for k1
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
-                                        RowKind.DELETE),
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
+                                        ChangeType.DELETE),
                                 Arrays.asList(
                                         // -- cdc log for batch 2
                                         // for k2: -U, +U
@@ -467,7 +469,8 @@ class KvTabletTest {
                 Arrays.asList(
                         logRecords(
                                 0L,
-                                Arrays.asList(RowKind.INSERT, RowKind.INSERT, RowKind.DELETE),
+                                Arrays.asList(
+                                        ChangeType.INSERT, ChangeType.INSERT, ChangeType.DELETE),
                                 Arrays.asList(
                                         // --- cdc log for batch 2
                                         // for k2
@@ -478,11 +481,11 @@ class KvTabletTest {
                         logRecords(
                                 3L,
                                 Arrays.asList(
-                                        RowKind.INSERT,
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER,
-                                        RowKind.UPDATE_BEFORE,
-                                        RowKind.UPDATE_AFTER),
+                                        ChangeType.INSERT,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER,
+                                        ChangeType.UPDATE_BEFORE,
+                                        ChangeType.UPDATE_AFTER),
                                 Arrays.asList(
                                         // -- cdc log for batch 1
                                         // for k1
@@ -606,8 +609,7 @@ class KvTabletTest {
         FileLogProjection logProjection = null;
         if (doProjection) {
             logProjection = new FileLogProjection();
-            logProjection.setCurrentProjection(
-                    0L, rowType, ArrowCompressionInfo.NO_COMPRESSION, new int[] {0});
+            logProjection.setCurrentProjection(0L, rowType, DEFAULT_COMPRESSION, new int[] {0});
         }
 
         RowType readLogRowType = doProjection ? rowType.project(new int[] {0}) : rowType;
@@ -625,7 +627,7 @@ class KvTabletTest {
                 logRecords(
                         readLogRowType,
                         0,
-                        Arrays.asList(RowKind.INSERT, RowKind.INSERT),
+                        Arrays.asList(ChangeType.INSERT, ChangeType.INSERT),
                         doProjection
                                 ? Arrays.asList(new Object[] {1}, new Object[] {2})
                                 : Arrays.asList(new Object[] {1, "v11"}, new Object[] {2, "v21"}));
@@ -688,7 +690,7 @@ class KvTabletTest {
                 logRecords(
                         readLogRowType,
                         endOffset,
-                        Collections.singletonList(RowKind.INSERT),
+                        Collections.singletonList(ChangeType.INSERT),
                         Collections.singletonList(
                                 doProjection ? new Object[] {3} : new Object[] {3, "v31"}));
         actualLogRecords = readLogRecords(logTablet, endOffset, logProjection);
@@ -716,8 +718,7 @@ class KvTabletTest {
         FileLogProjection logProjection = null;
         if (doProjection) {
             logProjection = new FileLogProjection();
-            logProjection.setCurrentProjection(
-                    0L, rowType, ArrowCompressionInfo.NO_COMPRESSION, new int[] {0});
+            logProjection.setCurrentProjection(0L, rowType, DEFAULT_COMPRESSION, new int[] {0});
         }
         RowType readLogRowType = doProjection ? rowType.project(new int[] {0}) : rowType;
 
@@ -736,10 +737,10 @@ class KvTabletTest {
                         readLogRowType,
                         0,
                         Arrays.asList(
-                                RowKind.INSERT,
-                                RowKind.INSERT,
-                                RowKind.UPDATE_BEFORE,
-                                RowKind.UPDATE_AFTER),
+                                ChangeType.INSERT,
+                                ChangeType.INSERT,
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER),
                         doProjection
                                 ? Arrays.asList(
                                         new Object[] {1},
@@ -811,7 +812,10 @@ class KvTabletTest {
                 logRecords(
                         readLogRowType,
                         endOffset,
-                        Arrays.asList(RowKind.UPDATE_BEFORE, RowKind.UPDATE_AFTER, RowKind.INSERT),
+                        Arrays.asList(
+                                ChangeType.UPDATE_BEFORE,
+                                ChangeType.UPDATE_AFTER,
+                                ChangeType.INSERT),
                         doProjection
                                 ? Arrays.asList(
                                         new Object[] {1}, new Object[] {1}, new Object[] {3})
@@ -877,21 +881,12 @@ class KvTabletTest {
     }
 
     private MemoryLogRecords logRecords(
-            long baseOffset, List<RowKind> rowKinds, List<Object[]> values) throws Exception {
-        return createBasicMemoryLogRecords(
-                baseRowType,
-                DEFAULT_SCHEMA_ID,
-                baseOffset,
-                -1L,
-                NO_WRITER_ID,
-                NO_BATCH_SEQUENCE,
-                rowKinds,
-                values,
-                LogFormat.ARROW);
+            long baseOffset, List<ChangeType> changeTypes, List<Object[]> values) throws Exception {
+        return logRecords(baseRowType, baseOffset, changeTypes, values);
     }
 
     private MemoryLogRecords logRecords(
-            RowType rowType, long baseOffset, List<RowKind> rowKinds, List<Object[]> values)
+            RowType rowType, long baseOffset, List<ChangeType> changeTypes, List<Object[]> values)
             throws Exception {
         return createBasicMemoryLogRecords(
                 rowType,
@@ -900,9 +895,10 @@ class KvTabletTest {
                 -1L,
                 NO_WRITER_ID,
                 NO_BATCH_SEQUENCE,
-                rowKinds,
+                changeTypes,
                 values,
-                LogFormat.ARROW);
+                LogFormat.ARROW,
+                DEFAULT_COMPRESSION);
     }
 
     private void checkEqual(

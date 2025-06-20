@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- Copyright (c) 2024 Alibaba Group Holding Ltd.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
 
       http://www.apache.org/licenses/LICENSE-2.0
 
@@ -21,7 +23,7 @@
     <parent>
         <groupId>com.alibaba.fluss</groupId>
         <artifactId>fluss</artifactId>
-        <version>0.6-SNAPSHOT</version>
+        <version>0.8-SNAPSHOT</version>
     </parent>
 
     <artifactId>fluss-test-coverage</artifactId>
@@ -61,52 +63,118 @@
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-connector-flink</artifactId>
+            <artifactId>fluss-flink-common</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
         </dependency>
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-lakehouse-paimon</artifactId>
+            <artifactId>fluss-flink-1.20</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-flink-1.19</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-flink-1.18</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>
 
+    <profiles>
+        <profile>
+            <id>test-core</id>
+            <build>
+                <plugins>
+                    <!-- required by jacoco for the goal: check to work -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-class-files</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <overwrite>false</overwrite>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/../</directory>
+                                            <includes>
+                                                <include>**/target/classes/**</include>
+                                            </includes>
+                                            <excludes>
+                                                <exclude>fluss-test-coverage/**</exclude>
+                                                <exclude>fluss-test-utils/**</exclude>
+                                                <exclude>fluss-flink/**</exclude>
+                                                <exclude>fluss-lake/**</exclude>
+                                            </excludes>
+                                        </resource>
+                                    </resources>
+                                    <outputDirectory>${project.build.directory}/classes</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>test-flink</id>
+            <build>
+                <plugins>
+                    <!-- required by jacoco for the goal: check to work -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-resources-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-class-files</id>
+                                <phase>generate-resources</phase>
+                                <goals>
+                                    <goal>copy-resources</goal>
+                                </goals>
+                                <configuration>
+                                    <overwrite>false</overwrite>
+                                    <resources>
+                                        <resource>
+                                            <directory>${project.basedir}/../</directory>
+                                            <includes>
+                                                <include>fluss-flink/**/target/classes/**</include>
+                                                <include>fluss-lake/**/target/classes/**</include>
+                                            </includes>
+                                            <excludes>
+                                                <exclude>fluss-test-coverage/**</exclude>
+                                                <exclude>fluss-test-utils/**</exclude>
+                                            </excludes>
+                                        </resource>
+                                    </resources>
+                                    <outputDirectory>${project.build.directory}/classes</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
     <build>
 
         <plugins>
-            <!-- required by jacoco for the goal: check to work -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>copy-class-files</id>
-                        <phase>generate-resources</phase>
-                        <goals>
-                            <goal>copy-resources</goal>
-                        </goals>
-                        <configuration>
-                            <overwrite>false</overwrite>
-                            <resources>
-                                <resource>
-                                    <directory>${project.basedir}/../</directory>
-                                    <includes>
-                                        <include>**/target/classes/**</include>
-                                    </includes>
-                                    <excludes>
-                                        <exclude>fluss-test-coverage/**</exclude>
-                                        <exclude>fluss-test-utils/**</exclude>
-                                    </excludes>
-                                </resource>
-                            </resources>
-                            <outputDirectory>${project.build.directory}/classes</outputDirectory>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+
 
             <!-- test code coverage aggregated from all modules -->
             <plugin>
@@ -173,26 +241,16 @@
                                         <exclude>com.alibaba.fluss.memory.*</exclude>
                                         <exclude>com.alibaba.fluss.utils.*</exclude>
                                         <exclude>com.alibaba.fluss.exception.*</exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.utils.concurrent.FutureUtils.Timeout
-                                        </exclude>
-                                        <exclude>com.alibaba.fluss.row.BinarySection</exclude>
-                                        <exclude>com.alibaba.fluss.row.GenericRow</exclude>
                                         <exclude>com.alibaba.fluss.row.arrow.*</exclude>
                                         <exclude>
                                             com.alibaba.fluss.row.columnar.BytesColumnVector.Bytes
                                         </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.row.columnar.VectorizedColumnBatch
-                                        </exclude>
                                         <exclude>com.alibaba.fluss.row.encode.RowEncoder</exclude>
-                                        <exclude>com.alibaba.fluss.cluster.ServerNode</exclude>
-                                        <exclude>com.alibaba.fluss.utils.crc.Crc32C</exclude>
-                                        <exclude>com.alibaba.fluss.config.FlussConfigUtils</exclude>
                                         <exclude>com.alibaba.fluss.table.*</exclude>
                                         <exclude>com.alibaba.fluss.record.*</exclude>
                                         <exclude>com.alibaba.fluss.kv.*</exclude>
                                         <exclude>com.alibaba.fluss.io.*</exclude>
+                                        <exclude>com.alibaba.fluss.bucketing.BucketingFunction</exclude>
                                         <exclude>com.alibaba.fluss.server.ServerBase</exclude>
                                         <exclude>com.alibaba.fluss.server.utils.ShutdownHookUtil
                                         </exclude>
@@ -211,45 +269,36 @@
                                         <exclude>com.alibaba.fluss.Bucket</exclude>
                                         <exclude>com.alibaba.fluss.remote.*</exclude>
                                         <exclude>com.alibaba.fluss.compression.*</exclude>
+                                        <exclude>com.alibaba.fluss.security.auth.sasl.plain.PlainSaslServer.PlainSaslServerFactory</exclude>
+                                        <exclude>com.alibaba.fluss.security.auth.ServerAuthenticator</exclude>
                                         <!-- start exclude for flink-connector -->
-                                        <exclude>com.alibaba.fluss.connector.flink.catalog.*
-                                        </exclude>
-                                        <exclude>com.alibaba.fluss.connector.flink.utils.*</exclude>
-                                        <exclude>com.alibaba.fluss.connector.flink.source.*
+                                        <exclude>com.alibaba.fluss.flink.utils.*</exclude>
+                                        <exclude>com.alibaba.fluss.flink.source.*
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.catalog.FlinkCatalog
+                                            com.alibaba.fluss.flink.source.FlinkTableSource.*
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.catalog.FlinkCatalogOptions
+                                            com.alibaba.fluss.flink.source.split.HybridSnapshotLogSplitState
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.FlinkTableSource.*
+                                            com.alibaba.fluss.flink.source.split.LogSplitState
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.split.HybridSnapshotLogSplitState
+                                            com.alibaba.fluss.flink.source.state.SourceEnumeratorState
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.split.LogSplitState
+                                            com.alibaba.fluss.flink.source.event.PartitionBucketsUnsubscribedEvent
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.state.SourceEnumeratorState
+                                            com.alibaba.fluss.flink.source.emitter.FlinkRecordEmitter
                                         </exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.event.PartitionBucketsUnsubscribedEvent
+                                            com.alibaba.fluss.flink.source.reader.FlinkSourceReader
                                         </exclude>
+                                        <exclude>com.alibaba.fluss.flink.sink.*</exclude>
                                         <exclude>
-                                            com.alibaba.fluss.connector.flink.source.emitter.FlinkRecordEmitter
-                                        </exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.connector.flink.source.reader.FlinkSourceReader
-                                        </exclude>
-                                        <exlucde>
-                                            com.alibaba.fluss.connector.flink.source.reader.RecordAndPos
-                                        </exlucde>
-                                        <exclude>com.alibaba.fluss.connector.flink.sink.FlinkSink</exclude>
-                                        <exclude>
-                                            com.alibaba.fluss.connector.flink.metrics.*
+                                            com.alibaba.fluss.flink.metrics.*
                                         </exclude>
                                         <!-- end exclude for flink-connector -->
                                         <exclude>com.alibaba.fluss.fs.hdfs.HadoopFsPlugin
@@ -264,11 +313,32 @@
                                         <!-- start exclude for metric -->
                                         <exclude>com.alibaba.fluss.metrics.*</exclude>
                                         <!-- end exclude for metric -->
-                                        <!-- start exclude for lakehouse-paimon -->
-                                        <exclude>com.alibaba.fluss.lakehouse.*</exclude>
-                                        <exclude>com.alibaba.fluss.connector.flink.lakehouse.*</exclude>
-                                        <!-- end exclude for lakehouse-paimon -->
-                                        <exclude>com.alibaba.fluss.lakehouse.cli.*</exclude>
+                                        <exclude>com.alibaba.fluss.flink.lakehouse.*</exclude>
+                                        <exclude>com.alibaba.fluss.kafka.*</exclude>
+                                        <!-- exclude for fluss-ci-tools -->
+                                        <exclude>com.alibaba.fluss.tools.ci.*</exclude>
+                                        <!-- exclude for dummy class -->
+                                        <exclude>com.alibaba.fluss.dist.DummyClass</exclude>
+                                        <exclude>com.alibaba.fluss.flink.DummyClass120</exclude>
+                                        <exclude>com.alibaba.fluss.flink.DummyClass119</exclude>
+                                        <exclude>com.alibaba.fluss.lake.batch.ArrowRecordBatch</exclude>
+                                        <exclude>com.alibaba.fluss.lake.committer.CommittedLakeSnapshot</exclude>
+                                        <exclude>com.alibaba.fluss.lake.paimon.FlussDataTypeToPaimonDataType</exclude>
+                                        <!-- start exclude for flink tiering service -->
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TieringSourceOptions</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TieringSource.Builder</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TieringSource</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.enumerator.TieringSourceEnumerator</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.enumerator.TieringSourceEnumerator.HeartBeatHelper</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TieringWriterInitContext</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TieringSourceReader</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TableBucketWriteResultEmitter</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.source.TableBucketWriteResultTypeInfo*</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.committer.TieringCommitOperatorFactory</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.committer.CommittableMessageTypeInfo*</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.committer.LakeTieringCommitOperatorFactory</exclude>
+                                        <exclude>com.alibaba.fluss.flink.tiering.FlussLakeTieringEntrypoint</exclude>
+                                        <!-- end exclude for flink tiering service -->
                                         <!-- end exclude for predicate -->
                                         <exclude>com.alibaba.fluss.predicate.*</exclude>
                                     </excludes>
@@ -282,7 +352,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-deploy-plugin</artifactId>
-                <version>2.7</version>
                 <configuration>
                     <skip>true</skip>
                 </configuration>

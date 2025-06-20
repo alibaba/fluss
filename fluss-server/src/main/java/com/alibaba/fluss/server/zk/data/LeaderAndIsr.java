@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,7 +20,6 @@ package com.alibaba.fluss.server.zk.data;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
@@ -32,6 +32,7 @@ public class LeaderAndIsr {
 
     public static final int INITIAL_LEADER_EPOCH = 0;
     public static final int INITIAL_BUCKET_EPOCH = 0;
+    public static final int NO_LEADER = -1;
 
     /** The leader replica id. */
     private final int leader;
@@ -69,6 +70,10 @@ public class LeaderAndIsr {
         this.bucketEpoch = bucketEpoch;
     }
 
+    public LeaderAndIsr newLeaderAndIsr(int newLeader, List<Integer> newIsr) {
+        return new LeaderAndIsr(newLeader, leaderEpoch, newIsr, coordinatorEpoch, bucketEpoch + 1);
+    }
+
     public int leader() {
         return leader;
     }
@@ -87,10 +92,6 @@ public class LeaderAndIsr {
 
     public int[] isrArray() {
         return isr.stream().mapToInt(Integer::intValue).toArray();
-    }
-
-    public List<Integer> followers() {
-        return isr.stream().filter(i -> i != leader).collect(Collectors.toList());
     }
 
     public int bucketEpoch() {

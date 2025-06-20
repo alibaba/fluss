@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +20,7 @@ package com.alibaba.fluss.server.replica;
 import com.alibaba.fluss.config.ConfigOptions;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.server.coordinator.TestCoordinatorGateway;
 import com.alibaba.fluss.server.entity.NotifyLeaderAndIsrData;
 import com.alibaba.fluss.server.log.checkpoint.OffsetCheckpointFile;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
@@ -169,7 +171,7 @@ final class HighWatermarkPersistenceTest extends ReplicaTestBase {
         assertThat(highWatermarkFor(tb2)).isEqualTo(10L);
 
         // 1. replicaManager shutdown after tb1/tb2 become leader.
-        replicaManager = buildReplicaManager();
+        replicaManager = buildReplicaManager(new TestCoordinatorGateway());
         replicaManager.startup();
         assertThat(highWatermarkFor(tb1)).isEqualTo(10L);
         assertThat(highWatermarkFor(tb2)).isEqualTo(10L);
@@ -182,7 +184,7 @@ final class HighWatermarkPersistenceTest extends ReplicaTestBase {
         assertThat(highWatermarkFor(tb2)).isEqualTo(10L);
 
         // 2. replicaManager shutdown before tb1/tb2 become leader.
-        replicaManager = buildReplicaManager();
+        replicaManager = buildReplicaManager(new TestCoordinatorGateway());
         replicaManager.startup();
         replicaManager.shutdown();
         assertThat(highWatermarkFor(tb1)).isEqualTo(20L);

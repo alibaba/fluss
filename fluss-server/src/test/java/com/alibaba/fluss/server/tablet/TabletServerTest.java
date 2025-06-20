@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,7 +22,6 @@ import com.alibaba.fluss.config.Configuration;
 import com.alibaba.fluss.server.ServerBase;
 import com.alibaba.fluss.server.ServerTestBase;
 import com.alibaba.fluss.server.zk.data.TabletServerRegistration;
-import com.alibaba.fluss.utils.NetUtils;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,21 +36,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TabletServerTest extends ServerTestBase {
 
     private static final int SERVER_ID = 0;
+    private static final String RACK = "cn-hangzhou-server10";
 
     private static @TempDir File tempDirForLog;
 
     private TabletServer server;
-    private int port;
 
     @BeforeEach
     void before() throws Exception {
-        try (NetUtils.Port p = NetUtils.getAvailablePort()) {
-            port = p.getPort();
-            Configuration conf = createTabletServerConfiguration();
-            conf.set(ConfigOptions.TABLET_SERVER_PORT, port + "");
-            server = new TabletServer(conf);
-            server.start();
-        }
+        Configuration conf = createTabletServerConfiguration();
+        server = new TabletServer(conf);
+        server.start();
     }
 
     @AfterEach
@@ -69,14 +65,14 @@ class TabletServerTest extends ServerTestBase {
     protected ServerBase getStartFailServer() {
         Configuration configuration = createTabletServerConfiguration();
         // configure with a invalid port, the server should fail to start
-        configuration.setString(ConfigOptions.TABLET_SERVER_PORT, "-12");
+        configuration.set(ConfigOptions.BIND_LISTENERS, "FLUSS://localhost:-12");
         return new TabletServer(configuration);
     }
 
     private static Configuration createTabletServerConfiguration() {
         Configuration configuration = createConfiguration();
         configuration.set(ConfigOptions.TABLET_SERVER_ID, SERVER_ID);
-        configuration.set(ConfigOptions.TABLET_SERVER_HOST, "localhost");
+        configuration.set(ConfigOptions.TABLET_SERVER_RACK, RACK);
         configuration.setString(ConfigOptions.DATA_DIR, tempDirForLog.getAbsolutePath());
         return configuration;
     }
@@ -89,7 +85,8 @@ class TabletServerTest extends ServerTestBase {
         assertThat(optionalTabletServerRegistration).isPresent();
 
         TabletServerRegistration tabletServerRegistration = optionalTabletServerRegistration.get();
-        assertThat(tabletServerRegistration.getHost()).isEqualTo("127.0.0.1");
-        assertThat(tabletServerRegistration.getPort()).isEqualTo(port);
+        assertThat(tabletServerRegistration.getRack()).isEqualTo(RACK);
+        verifyEndpoint(
+                tabletServerRegistration.getEndpoints(), server.getRpcServer().getBindEndpoints());
     }
 }

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -80,7 +81,9 @@ public final class Cluster {
         for (Map.Entry<PhysicalTablePath, List<BucketLocation>> entry :
                 bucketLocationsByPath.entrySet()) {
             PhysicalTablePath physicalTablePath = entry.getKey();
-            List<BucketLocation> bucketsForTable = entry.getValue();
+            // avoid StackOverflowError on N levels UnmodifiableCollection,
+            // see https://stackoverflow.com/a/29027474
+            List<BucketLocation> bucketsForTable = new ArrayList<>(entry.getValue());
             // Optimise for the common case where all buckets are available.
             boolean foundUnavailableBucket = false;
             List<BucketLocation> availableBucketsForTable = new ArrayList<>(bucketsForTable.size());

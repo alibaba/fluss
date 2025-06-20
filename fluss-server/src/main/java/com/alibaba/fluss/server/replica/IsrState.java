@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -63,6 +64,18 @@ public interface IsrState {
         @Override
         public boolean isInflight() {
             return false;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            CommittedIsrState that = (CommittedIsrState) o;
+            return isr.equals(that.isr);
         }
 
         @Override
@@ -135,6 +148,20 @@ public interface IsrState {
         }
 
         @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            PendingExpandIsrState that = (PendingExpandIsrState) o;
+            return newInSyncReplicaId == that.newInSyncReplicaId
+                    && sentLeaderAndIsr.equals(that.sentLeaderAndIsr)
+                    && lastCommittedState.equals(that.lastCommittedState);
+        }
+
+        @Override
         public String toString() {
             return "PendingExpandIsrState{"
                     + "newInSyncReplicaId="
@@ -186,6 +213,20 @@ public interface IsrState {
         @Override
         public boolean isInflight() {
             return true;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            PendingShrinkIsrState that = (PendingShrinkIsrState) o;
+            return outOfSyncReplicaIds.equals(that.outOfSyncReplicaIds)
+                    && sentLeaderAndIsr.equals(that.sentLeaderAndIsr)
+                    && lastCommittedState.equals(that.lastCommittedState);
         }
 
         @Override

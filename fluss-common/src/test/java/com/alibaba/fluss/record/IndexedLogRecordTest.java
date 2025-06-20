@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -43,7 +44,7 @@ class IndexedLogRecordTest extends LogTestBase {
         writer.writeString(BinaryString.fromString("abc"));
         row.pointTo(writer.segment(), 0, writer.position());
 
-        IndexedLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
+        IndexedLogRecord.writeTo(outputView, ChangeType.APPEND_ONLY, row);
         // Test read from.
         IndexedLogRecord defaultLogRecord =
                 IndexedLogRecord.readFrom(
@@ -56,7 +57,7 @@ class IndexedLogRecordTest extends LogTestBase {
         assertThat(defaultLogRecord.getSizeInBytes()).isEqualTo(17);
         assertThat(defaultLogRecord.logOffset()).isEqualTo(1000);
         assertThat(defaultLogRecord.timestamp()).isEqualTo(10001);
-        assertThat(defaultLogRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+        assertThat(defaultLogRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
         assertThat(defaultLogRecord.getRow()).isEqualTo(row);
     }
 
@@ -64,7 +65,7 @@ class IndexedLogRecordTest extends LogTestBase {
     void testWriteToAndReadFromWithRandomData() throws IOException {
         // Test write to.
         IndexedRow row = TestInternalRowGenerator.genIndexedRowForAllType();
-        IndexedLogRecord.writeTo(outputView, RowKind.APPEND_ONLY, row);
+        IndexedLogRecord.writeTo(outputView, ChangeType.APPEND_ONLY, row);
         DataType[] allColTypes =
                 TestInternalRowGenerator.createAllRowType().getChildren().toArray(new DataType[0]);
 
@@ -79,7 +80,7 @@ class IndexedLogRecordTest extends LogTestBase {
 
         assertThat(defaultLogRecord.logOffset()).isEqualTo(1000);
         assertThat(defaultLogRecord.timestamp()).isEqualTo(10001);
-        assertThat(defaultLogRecord.getRowKind()).isEqualTo(RowKind.APPEND_ONLY);
+        assertThat(defaultLogRecord.getChangeType()).isEqualTo(ChangeType.APPEND_ONLY);
         assertThat(defaultLogRecord.getRow()).isEqualTo(row);
     }
 }

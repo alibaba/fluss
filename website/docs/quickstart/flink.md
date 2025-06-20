@@ -1,7 +1,25 @@
 ---
-sidebar_label: Flink
+title: Real-Time Analytics with Flink.
 sidebar_position: 1
 ---
+
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
 
 # Real-Time Analytics With Flink
 
@@ -32,21 +50,14 @@ mkdir fluss-quickstart-flink
 cd fluss-quickstart-flink
 ```
 
-Then, set the following environment variables.
+2. Create a `docker-compose.yml` file with the following content:
 
-```bash
-export FLUSS_VERSION=0.5.0
-export FLUSS_QUICKSTART_FLINK_VERSION=1.20-0.5
-```
 
-2. Next, create a `docker-compose.yml` file with the following content:
-
-[//]: # (IMPORTANT NOTE TO CONTRIBUTORS: if you change config options or versions here, also change them in other quickstart guides that build upon this one!)
 ```yaml
 services:
   #begin Fluss cluster
   coordinator-server:
-    image: fluss/fluss:${FLUSS_VERSION}
+    image: fluss/fluss:$FLUSS_DOCKER_VERSION$
     command: coordinatorServer
     depends_on:
       - zookeeper
@@ -54,13 +65,15 @@ services:
       - |
         FLUSS_PROPERTIES=
         zookeeper.address: zookeeper:2181
-        coordinator.host: coordinator-server
+        bind.listeners: FLUSS://coordinator-server:9123
         remote.data.dir: /tmp/fluss/remote-data
         datalake.format: paimon
         datalake.paimon.metastore: filesystem
         datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
   tablet-server:
-    image: fluss/fluss:${FLUSS_VERSION}
+    image: fluss/fluss:$FLUSS_DOCKER_VERSION$
     command: tabletServer
     depends_on:
       - coordinator-server
@@ -68,20 +81,22 @@ services:
       - |
         FLUSS_PROPERTIES=
         zookeeper.address: zookeeper:2181
-        tablet-server.host: tablet-server
+        bind.listeners: FLUSS://tablet-server:9123
         data.dir: /tmp/fluss/data
         remote.data.dir: /tmp/fluss/remote-data
         kv.snapshot.interval: 0s
         datalake.format: paimon
         datalake.paimon.metastore: filesystem
         datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
   zookeeper:
     restart: always
     image: zookeeper:3.9.2
   #end
   #begin Flink cluster
   jobmanager:
-    image: fluss/quickstart-flink:${FLUSS_QUICKSTART_FLINK_VERSION}
+    image: fluss/quickstart-flink:1.20-$FLUSS_DOCKER_VERSION$
     ports:
       - "8083:8081"
     command: jobmanager
@@ -92,7 +107,7 @@ services:
     volumes:
       - shared-tmpfs:/tmp/paimon
   taskmanager:
-    image: fluss/quickstart-flink:${FLUSS_QUICKSTART_FLINK_VERSION}
+    image: fluss/quickstart-flink:1.20-$FLUSS_DOCKER_VERSION$
     depends_on:
       - jobmanager
     command: taskmanager
@@ -119,7 +134,8 @@ The Docker Compose environment consists of the following containers:
 - **Fluss Cluster:** a Fluss `CoordinatorServer`, a Fluss `TabletServer` and a `ZooKeeper` server.
 - **Flink Cluster**: a Flink `JobManager` and a Flink `TaskManager` container to execute queries.
 
-**Note:** The `fluss/quickstart-flink` includes the [fluss-connector-flink](engine-flink/getting-started.md), [paimon-flink](https://paimon.apache.org/docs/master/flink/quick-start/) and
+**Note:** The `fluss/quickstart-flink` image is based on [flink:1.20.1-java17](https://hub.docker.com/layers/library/flink/1.20-java17/images/sha256:bf1af6406c4f4ad8faa46efe2b3d0a0bf811d1034849c42c1e3484712bc83505) and
+includes the [fluss-flink](engine-flink/getting-started.md), [paimon-flink](https://paimon.apache.org/docs/1.0/flink/quick-start/) and
 [flink-connector-faker](https://flink-packages.org/packages/flink-faker) to simplify this guide.
 
 3. To start all containers, run:
@@ -130,15 +146,15 @@ This command automatically starts all the containers defined in the Docker Compo
 
 Run 
 ```shell
-docker ps
+docker container ls -a
 ```
 to check whether all containers are running properly.
 
 You can also visit http://localhost:8083/ to see if Flink is running normally.
 
-:::note 
-- If you want to additionally use an observability stack, follow one of the provided quickstart guides [here](../maintenance/observability/quickstart.md) and then continue with this guide.
-- If you want to run with your own Flink environment, remember to download the [fluss-connector-flink](/downloads), [flink-connector-faker](https://github.com/knaufk/flink-faker/releases), [paimon-flink](https://paimon.apache.org/docs/master/flink/quick-start/) connector jars and then put them to `FLINK_HOME/lib/`.
+:::note
+- If you want to additionally use an observability stack, follow one of the provided quickstart guides [here](maintenance/observability/quickstart.md) and then continue with this guide.
+- If you want to run with your own Flink environment, remember to download the [fluss-flink connector jar](/downloads), [flink-connector-faker](https://github.com/knaufk/flink-faker/releases), [paimon-flink connector jar](https://paimon.apache.org/docs/1.0/flink/quick-start/) and then put them to `FLINK_HOME/lib/`.
 - All the following commands involving `docker compose` should be executed in the created working directory that contains the `docker-compose.yml` file.
 :::
 
@@ -179,6 +195,11 @@ CREATE CATALOG fluss_catalog WITH (
 ```sql title="Flink SQL"
 USE CATALOG fluss_catalog;
 ```
+
+:::info
+By default, catalog configurations are not persisted across Flink SQL client sessions.
+For further information how to store catalog configurations, see [Flink's Catalog Store](https://nightlies.apache.org/flink/flink-docs-stable/docs/dev/table/catalogs/#catalog-store).
+:::
 
 ### Create Tables
 Running the following SQL to create Fluss tables to be used in this guide:
@@ -348,9 +369,15 @@ SELECT * FROM fluss_customer WHERE `cust_key` = 1;
 To integrate with [Apache Paimon](https://paimon.apache.org/), you need to start the `Lakehouse Tiering Service`. 
 Open a new terminal, navigate to the `fluss-quickstart-flink` directory, and execute the following command within this directory to start the service:
 ```shell
-docker compose exec coordinator-server ./bin/lakehouse.sh -D flink.rest.address=jobmanager -D flink.rest.port=8081 -D flink.execution.checkpointing.interval=30s
+docker compose exec jobmanager \
+    /opt/flink/bin/flink run \
+    /opt/flink/opt/fluss-flink-tiering-$FLUSS_VERSION$.jar \
+    --fluss.bootstrap.servers coordinator-server:9123 \
+    --datalake.format paimon \
+    --datalake.paimon.metastore filesystem \
+    --datalake.paimon.warehouse /tmp/paimon
 ```
-You should see a Flink Job named `fluss-paimon-tiering-service` running in the [Flink Web UI](http://localhost:8083/).
+You should see a Flink Job to tier data from Fluss to Paimon running in the [Flink Web UI](http://localhost:8083/).
 
 ### Streaming into Fluss datalake-enabled tables
 
@@ -372,7 +399,10 @@ CREATE TABLE datalake_enriched_orders (
     `cust_mktsegment` STRING,
     `nation_name` STRING,
     PRIMARY KEY (`order_key`) NOT ENFORCED
-) WITH ('table.datalake.enabled' = 'true');
+) WITH (
+    'table.datalake.enabled' = 'true',
+    'table.datalake.freshness' = '30s'
+);
 ```
 
 Next, perform streaming data writing into the **datalake-enabled** table, `datalake_enriched_orders`:
@@ -496,4 +526,4 @@ docker compose down -v
 to stop all containers.
 
 ## Learn more
-Now that you're up an running with Fluss and Flink, check out the [Apache Flink Engine](engine-flink/getting-started.md) docs to learn more features with Flink or [this guide](../maintenance/observability/quickstart.md) to learn how to set up an observability stack for Fluss and Flink.
+Now that you're up an running with Fluss and Flink, check out the [Apache Flink Engine](engine-flink/getting-started.md) docs to learn more features with Flink or [this guide](/maintenance/observability/quickstart.md) to learn how to set up an observability stack for Fluss and Flink.

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,6 +28,7 @@ import com.alibaba.fluss.metadata.LogFormat;
 import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.Schema;
 import com.alibaba.fluss.metadata.TableBucket;
+import com.alibaba.fluss.record.ChangeType;
 import com.alibaba.fluss.record.DefaultLogRecordBatch;
 import com.alibaba.fluss.record.FileLogRecords;
 import com.alibaba.fluss.record.KvRecord;
@@ -39,7 +41,6 @@ import com.alibaba.fluss.record.LogRecords;
 import com.alibaba.fluss.record.MemoryLogRecords;
 import com.alibaba.fluss.record.MemoryLogRecordsArrowBuilder;
 import com.alibaba.fluss.record.MemoryLogRecordsIndexedBuilder;
-import com.alibaba.fluss.record.RowKind;
 import com.alibaba.fluss.remote.RemoteLogSegment;
 import com.alibaba.fluss.row.BinaryString;
 import com.alibaba.fluss.row.GenericRow;
@@ -68,6 +69,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.alibaba.fluss.compression.ArrowCompressionInfo.DEFAULT_COMPRESSION;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_BATCH_SEQUENCE;
 import static com.alibaba.fluss.record.LogRecordBatch.NO_WRITER_ID;
 import static com.alibaba.fluss.record.LogRecordReadContext.createArrowReadContext;
@@ -162,8 +164,8 @@ public class DataTestUtils {
     public static MemoryLogRecords genMemoryLogRecordsWithWriterId(
             List<Object[]> objects, long writerId, int batchSequence, long baseOffset)
             throws Exception {
-        List<RowKind> rowKinds =
-                objects.stream().map(row -> RowKind.APPEND_ONLY).collect(Collectors.toList());
+        List<ChangeType> changeTypes =
+                objects.stream().map(row -> ChangeType.APPEND_ONLY).collect(Collectors.toList());
         return createBasicMemoryLogRecords(
                 DATA1_ROW_TYPE,
                 DEFAULT_SCHEMA_ID,
@@ -171,22 +173,23 @@ public class DataTestUtils {
                 System.currentTimeMillis(),
                 writerId,
                 batchSequence,
-                rowKinds,
+                changeTypes,
                 objects,
-                LogFormat.ARROW);
+                LogFormat.ARROW,
+                DEFAULT_COMPRESSION);
     }
 
     public static MemoryLogRecords genIndexedMemoryLogRecords(List<IndexedRow> rows)
             throws Exception {
-        List<RowKind> rowKinds =
-                rows.stream().map(row -> RowKind.APPEND_ONLY).collect(Collectors.toList());
+        List<ChangeType> changeTypes =
+                rows.stream().map(row -> ChangeType.APPEND_ONLY).collect(Collectors.toList());
         return createIndexedMemoryLogRecords(
                 BASE_OFFSET,
                 System.currentTimeMillis(),
                 DEFAULT_SCHEMA_ID,
                 NO_WRITER_ID,
                 NO_BATCH_SEQUENCE,
-                rowKinds,
+                changeTypes,
                 rows);
     }
 
@@ -358,8 +361,8 @@ public class DataTestUtils {
             List<Object[]> objects,
             LogFormat logFormat)
             throws Exception {
-        List<RowKind> rowKinds =
-                objects.stream().map(row -> RowKind.APPEND_ONLY).collect(Collectors.toList());
+        List<ChangeType> changeTypes =
+                objects.stream().map(row -> ChangeType.APPEND_ONLY).collect(Collectors.toList());
         return createBasicMemoryLogRecords(
                 rowType,
                 schemaId,
@@ -367,9 +370,10 @@ public class DataTestUtils {
                 maxTimestamp,
                 NO_WRITER_ID,
                 NO_BATCH_SEQUENCE,
-                rowKinds,
+                changeTypes,
                 objects,
-                logFormat);
+                logFormat,
+                DEFAULT_COMPRESSION);
     }
 
     public static MemoryLogRecords createBasicMemoryLogRecords(
@@ -379,9 +383,10 @@ public class DataTestUtils {
             long maxTimestamp,
             long writerId,
             int batchSequence,
-            List<RowKind> rowKinds,
+            List<ChangeType> changeTypes,
             List<Object[]> objects,
-            LogFormat logFormat)
+            LogFormat logFormat,
+            ArrowCompressionInfo arrowCompressionInfo)
             throws Exception {
         return createMemoryLogRecords(
                 rowType,
@@ -390,9 +395,10 @@ public class DataTestUtils {
                 maxTimestamp,
                 writerId,
                 batchSequence,
-                rowKinds,
+                changeTypes,
                 objects,
-                logFormat);
+                logFormat,
+                arrowCompressionInfo);
     }
 
     public static MemoryLogRecords createMemoryLogRecords(
@@ -402,9 +408,10 @@ public class DataTestUtils {
             long maxTimestamp,
             long writerId,
             int batchSequence,
-            List<RowKind> rowKinds,
+            List<ChangeType> changeTypes,
             List<Object[]> objects,
-            LogFormat logFormat)
+            LogFormat logFormat,
+            ArrowCompressionInfo arrowCompressionInfo)
             throws Exception {
         if (logFormat == LogFormat.ARROW) {
             List<InternalRow> rows =
@@ -416,8 +423,9 @@ public class DataTestUtils {
                     schemaId,
                     writerId,
                     batchSequence,
-                    rowKinds,
-                    rows);
+                    changeTypes,
+                    rows,
+                    arrowCompressionInfo);
         } else {
             return createIndexedMemoryLogRecords(
                     offsetBase,
@@ -425,7 +433,7 @@ public class DataTestUtils {
                     schemaId,
                     writerId,
                     batchSequence,
-                    rowKinds,
+                    changeTypes,
                     objects.stream()
                             .map(object -> indexedRow(rowType, object))
                             .collect(Collectors.toList()));
@@ -438,15 +446,15 @@ public class DataTestUtils {
             int schemaId,
             long writerId,
             int batchSequence,
-            List<RowKind> rowKinds,
+            List<ChangeType> changeTypes,
             List<IndexedRow> rows)
             throws Exception {
         UnmanagedPagedOutputView outputView = new UnmanagedPagedOutputView(100);
         MemoryLogRecordsIndexedBuilder builder =
                 MemoryLogRecordsIndexedBuilder.builder(
                         baseLogOffset, schemaId, Integer.MAX_VALUE, DEFAULT_MAGIC, outputView);
-        for (int i = 0; i < rowKinds.size(); i++) {
-            builder.append(rowKinds.get(i), rows.get(i));
+        for (int i = 0; i < changeTypes.size(); i++) {
+            builder.append(changeTypes.get(i), rows.get(i));
         }
         builder.setWriterState(writerId, batchSequence);
         MemoryLogRecords memoryLogRecords = MemoryLogRecords.pointToBytesView(builder.build());
@@ -465,26 +473,23 @@ public class DataTestUtils {
             int schemaId,
             long writerId,
             int batchSequence,
-            List<RowKind> rowKinds,
-            List<InternalRow> rows)
+            List<ChangeType> changeTypes,
+            List<InternalRow> rows,
+            ArrowCompressionInfo arrowCompressionInfo)
             throws Exception {
         try (BufferAllocator allocator = new RootAllocator(Integer.MAX_VALUE);
                 ArrowWriterPool provider = new ArrowWriterPool(allocator)) {
             ArrowWriter writer =
                     provider.getOrCreateWriter(
-                            1L,
-                            schemaId,
-                            Integer.MAX_VALUE,
-                            rowType,
-                            ArrowCompressionInfo.NO_COMPRESSION);
+                            1L, schemaId, Integer.MAX_VALUE, rowType, arrowCompressionInfo);
             MemoryLogRecordsArrowBuilder builder =
                     MemoryLogRecordsArrowBuilder.builder(
                             baseLogOffset,
                             schemaId,
                             writer,
                             new ManagedPagedOutputView(new TestingMemorySegmentPool(10 * 1024)));
-            for (int i = 0; i < rowKinds.size(); i++) {
-                builder.append(rowKinds.get(i), rows.get(i));
+            for (int i = 0; i < changeTypes.size(); i++) {
+                builder.append(changeTypes.get(i), rows.get(i));
             }
             builder.setWriterState(writerId, batchSequence);
             builder.close();
@@ -499,11 +504,11 @@ public class DataTestUtils {
 
     public static void assertMemoryRecordsEquals(
             RowType rowType, LogRecords records, List<List<Object[]>> expected) {
-        List<List<Tuple2<RowKind, Object[]>>> appendOnlyExpectedValue = new ArrayList<>();
+        List<List<Tuple2<ChangeType, Object[]>>> appendOnlyExpectedValue = new ArrayList<>();
         for (List<Object[]> expectedRecord : expected) {
-            List<Tuple2<RowKind, Object[]>> expectedFieldAndRowKind =
+            List<Tuple2<ChangeType, Object[]>> expectedFieldAndRowKind =
                     expectedRecord.stream()
-                            .map(val -> Tuple2.of(RowKind.APPEND_ONLY, val))
+                            .map(val -> Tuple2.of(ChangeType.APPEND_ONLY, val))
                             .collect(Collectors.toList());
             appendOnlyExpectedValue.add(expectedFieldAndRowKind);
         }
@@ -511,15 +516,17 @@ public class DataTestUtils {
     }
 
     public static void assertMemoryRecordsEqualsWithRowKind(
-            RowType rowType, LogRecords records, List<List<Tuple2<RowKind, Object[]>>> expected) {
+            RowType rowType,
+            LogRecords records,
+            List<List<Tuple2<ChangeType, Object[]>>> expected) {
         Iterator<LogRecordBatch> iterator = records.batches().iterator();
-        for (List<Tuple2<RowKind, Object[]>> expectedRecord : expected) {
+        for (List<Tuple2<ChangeType, Object[]>> expectedRecord : expected) {
             assertThat(iterator.hasNext()).isTrue();
             LogRecordBatch batch = iterator.next();
             try (LogRecordReadContext readContext =
                             createArrowReadContext(rowType, DEFAULT_SCHEMA_ID);
                     CloseableIterator<LogRecord> logIterator = batch.records(readContext)) {
-                for (Tuple2<RowKind, Object[]> expectedFieldAndRowKind : expectedRecord) {
+                for (Tuple2<ChangeType, Object[]> expectedFieldAndRowKind : expectedRecord) {
                     assertThat(logIterator.hasNext()).isTrue();
                     assertLogRecordsEqualsWithRowKind(
                             rowType, logIterator.next(), expectedFieldAndRowKind);
@@ -533,10 +540,10 @@ public class DataTestUtils {
     public static void assertLogRecordBatchEqualsWithRowKind(
             RowType rowType,
             LogRecordBatch logRecordBatch,
-            List<Tuple2<RowKind, Object[]>> expected) {
+            List<Tuple2<ChangeType, Object[]>> expected) {
         try (LogRecordReadContext readContext = createArrowReadContext(rowType, DEFAULT_SCHEMA_ID);
                 CloseableIterator<LogRecord> logIterator = logRecordBatch.records(readContext)) {
-            for (Tuple2<RowKind, Object[]> expectedFieldAndRowKind : expected) {
+            for (Tuple2<ChangeType, Object[]> expectedFieldAndRowKind : expected) {
                 assertThat(logIterator.hasNext()).isTrue();
                 assertLogRecordsEqualsWithRowKind(
                         rowType, logIterator.next(), expectedFieldAndRowKind);
@@ -571,28 +578,30 @@ public class DataTestUtils {
     private static void assertLogRecordsEqualsWithRowKind(
             RowType rowType,
             LogRecord logRecord,
-            Tuple2<RowKind, Object[]> expectedFieldAndRowKind) {
+            Tuple2<ChangeType, Object[]> expectedFieldAndRowKind) {
         DataType[] dataTypes = rowType.getChildren().toArray(new DataType[0]);
         InternalRow.FieldGetter[] fieldGetter = new InternalRow.FieldGetter[dataTypes.length];
         for (int i = 0; i < dataTypes.length; i++) {
             fieldGetter[i] = InternalRow.createFieldGetter(dataTypes[i], i);
         }
-        assertThat(logRecord.getRowKind()).isEqualTo(expectedFieldAndRowKind.f0);
+        assertThat(logRecord.getChangeType()).isEqualTo(expectedFieldAndRowKind.f0);
         assertRowValueEquals(
                 fieldGetter, dataTypes, logRecord.getRow(), expectedFieldAndRowKind.f1);
     }
 
     public static void assertLogRecordsEquals(
             RowType rowType, LogRecords logRecords, List<Object[]> expectedValue) {
-        List<Tuple2<RowKind, Object[]>> expectedValueWithRowKind =
+        List<Tuple2<ChangeType, Object[]>> expectedValueWithRowKind =
                 expectedValue.stream()
-                        .map(val -> Tuple2.of(RowKind.APPEND_ONLY, val))
+                        .map(val -> Tuple2.of(ChangeType.APPEND_ONLY, val))
                         .collect(Collectors.toList());
         assertLogRecordsEqualsWithRowKind(rowType, logRecords, expectedValueWithRowKind);
     }
 
     public static void assertLogRecordsEqualsWithRowKind(
-            RowType rowType, LogRecords logRecords, List<Tuple2<RowKind, Object[]>> expectedValue) {
+            RowType rowType,
+            LogRecords logRecords,
+            List<Tuple2<ChangeType, Object[]>> expectedValue) {
         DataType[] dataTypes = rowType.getChildren().toArray(new DataType[0]);
         InternalRow.FieldGetter[] fieldGetter = new InternalRow.FieldGetter[dataTypes.length];
         for (int i = 0; i < dataTypes.length; i++) {
@@ -606,8 +615,8 @@ public class DataTestUtils {
                 try (CloseableIterator<LogRecord> iterator = batch.records(readContext)) {
                     while (iterator.hasNext()) {
                         LogRecord record = iterator.next();
-                        Tuple2<RowKind, Object[]> expected = expectedValue.get(i++);
-                        assertThat(record.getRowKind()).isEqualTo(expected.f0);
+                        Tuple2<ChangeType, Object[]> expected = expectedValue.get(i++);
+                        assertThat(record.getChangeType()).isEqualTo(expected.f0);
                         assertRowValueEquals(fieldGetter, dataTypes, record.getRow(), expected.f1);
                     }
                 }

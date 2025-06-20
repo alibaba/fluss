@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,7 +18,7 @@
 package com.alibaba.fluss.server.coordinator;
 
 import com.alibaba.fluss.annotation.VisibleForTesting;
-import com.alibaba.fluss.cluster.ServerNode;
+import com.alibaba.fluss.metadata.PhysicalTablePath;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableBucketReplica;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -25,6 +26,7 @@ import com.alibaba.fluss.metadata.TablePartition;
 import com.alibaba.fluss.metadata.TablePath;
 import com.alibaba.fluss.server.coordinator.statemachine.BucketState;
 import com.alibaba.fluss.server.coordinator.statemachine.ReplicaState;
+import com.alibaba.fluss.server.metadata.ServerInfo;
 import com.alibaba.fluss.server.zk.data.LeaderAndIsr;
 import com.alibaba.fluss.utils.types.Tuple2;
 
@@ -34,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.NotThreadSafe;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -63,7 +66,7 @@ public class CoordinatorContext {
     // a success deletion.
     private final Map<TableBucketReplica, Integer> failDeleteNumbers = new HashMap<>();
 
-    private final Map<Integer, ServerNode> liveTabletServers = new HashMap<>();
+    private final Map<Integer, ServerInfo> liveTabletServers = new HashMap<>();
 
     // a map from the table bucket to the state of the bucket.
     private final Map<TableBucket, BucketState> bucketStates = new HashMap<>();
@@ -76,12 +79,13 @@ public class CoordinatorContext {
     // a map of partition assignment, <table_id, partition_id> -> <bucket, bucket_replicas>
     private final Map<TablePartition, Map<Integer, List<Integer>>> partitionAssignments =
             new HashMap<>();
-    // a map from partition_id -> partition_name
-    private final Map<Long, String> partitionNameById = new HashMap<>();
+    // a map from partition_id -> physicalTablePath
+    private final Map<Long, PhysicalTablePath> pathByPartitionId = new HashMap<>();
+    private final Map<PhysicalTablePath, Long> partitionIdByPath = new HashMap<>();
 
     // a map from table_id to the table path
     private final Map<Long, TablePath> tablePathById = new HashMap<>();
-    // TODO: will be used in the future metadata cache
+    private final Map<TablePath, Long> tableIdByPath = new HashMap<>();
     private final Map<Long, TableInfo> tableInfoById = new HashMap<>();
 
     private final Map<TableBucket, LeaderAndIsr> bucketLeaderAndIsr = new HashMap<>();
@@ -97,6 +101,7 @@ public class CoordinatorContext {
      */
     private final Map<Integer, Set<TableBucket>> replicasOnOffline = new HashMap<>();
 
+    private ServerInfo coordinatorServerInfo = null;
     private int coordinatorEpoch = INITIAL_COORDINATOR_EPOCH;
 
     public CoordinatorContext() {}
@@ -105,18 +110,26 @@ public class CoordinatorContext {
         return coordinatorEpoch;
     }
 
-    public Map<Integer, ServerNode> getLiveTabletServers() {
+    public Map<Integer, ServerInfo> getLiveTabletServers() {
         return liveTabletServers;
     }
 
     @VisibleForTesting
-    public void setLiveTabletServers(List<ServerNode> servers) {
+    public void setLiveTabletServers(List<ServerInfo> servers) {
         liveTabletServers.clear();
         servers.forEach(server -> liveTabletServers.put(server.id(), server));
     }
 
-    public void addLiveTabletServer(ServerNode serverNode) {
-        this.liveTabletServers.put(serverNode.id(), serverNode);
+    public ServerInfo getCoordinatorServerInfo() {
+        return coordinatorServerInfo;
+    }
+
+    public void setCoordinatorServerInfo(ServerInfo coordinatorServerInfo) {
+        this.coordinatorServerInfo = coordinatorServerInfo;
+    }
+
+    public void addLiveTabletServer(ServerInfo serverInfo) {
+        this.liveTabletServers.put(serverInfo.id(), serverInfo);
     }
 
     public void removeLiveTabletServer(int serverId) {
@@ -209,14 +222,16 @@ public class CoordinatorContext {
 
     public void putTablePath(long tableId, TablePath tablePath) {
         this.tablePathById.put(tableId, tablePath);
+        this.tableIdByPath.put(tablePath, tableId);
     }
 
     public void putTableInfo(TableInfo tableInfo) {
         this.tableInfoById.put(tableInfo.getTableId(), tableInfo);
     }
 
-    public void putPartition(long partitionId, String partitionName) {
-        this.partitionNameById.put(partitionId, partitionName);
+    public void putPartition(long partitionId, PhysicalTablePath physicalTablePath) {
+        this.pathByPartitionId.put(partitionId, physicalTablePath);
+        this.partitionIdByPath.put(physicalTablePath, partitionId);
     }
 
     public TableInfo getTableInfoById(long tableId) {
@@ -227,16 +242,41 @@ public class CoordinatorContext {
         return this.tablePathById.get(tableId);
     }
 
+    public Long getTableIdByPath(TablePath tablePath) {
+        return tableIdByPath.getOrDefault(tablePath, TableInfo.UNKNOWN_TABLE_ID);
+    }
+
     public boolean containsTableId(long tableId) {
         return this.tablePathById.containsKey(tableId);
     }
 
     public boolean containsPartitionId(long partitionId) {
-        return this.partitionNameById.containsKey(partitionId);
+        return this.pathByPartitionId.containsKey(partitionId);
     }
 
     public @Nullable String getPartitionName(long partitionId) {
-        return this.partitionNameById.get(partitionId);
+        PhysicalTablePath physicalTablePath = pathByPartitionId.get(partitionId);
+        if (physicalTablePath == null) {
+            return null;
+        } else {
+            return physicalTablePath.getPartitionName();
+        }
+    }
+
+    public Optional<PhysicalTablePath> getPhysicalTablePath(long partitionId) {
+        return Optional.ofNullable(pathByPartitionId.get(partitionId));
+    }
+
+    public Optional<Long> getPartitionId(PhysicalTablePath physicalTablePath) {
+        return Optional.ofNullable(partitionIdByPath.get(physicalTablePath));
+    }
+
+    public Map<Integer, List<Integer>> getTableAssignment(long tableId) {
+        return tableAssignments.getOrDefault(tableId, Collections.emptyMap());
+    }
+
+    public Map<Integer, List<Integer>> getPartitionAssignment(TablePartition tablePartition) {
+        return partitionAssignments.getOrDefault(tablePartition, Collections.emptyMap());
     }
 
     public void updateBucketReplicaAssignment(
@@ -273,6 +313,13 @@ public class CoordinatorContext {
         }
     }
 
+    public List<Integer> getFollowers(TableBucket tableBucket, Integer leaderReplica) {
+        List<Integer> replicas = new ArrayList<>(getAssignment(tableBucket));
+        // remove leaderReplica
+        replicas.remove(leaderReplica);
+        return replicas;
+    }
+
     public Map<TableBucket, BucketState> getBucketStates() {
         return bucketStates;
     }
@@ -301,12 +348,12 @@ public class CoordinatorContext {
         replicaStates.putIfAbsent(replica, state);
     }
 
-    public void putReplicaState(TableBucketReplica replica, ReplicaState state) {
-        replicaStates.put(replica, state);
+    public ReplicaState putReplicaState(TableBucketReplica replica, ReplicaState state) {
+        return replicaStates.put(replica, state);
     }
 
-    public void removeReplicaState(TableBucketReplica replica) {
-        replicaStates.remove(replica);
+    public ReplicaState removeReplicaState(TableBucketReplica replica) {
+        return replicaStates.remove(replica);
     }
 
     public Set<TableBucket> getAllBucketsForTable(long tableId) {
@@ -398,11 +445,6 @@ public class CoordinatorContext {
     }
 
     @VisibleForTesting
-    protected Map<Integer, List<Integer>> getTableAssignment(long tableId) {
-        return tableAssignments.getOrDefault(tableId, Collections.emptyMap());
-    }
-
-    @VisibleForTesting
     protected int replicaCounts(long tableId) {
         return getTableAssignment(tableId).values().stream().mapToInt(List::size).sum();
     }
@@ -410,11 +452,6 @@ public class CoordinatorContext {
     @VisibleForTesting
     protected int replicaCounts(TablePartition tablePartition) {
         return getPartitionAssignment(tablePartition).values().stream().mapToInt(List::size).sum();
-    }
-
-    @VisibleForTesting
-    protected Map<Integer, List<Integer>> getPartitionAssignment(TablePartition tablePartition) {
-        return partitionAssignments.getOrDefault(tablePartition, Collections.emptyMap());
     }
 
     public boolean isAnyReplicaInState(long tableId, ReplicaState replicaState) {
@@ -441,8 +478,8 @@ public class CoordinatorContext {
                 .allMatch(replica -> getReplicaState(replica) == replicaState);
     }
 
-    public void removeBucketState(TableBucket tableBucket) {
-        bucketStates.remove(tableBucket);
+    public BucketState removeBucketState(TableBucket tableBucket) {
+        return bucketStates.remove(tableBucket);
     }
 
     public Set<TableBucket> bucketsInStates(Set<BucketState> states) {
@@ -452,9 +489,10 @@ public class CoordinatorContext {
                 .collect(Collectors.toSet());
     }
 
-    public void putBucketState(TableBucket tableBucket, BucketState targetState) {
+    public BucketState putBucketState(TableBucket tableBucket, BucketState targetState) {
         BucketState currentState = bucketStates.put(tableBucket, targetState);
         updateBucketStateMetrics(tableBucket, currentState, targetState);
+        return currentState;
     }
 
     private void updateBucketStateMetrics(
@@ -547,7 +585,11 @@ public class CoordinatorContext {
                     .keySet()
                     .forEach(bucket -> bucketLeaderAndIsr.remove(new TableBucket(tableId, bucket)));
         }
-        tablePathById.remove(tableId);
+
+        TablePath tablePath = tablePathById.remove(tableId);
+        if (tablePath != null) {
+            tableIdByPath.remove(tablePath);
+        }
         tableInfoById.remove(tableId);
     }
 
@@ -566,7 +608,12 @@ public class CoordinatorContext {
                                                     tablePartition.getPartitionId(),
                                                     bucket)));
         }
-        partitionNameById.remove(tablePartition.getPartitionId());
+
+        PhysicalTablePath physicalTablePath =
+                pathByPartitionId.remove(tablePartition.getPartitionId());
+        if (physicalTablePath != null) {
+            partitionIdByPath.remove(physicalTablePath);
+        }
     }
 
     private void clearTablesState() {
@@ -577,8 +624,10 @@ public class CoordinatorContext {
         bucketStates.clear();
         replicaStates.clear();
         tablePathById.clear();
+        tableIdByPath.clear();
         tableInfoById.clear();
-        partitionNameById.clear();
+        pathByPartitionId.clear();
+        partitionIdByPath.clear();
     }
 
     public void resetContext() {

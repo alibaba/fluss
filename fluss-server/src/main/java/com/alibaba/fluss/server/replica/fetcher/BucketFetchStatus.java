@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +16,8 @@
  */
 
 package com.alibaba.fluss.server.replica.fetcher;
+
+import com.alibaba.fluss.metadata.TablePath;
 
 import javax.annotation.Nullable;
 
@@ -31,11 +34,17 @@ import java.util.concurrent.TimeUnit;
  */
 public class BucketFetchStatus {
     private final long tableId;
+    private final TablePath tablePath;
     private final long fetchOffset;
     private final @Nullable DelayedItem delayedItem;
 
-    public BucketFetchStatus(long tableId, long fetchOffset, @Nullable DelayedItem delayedItem) {
+    public BucketFetchStatus(
+            long tableId,
+            TablePath tablePath,
+            long fetchOffset,
+            @Nullable DelayedItem delayedItem) {
         this.tableId = tableId;
+        this.tablePath = tablePath;
         this.fetchOffset = fetchOffset;
         this.delayedItem = delayedItem;
     }
@@ -52,6 +61,10 @@ public class BucketFetchStatus {
         return tableId;
     }
 
+    public TablePath tablePath() {
+        return tablePath;
+    }
+
     public long fetchOffset() {
         return fetchOffset;
     }
@@ -59,7 +72,10 @@ public class BucketFetchStatus {
     @Override
     public String toString() {
         return String.format(
-                "BucketFetchStatus(tableId=%s, fetchOffset=%d, delay=%s ms)",
-                tableId, fetchOffset, delayedItem == null ? 0 : delayedItem.getDelayMs());
+                "BucketFetchStatus(tableId=%s, tablePath=%s, fetchOffset=%d, delay=%s ms)",
+                tableId,
+                tablePath,
+                fetchOffset,
+                delayedItem == null ? 0 : delayedItem.getDelayMs());
     }
 }

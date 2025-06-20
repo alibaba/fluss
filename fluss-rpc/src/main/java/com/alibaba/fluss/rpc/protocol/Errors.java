@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +18,8 @@
 package com.alibaba.fluss.rpc.protocol;
 
 import com.alibaba.fluss.exception.ApiException;
+import com.alibaba.fluss.exception.AuthenticationException;
+import com.alibaba.fluss.exception.AuthorizationException;
 import com.alibaba.fluss.exception.CorruptMessageException;
 import com.alibaba.fluss.exception.CorruptRecordException;
 import com.alibaba.fluss.exception.DatabaseAlreadyExistException;
@@ -24,6 +27,7 @@ import com.alibaba.fluss.exception.DatabaseNotEmptyException;
 import com.alibaba.fluss.exception.DatabaseNotExistException;
 import com.alibaba.fluss.exception.DuplicateSequenceException;
 import com.alibaba.fluss.exception.FencedLeaderEpochException;
+import com.alibaba.fluss.exception.FencedTieringEpochException;
 import com.alibaba.fluss.exception.InvalidColumnProjectionException;
 import com.alibaba.fluss.exception.InvalidConfigException;
 import com.alibaba.fluss.exception.InvalidCoordinatorException;
@@ -31,6 +35,7 @@ import com.alibaba.fluss.exception.InvalidDatabaseException;
 import com.alibaba.fluss.exception.InvalidPartitionException;
 import com.alibaba.fluss.exception.InvalidReplicationFactorException;
 import com.alibaba.fluss.exception.InvalidRequiredAcksException;
+import com.alibaba.fluss.exception.InvalidServerRackInfoException;
 import com.alibaba.fluss.exception.InvalidTableException;
 import com.alibaba.fluss.exception.InvalidTargetColumnException;
 import com.alibaba.fluss.exception.InvalidTimestampException;
@@ -38,6 +43,8 @@ import com.alibaba.fluss.exception.InvalidUpdateVersionException;
 import com.alibaba.fluss.exception.KvSnapshotNotExistException;
 import com.alibaba.fluss.exception.KvStorageException;
 import com.alibaba.fluss.exception.LakeStorageNotConfiguredException;
+import com.alibaba.fluss.exception.LakeTableSnapshotNotExistException;
+import com.alibaba.fluss.exception.LeaderNotAvailableException;
 import com.alibaba.fluss.exception.LogOffsetOutOfRangeException;
 import com.alibaba.fluss.exception.LogStorageException;
 import com.alibaba.fluss.exception.NetworkException;
@@ -50,13 +57,17 @@ import com.alibaba.fluss.exception.OutOfOrderSequenceException;
 import com.alibaba.fluss.exception.PartitionAlreadyExistsException;
 import com.alibaba.fluss.exception.PartitionNotExistException;
 import com.alibaba.fluss.exception.RecordTooLargeException;
+import com.alibaba.fluss.exception.RetriableAuthenticationException;
 import com.alibaba.fluss.exception.SchemaNotExistException;
+import com.alibaba.fluss.exception.SecurityDisabledException;
 import com.alibaba.fluss.exception.SecurityTokenException;
 import com.alibaba.fluss.exception.StorageException;
 import com.alibaba.fluss.exception.TableAlreadyExistException;
 import com.alibaba.fluss.exception.TableNotExistException;
 import com.alibaba.fluss.exception.TableNotPartitionedException;
 import com.alibaba.fluss.exception.TimeoutException;
+import com.alibaba.fluss.exception.TooManyBucketsException;
+import com.alibaba.fluss.exception.TooManyPartitionsException;
 import com.alibaba.fluss.exception.UnknownServerException;
 import com.alibaba.fluss.exception.UnknownTableOrBucketException;
 import com.alibaba.fluss.exception.UnknownWriterIdException;
@@ -182,7 +193,28 @@ public enum Errors {
     PARTITION_ALREADY_EXISTS(
             42, "The partition already exists.", PartitionAlreadyExistsException::new),
     PARTITION_SPEC_INVALID_EXCEPTION(
-            43, "The partition spec is invalid.", InvalidPartitionException::new);
+            43, "The partition spec is invalid.", InvalidPartitionException::new),
+    LEADER_NOT_AVAILABLE_EXCEPTION(
+            44,
+            "There is no currently available leader for the given partition.",
+            LeaderNotAvailableException::new),
+    PARTITION_MAX_NUM_EXCEPTION(
+            45, "Exceed the maximum number of partitions.", TooManyPartitionsException::new),
+    AUTHENTICATE_EXCEPTION(46, "Authentication failed.", AuthenticationException::new),
+    SECURITY_DISABLED_EXCEPTION(47, "Security is disabled.", SecurityDisabledException::new),
+    AUTHORIZATION_EXCEPTION(48, "Authorization failed", AuthorizationException::new),
+    BUCKET_MAX_NUM_EXCEPTION(
+            49, "Exceed the maximum number of buckets", TooManyBucketsException::new),
+    FENCED_TIERING_EPOCH_EXCEPTION(
+            50, "The tiering epoch is invalid.", FencedTieringEpochException::new),
+    RETRIABLE_AUTHENTICATE_EXCEPTION(
+            51,
+            "Authentication failed with retriable exception. ",
+            RetriableAuthenticationException::new),
+    INVALID_SERVER_RACK_INFO_EXCEPTION(
+            52, "The server rack info is invalid.", InvalidServerRackInfoException::new),
+    LAKE_SNAPSHOT_NOT_EXIST(
+            53, "The lake snapshot is not exist.", LakeTableSnapshotNotExistException::new);
 
     private static final Logger LOG = LoggerFactory.getLogger(Errors.class);
 

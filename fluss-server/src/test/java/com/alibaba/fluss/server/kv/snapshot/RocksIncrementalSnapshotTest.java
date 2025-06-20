@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2024 Alibaba Group Holding Ltd.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -124,6 +125,22 @@ class RocksIncrementalSnapshotTest {
             // test restore from cp4
             try (RocksDBKv rocksDBKv =
                     KvTestUtils.buildFromSnapshotHandle(kvSnapshotHandle4, dest2)) {
+                assertThat(rocksDBKv.get("key1".getBytes())).isEqualTo("val1".getBytes());
+                assertThat(rocksDBKv.get("key2".getBytes())).isEqualTo("val2".getBytes());
+                assertThat(rocksDBKv.get("key3".getBytes())).isEqualTo("val3".getBytes());
+            }
+
+            // write some data again
+            rocksDB.put("key3".getBytes(), "val3_1".getBytes());
+            KvSnapshotHandle kvSnapshotHandle5 =
+                    snapshot(5L, incrementalSnapshot, snapshotLocation, closeableRegistry);
+            // discard the snapshot handle
+            kvSnapshotHandle5.discard();
+
+            // we can still restore from cp4
+            Path dest3 = snapshotDownDir.resolve("restore3");
+            try (RocksDBKv rocksDBKv =
+                    KvTestUtils.buildFromSnapshotHandle(kvSnapshotHandle4, dest3)) {
                 assertThat(rocksDBKv.get("key1".getBytes())).isEqualTo("val1".getBytes());
                 assertThat(rocksDBKv.get("key2".getBytes())).isEqualTo("val2".getBytes());
                 assertThat(rocksDBKv.get("key3".getBytes())).isEqualTo("val3".getBytes());
