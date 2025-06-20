@@ -113,9 +113,9 @@ After all `TabletServers` have been upgraded, you can proceed to upgrade the `Co
 
 Once this process is complete, the server upgrade will be finished.
 
-## Compatibility between Fluss Client and Fluss Server
+## Compatibility Matrix
 
-The compatibility between the Fluss client and the Fluss server is described in the following table:
+Client-server version compatibility in Fluss is summarized in the table below:
 
 
 |            | Server 0.6 | Server 0.7 | Limitations |

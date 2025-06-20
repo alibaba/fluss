@@ -25,7 +25,9 @@ sidebar_position: 2
 
 The rack awareness feature is designed to distribute replicas of the same bucket across multiple racks. This extends the 
 data protection guarantees provided by Fluss beyond server failures to include rack failures, thereby significantly 
-reducing the risk of data loss in the event that all TabletServers on a single rack fail simultaneously.
+reducing the risk of data loss in the event that all TabletServers on a single rack fail simultaneously. This feature can
+also be applied to other server groupings, such as availability zones in cloud providers, to enable multi-AZ deployment
+and improve fault tolerance.
 
 To specify that a TabletServer belongs to a particular rack, you can set the `tablet-server.rack` configuration option:
 
@@ -34,11 +36,11 @@ tablet-server.rack: RACK1
 ```
 
 :::note
-1. If rack awareness is enabled, the `tablet-server.rack` setting must be configured for each TabletServer. Failure to do so will prevent Fluss from starting and will result in an exception being thrown.
+The `tablet-server.rack` configuration must be set on **all TabletServers** in the cluster if it is configured on any one of them. Otherwise, the cluster will fail to start.
 :::
 
 When a table is created, the rack constraint is honored, ensuring that replicas are spread across as many racks as possible. 
-Specifically, a bucket will span the minimum of the number of available racks and the `table.replication.factor` (i.e., min(#racks, `table.replication.factor`)). 
+Specifically, a bucket will span the minimum of the number of available racks and the `table.replication.factor` (i.e., `min(#racks, table.replication.factor)`).
 This approach maximizes the distribution of replicas across racks.
 
 The algorithm used to assign replicas to TabletServers ensures that the number of leader replicas per TabletServer 

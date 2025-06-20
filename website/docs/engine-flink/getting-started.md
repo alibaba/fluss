@@ -34,9 +34,9 @@ For a quick introduction to running Flink, refer to the [Quick Start](quickstart
 
 
 ## Feature Support
-Fluss supports Apache Flink's Table API and Flnk's DataStream API.
+Fluss supports Apache Flink's Table/SQL API and Flnk's DataStream API.
 
-For Flink's Table API, Fluss supports the following features:
+For Flink's Table/SQL API, Fluss supports the following features:
 
 | Feature support                                   | Flink | Notes                                  |
 |---------------------------------------------------|-------|----------------------------------------|
