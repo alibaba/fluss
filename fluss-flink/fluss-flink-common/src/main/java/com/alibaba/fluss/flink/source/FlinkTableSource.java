@@ -369,6 +369,7 @@ public class FlinkTableSource
         source.projectedFields = projectedFields;
         source.singleRowFilter = singleRowFilter;
         source.modificationScanType = modificationScanType;
+        source.predicate = predicate;
         return source;
     }
 
