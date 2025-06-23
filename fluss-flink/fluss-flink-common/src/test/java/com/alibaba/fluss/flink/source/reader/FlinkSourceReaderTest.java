@@ -34,8 +34,6 @@ import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SourceReaderContext;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderContext;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderOutput;
 import org.apache.flink.table.data.RowData;
@@ -161,8 +159,6 @@ class FlinkSourceReaderTest extends FlinkTestBase {
             RowType sourceOutputType,
             SourceReaderContext context)
             throws Exception {
-        FutureCompletingBlockingQueue<RecordsWithSplitIds<RecordAndPos>> elementsQueue =
-                new FutureCompletingBlockingQueue<>();
 
         RowDataDeserializationSchema deserializationSchema = new RowDataDeserializationSchema();
         deserializationSchema.open(
@@ -173,7 +169,6 @@ class FlinkSourceReaderTest extends FlinkTestBase {
         FlinkRecordEmitter<RowData> recordEmitter = new FlinkRecordEmitter<>(deserializationSchema);
 
         return new FlinkSourceReader<>(
-                elementsQueue,
                 flussConf,
                 tablePath,
                 sourceOutputType,

@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Copyright (c) 2025 Alibaba Group Holding Ltd.
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +16,7 @@
 
 package com.alibaba.fluss.flink.source.reader.fetcher;
 
+import com.alibaba.fluss.flink.source.reader.FlinkSourceReader;
 import com.alibaba.fluss.flink.source.reader.FlinkSourceSplitReader;
 import com.alibaba.fluss.flink.source.reader.RecordAndPos;
 import com.alibaba.fluss.flink.source.split.SourceSplitBase;
@@ -42,19 +42,17 @@ import java.util.function.Supplier;
 
 /**
  * The SplitFetcherManager for Fluss source. This class is needed to help remove the partition
- * buckets to read inside the {@link FlinkSourceSplitReader}.
+ * buckets to read inside the {@link FlinkSourceSplitReader}. *
+ *
+ * <p>This class overrides the {@link FlinkSourceReader} from {@code fluss-flink-common} to adapt to
+ * newer Flink versions where constructor injection of a blocking queue ({@code elementsQueue}) is
+ * no longer supported.
  */
 @Internal
 public class FlinkSourceFetcherManager
         extends SingleThreadFetcherManager<RecordAndPos, SourceSplitBase> {
 
     private static final Logger LOG = LoggerFactory.getLogger(FlinkSourceFetcherManager.class);
-
-    public FlinkSourceFetcherManager(
-            Supplier<SplitReader<RecordAndPos, SourceSplitBase>> splitReaderSupplier,
-            Consumer<Collection<String>> splitFinishedHook) {
-        super(splitReaderSupplier, new Configuration(), splitFinishedHook);
-    }
 
     /**
      * Creates a new SplitFetcherManager with a single I/O threads.

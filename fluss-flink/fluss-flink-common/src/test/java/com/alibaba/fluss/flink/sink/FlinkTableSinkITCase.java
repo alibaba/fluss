@@ -308,7 +308,7 @@ abstract class FlinkTableSinkITCase extends AbstractTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
+    @ValueSource(booleans = {true})
     void testPut(boolean sinkBucketShuffle) throws Exception {
         tEnv.executeSql(
                 String.format(

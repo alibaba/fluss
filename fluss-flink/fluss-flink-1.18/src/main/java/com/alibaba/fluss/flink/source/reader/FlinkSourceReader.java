@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Copyright (c) 2025 Alibaba Group Holding Ltd.
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -34,7 +33,9 @@ import com.alibaba.fluss.types.RowType;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 
 import javax.annotation.Nullable;
 
@@ -42,7 +43,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** The source reader for Fluss. */
+/**
+ * The source reader for Fluss.
+ *
+ * <p>This class overrides the {@link FlinkSourceReader} from {@code fluss-flink-common} to adapt to
+ * newer Flink versions where constructor injection of a blocking queue ({@code elementsQueue}) is
+ * no longer supported.
+ */
 public class FlinkSourceReader<OUT>
         extends SingleThreadMultiplexSourceReaderBase<
                 RecordAndPos, OUT, SourceSplitBase, SourceSplitState> {
@@ -55,8 +62,30 @@ public class FlinkSourceReader<OUT>
             @Nullable int[] projectedFields,
             FlinkSourceReaderMetrics flinkSourceReaderMetrics,
             FlinkRecordEmitter<OUT> recordEmitter) {
+        this(
+                flussConfig,
+                tablePath,
+                sourceOutputType,
+                context,
+                projectedFields,
+                flinkSourceReaderMetrics,
+                recordEmitter,
+                new FutureCompletingBlockingQueue<>());
+    }
+
+    public FlinkSourceReader(
+            Configuration flussConfig,
+            TablePath tablePath,
+            RowType sourceOutputType,
+            SourceReaderContext context,
+            @Nullable int[] projectedFields,
+            FlinkSourceReaderMetrics flinkSourceReaderMetrics,
+            FlinkRecordEmitter<OUT> recordEmitter,
+            FutureCompletingBlockingQueue<RecordsWithSplitIds<RecordAndPos>> elementsQueue) {
         super(
+                elementsQueue,
                 new FlinkSourceFetcherManager(
+                        elementsQueue,
                         () ->
                                 new FlinkSourceSplitReader(
                                         flussConfig,

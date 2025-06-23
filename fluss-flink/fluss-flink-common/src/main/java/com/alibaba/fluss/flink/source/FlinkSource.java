@@ -25,7 +25,6 @@ import com.alibaba.fluss.flink.source.enumerator.FlinkSourceEnumerator;
 import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
 import com.alibaba.fluss.flink.source.metrics.FlinkSourceReaderMetrics;
 import com.alibaba.fluss.flink.source.reader.FlinkSourceReader;
-import com.alibaba.fluss.flink.source.reader.RecordAndPos;
 import com.alibaba.fluss.flink.source.split.SourceSplitBase;
 import com.alibaba.fluss.flink.source.split.SourceSplitSerializer;
 import com.alibaba.fluss.flink.source.state.FlussSourceEnumeratorStateSerializer;
@@ -42,8 +41,6 @@ import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import javax.annotation.Nullable;
@@ -146,8 +143,6 @@ public class FlinkSource<OUT>
     @Override
     public SourceReader<OUT, SourceSplitBase> createReader(SourceReaderContext context)
             throws Exception {
-        FutureCompletingBlockingQueue<RecordsWithSplitIds<RecordAndPos>> elementsQueue =
-                new FutureCompletingBlockingQueue<>();
         FlinkSourceReaderMetrics flinkSourceReaderMetrics =
                 new FlinkSourceReaderMetrics(context.metricGroup());
 
@@ -159,7 +154,6 @@ public class FlinkSource<OUT>
         FlinkRecordEmitter<OUT> recordEmitter = new FlinkRecordEmitter<>(deserializationSchema);
 
         return new FlinkSourceReader<>(
-                elementsQueue,
                 flussConf,
                 tablePath,
                 sourceOutputType,

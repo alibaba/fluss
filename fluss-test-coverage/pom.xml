@@ -320,7 +320,6 @@
                                         <!-- exclude for dummy class -->
                                         <exclude>com.alibaba.fluss.dist.DummyClass</exclude>
                                         <exclude>com.alibaba.fluss.flink.DummyClass120</exclude>
-                                        <exclude>com.alibaba.fluss.flink.DummyClass119</exclude>
                                         <exclude>com.alibaba.fluss.lake.batch.ArrowRecordBatch</exclude>
                                         <exclude>com.alibaba.fluss.lake.committer.CommittedLakeSnapshot</exclude>
                                         <exclude>com.alibaba.fluss.lake.paimon.FlussDataTypeToPaimonDataType</exclude>
