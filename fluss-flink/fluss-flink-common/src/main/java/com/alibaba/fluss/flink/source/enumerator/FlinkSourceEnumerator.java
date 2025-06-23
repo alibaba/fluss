@@ -35,7 +35,6 @@ import com.alibaba.fluss.flink.source.split.HybridSnapshotLogSplit;
 import com.alibaba.fluss.flink.source.split.LogSplit;
 import com.alibaba.fluss.flink.source.split.SourceSplitBase;
 import com.alibaba.fluss.flink.source.state.SourceEnumeratorState;
-import com.alibaba.fluss.flink.utils.PushdownUtils.FieldEqual;
 import com.alibaba.fluss.metadata.PartitionInfo;
 import com.alibaba.fluss.metadata.TableBucket;
 import com.alibaba.fluss.metadata.TableInfo;
@@ -44,7 +43,6 @@ import com.alibaba.fluss.predicate.Predicate;
 import com.alibaba.fluss.row.BinaryString;
 import com.alibaba.fluss.row.GenericRow;
 import com.alibaba.fluss.row.InternalRow;
-import com.alibaba.fluss.types.DataField;
 import com.alibaba.fluss.utils.ExceptionUtils;
 
 import org.apache.flink.annotation.VisibleForTesting;
@@ -168,8 +166,7 @@ public class FlinkSourceEnumerator
             Map<Long, String> assignedPartitions,
             OffsetsInitializer startingOffsetsInitializer,
             long scanPartitionDiscoveryIntervalMs,
-            boolean streaming,
-            List<FieldEqual> partitionFilters) {
+            boolean streaming) {
         this(
                 tablePath,
                 flussConf,
@@ -207,7 +204,6 @@ public class FlinkSourceEnumerator
         this.assignedPartitions = new HashMap<>(assignedPartitions);
         this.scanPartitionDiscoveryIntervalMs = scanPartitionDiscoveryIntervalMs;
         this.streaming = streaming;
-        this.partitionFilters = checkNotNull(partitionFilters);
         this.stoppingOffsetsInitializer =
                 streaming ? new NoStoppingOffsetsInitializer() : OffsetsInitializer.latest();
         this.predicate = predicate;
@@ -296,24 +292,8 @@ public class FlinkSourceEnumerator
 
         try {
             List<PartitionInfo> partitionInfos = flussAdmin.listPartitionInfos(tablePath).get();
-            if (predicate == null) {
-                return new HashSet<>(partitionInfos);
-            } else {
-                Set<PartitionInfo> filteredPartitionInfos =
-                        partitionInfos.stream()
-                                .filter(
-                                        partitionInfo ->
-                                                predicate.test(
-                                                        convertPartitionInfoToInternalRow(
-                                                                partitionInfo)))
-                                .collect(Collectors.toSet());
-                LOG.info(
-                        "Filtered partitions {} for table {} with predicate: {}",
-                        filteredPartitionInfos,
-                        tablePath,
-                        predicate);
-                return filteredPartitionInfos;
-            }
+            partitionInfos = applyPartitionFilter(partitionInfos);
+            return new HashSet<>(partitionInfos);
         } catch (Exception e) {
             throw new FlinkRuntimeException(
                     String.format("Failed to list partitions for %s", tablePath),
@@ -323,30 +303,24 @@ public class FlinkSourceEnumerator
 
     /** Apply partition filter. */
     private List<PartitionInfo> applyPartitionFilter(List<PartitionInfo> partitionInfos) {
-        if (!partitionFilters.isEmpty()) {
-            return partitionInfos.stream()
-                    .filter(
-                            partitionInfo -> {
-                                Map<String, String> specMap =
-                                        partitionInfo.getPartitionSpec().getSpecMap();
-                                // use getFields() instead of getFieldNames() to
-                                // avoid collection construction
-                                List<DataField> fields = tableInfo.getRowType().getFields();
-                                for (FieldEqual filter : partitionFilters) {
-                                    String fieldName = fields.get(filter.fieldIndex).getName();
-                                    String partitionValue = specMap.get(fieldName);
-                                    if (partitionValue == null
-                                            || !filter.equalValue
-                                                    .toString()
-                                                    .equals(partitionValue)) {
-                                        return false;
-                                    }
-                                }
-                                return true;
-                            })
-                    .collect(Collectors.toList());
+        if (predicate == null) {
+            return partitionInfos;
+        } else {
+            List<PartitionInfo> filteredPartitionInfos =
+                    partitionInfos.stream()
+                            .filter(
+                                    partitionInfo ->
+                                            predicate.test(
+                                                    convertPartitionInfoToInternalRow(
+                                                            partitionInfo)))
+                            .collect(Collectors.toList());
+            LOG.info(
+                    "Filtered partitions {} for table {} with predicate: {}",
+                    filteredPartitionInfos,
+                    tablePath,
+                    predicate);
+            return filteredPartitionInfos;
         }
-        return partitionInfos;
     }
 
     private InternalRow convertPartitionInfoToInternalRow(PartitionInfo partitionInfo) {

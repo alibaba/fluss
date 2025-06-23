@@ -83,8 +83,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static com.alibaba.fluss.flink.utils.PushdownUtils.ValueConversion.FLINK_INTERNAL_VALUE;
-import static com.alibaba.fluss.flink.utils.PushdownUtils.extractFieldEquals;
 import static com.alibaba.fluss.utils.Preconditions.checkNotNull;
 
 /** Flink table source to scan Fluss data. */
@@ -371,7 +369,6 @@ public class FlinkTableSource
         source.projectedFields = projectedFields;
         source.singleRowFilter = singleRowFilter;
         source.modificationScanType = modificationScanType;
-        source.partitionFilters = partitionFilters;
         return source;
     }
 
@@ -414,7 +411,7 @@ public class FlinkTableSource
                             primaryKeyTypes,
                             acceptedFilters,
                             remainingFilters,
-                            ValueConversion.FLINK_INTERNAL_VALUE);
+                            PushdownUtils.ValueConversion.FLINK_INTERNAL_VALUE);
             int[] keyRowProjection = getKeyRowProjection();
             HashSet<Integer> visitedPkFields = new HashSet<>();
             GenericRowData lookupRow = new GenericRowData(primaryKeyIndexes.length);

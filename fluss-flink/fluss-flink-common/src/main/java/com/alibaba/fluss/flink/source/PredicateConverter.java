@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-package com.alibaba.fluss.connector.flink.source;
+package com.alibaba.fluss.flink.source;
 
-import com.alibaba.fluss.connector.flink.utils.FlinkConversions;
 import com.alibaba.fluss.connector.flink.utils.TypeUtils;
+import com.alibaba.fluss.flink.utils.FlinkConversions;
 import com.alibaba.fluss.predicate.Predicate;
 import com.alibaba.fluss.predicate.PredicateBuilder;
 import com.alibaba.fluss.row.BinaryString;
