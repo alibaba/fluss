@@ -18,8 +18,6 @@
 
 package org.apache.flink.api.connector.sink2;
 
-import org.apache.flink.annotation.Public;
-import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
 
@@ -30,7 +28,6 @@ import java.io.Serializable;
  * Placeholder class to resolve compatibility issues.(Providing
  * org.apache.flink.api.connector.sink2.Sink.InitContext).
  */
-@Public
 public interface Sink<InputT> extends Serializable {
 
     /**
@@ -43,8 +40,6 @@ public interface Sink<InputT> extends Serializable {
     SinkWriter<InputT> createWriter(WriterInitContext context) throws IOException;
 
     /** The interface exposes some runtime info for creating a {@link SinkWriter}. */
-    @PublicEvolving
-    @Deprecated
     interface InitContext {
 
         /**

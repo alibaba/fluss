@@ -70,6 +70,13 @@
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
+            <artifactId>fluss-flink-2.1</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.fluss</groupId>
             <artifactId>fluss-flink-1.20</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
@@ -158,6 +165,8 @@
                                             <excludes>
                                                 <exclude>fluss-test-coverage/**</exclude>
                                                 <exclude>fluss-test-utils/**</exclude>
+                                                <exclude>fluss-flink/**</exclude>
+                                                <exclude>fluss-flink/**/target/classes/com/alibaba/fluss/flink/utils/CatalogTableUtils.java</exclude>
                                             </excludes>
                                         </resource>
                                     </resources>
