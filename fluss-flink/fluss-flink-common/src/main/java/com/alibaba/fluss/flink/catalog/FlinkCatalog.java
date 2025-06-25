@@ -90,7 +90,17 @@ import static com.alibaba.fluss.flink.utils.CatalogExceptionUtils.isTableNotPart
 import static com.alibaba.fluss.flink.utils.FlinkConversions.toFlussDatabase;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
-/** A Flink Catalog for fluss. */
+/**
+ * A Flink Catalog for fluss.
+ *
+ * <p>Currently, this class must extend the internal Flink class {@link AbstractCatalog} because an
+ * incompatibility bug ( <a
+ * href="https://issues.apache.org/jira/browse/FLINK-38030">FLINK-38030</a>) in flink 2.0.0.
+ *
+ * <p>TODO: Once this issue is resolved in a future version of Flink (likely 2.1+), refactor this
+ * class to implement the public interface {@link org.apache.flink.table.catalog.Catalog} instead of
+ * extending the internal class {@link AbstractCatalog}.
+ */
 public class FlinkCatalog extends AbstractCatalog {
 
     public static final String LAKE_TABLE_SPLITTER = "$lake";

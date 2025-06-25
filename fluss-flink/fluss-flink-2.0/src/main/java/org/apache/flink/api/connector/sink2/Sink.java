@@ -25,8 +25,8 @@ import java.io.IOException;
 import java.io.Serializable;
 
 /**
- * Placeholder class to resolve compatibility issues.(Providing
- * org.apache.flink.api.connector.sink2.Sink.InitContext).
+ * Placeholder class to resolve compatibility issues. This placeholder class can be removed once we
+ * drop the support of Flink v1.18 which requires the legacy InitContext interface.
  */
 public interface Sink<InputT> extends Serializable {
 
