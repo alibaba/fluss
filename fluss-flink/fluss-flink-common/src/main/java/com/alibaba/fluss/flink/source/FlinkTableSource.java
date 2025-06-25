@@ -466,7 +466,7 @@ public class FlinkTableSource
             return Result.of(acceptedFilters, remainingFilters);
         }
 
-        return Result.of(acceptedFilters, remainingFilters);
+        return Result.of(Collections.emptyList(), filters);
     }
 
     @Override
