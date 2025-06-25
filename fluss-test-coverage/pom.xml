@@ -70,7 +70,7 @@
 
         <dependency>
             <groupId>com.alibaba.fluss</groupId>
-            <artifactId>fluss-flink-2.1</artifactId>
+            <artifactId>fluss-flink-2.0</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
         </dependency>
@@ -166,7 +166,7 @@
                                                 <exclude>fluss-test-coverage/**</exclude>
                                                 <exclude>fluss-test-utils/**</exclude>
                                                 <exclude>fluss-flink/**</exclude>
-                                                <exclude>fluss-flink/**/target/classes/com/alibaba/fluss/flink/utils/CatalogTableUtils.java</exclude>
+                                                <exclude>fluss-flink/**/target/classes/com/alibaba/fluss/flink/adapter/**</exclude>
                                             </excludes>
                                         </resource>
                                     </resources>
