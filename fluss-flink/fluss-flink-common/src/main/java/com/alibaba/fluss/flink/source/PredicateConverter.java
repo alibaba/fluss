@@ -18,11 +18,11 @@
 
 package com.alibaba.fluss.flink.source;
 
-import com.alibaba.fluss.connector.flink.utils.TypeUtils;
 import com.alibaba.fluss.flink.utils.FlinkConversions;
 import com.alibaba.fluss.predicate.Predicate;
 import com.alibaba.fluss.predicate.PredicateBuilder;
 import com.alibaba.fluss.row.BinaryString;
+import com.alibaba.fluss.utils.TypeUtils;
 
 import org.apache.flink.table.data.conversion.DataStructureConverters;
 import org.apache.flink.table.expressions.CallExpression;
@@ -243,6 +243,8 @@ public class PredicateConverter implements ExpressionVisitor<Predicate> {
                             DataStructureConverters.getConverter(expectedType)
                                     .toInternalOrNull(value),
                             expectedLogicalType);
+                } else if (isStringType(actualLogicalType) || isStringType(expectedLogicalType)) {
+                    return value.toString();
                 } else if (supportsImplicitCast(actualLogicalType, expectedLogicalType)) {
                     try {
                         return TypeUtils.castFromString(
